@@ -49,3 +49,51 @@ describe("demo site", () => {
     }
   });
 });
+
+describe("demo observe endpoint", () => {
+  it("streams a snapshot then incremental observations", async () => {
+    const site = await startDemoSite({ port: 0 });
+    try {
+      const response = await fetch(`${site.url}/api/demo/observe`);
+      assert.equal(response.status, 200);
+      assert.match(
+        response.headers.get("content-type") ?? "",
+        /^text\/event-stream/,
+      );
+      const reader = response.body!.getReader();
+      const decoder = new TextDecoder();
+      let seen = "";
+      const pump = (async () => {
+        for (;;) {
+          const chunk = await reader.read();
+          if (chunk.done) return;
+          seen += decoder.decode(chunk.value);
+        }
+      })();
+
+      const socket = new WebSocket(`${site.hubUrl}?token=${site.bootstrapToken}`);
+      await once(socket, "open");
+      socket.send(
+        JSON.stringify({
+          type: "client.hello",
+          protocolVersion: 2,
+          clientId: "sse-client",
+        }),
+      );
+
+      const deadline = Date.now() + 2_000;
+      while (
+        !seen.includes("event: snapshot") ||
+        !seen.includes("client.registered")
+      ) {
+        assert.ok(Date.now() < deadline, "timed out waiting for sse events");
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      await reader.cancel();
+      await pump.catch(() => undefined);
+      socket.close();
+    } finally {
+      await site.close();
+    }
+  });
+});

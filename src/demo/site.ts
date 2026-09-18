@@ -27,10 +27,39 @@ export function createDemoRouter(
   context: DemoRouterContext,
 ): (request: IncomingMessage, response: ServerResponse) => void {
   const staticHandler = createStaticHandler(resolveWebRoot());
-  // SSE / login / offers 路由在后续任务中在此分派（见 Task 6/7/8）。
+  // login / offers 路由在后续任务中在此分派（见 Task 7/8）。
   return (request, response) => {
+    const url = new URL(request.url ?? "/", "http://demo.invalid");
+    if (request.method === "GET" && url.pathname === "/api/demo/observe") {
+      handleObserve(context, request, response);
+      return;
+    }
     staticHandler(request, response);
   };
+}
+
+function handleObserve(
+  context: DemoRouterContext,
+  request: IncomingMessage,
+  response: ServerResponse,
+): void {
+  response.writeHead(200, {
+    "content-type": "text/event-stream",
+    "cache-control": "no-cache",
+    connection: "keep-alive",
+  });
+  response.write(
+    `event: snapshot\ndata: ${JSON.stringify({
+      ...context.projection.snapshot(),
+      warning: context.hostWarning,
+    })}\n\n`,
+  );
+  context.subscribers.add(response);
+  const ping = setInterval(() => response.write(": ping\n\n"), 15_000);
+  request.on("close", () => {
+    clearInterval(ping);
+    context.subscribers.delete(response);
+  });
 }
 
 export type DemoSiteHandle = {
