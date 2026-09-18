@@ -31,7 +31,8 @@
     "./plugins": "./src/plugins/manager.ts",
     "./cli": "./src/cli/commands.ts",
     "./service/launchd": "./src/service/launchd.ts",
-    "./service/systemd": "./src/service/systemd.ts"
+    "./service/systemd": "./src/service/systemd.ts",
+    "./demo": "./src/demo/index.ts"
   },
   "publishConfig": {
     "exports": {
@@ -114,6 +115,11 @@
         "types": "./dist/service/systemd.d.ts",
         "import": "./dist/service/systemd.js",
         "default": "./dist/service/systemd.js"
+      },
+      "./demo": {
+        "types": "./dist/demo/index.d.ts",
+        "import": "./dist/demo/index.js",
+        "default": "./dist/demo/index.js"
       }
     },
     "main": "./dist/index.js",
@@ -125,10 +131,12 @@
   },
   "files": [
     "bin",
-    "dist"
+    "dist",
+    "web"
   ],
   "scripts": {
     "build": "node scripts/build.mjs",
+    "demo": "node bin/allinai-agent demo",
     "test": "tsx --tsconfig ./tsconfig.json --test 'src/**/*.test.ts'",
     "typecheck": "tsc --noEmit",
     "prepack": "node scripts/build.mjs && node scripts/publish-manifest.mjs prepare",
