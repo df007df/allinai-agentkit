@@ -125,3 +125,59 @@ describe("agent CLI", () => {
     assert.equal(installs, 0);
   });
 });
+
+describe("login command", () => {
+  it("stores the token and writes config after browser approval", async () => {
+    const configDir = mkdtempSync(path.join(tmpdir(), "agent-cli-login-"));
+    const result = await runCli(
+      ["login", "--hub", "http://127.0.0.1:49154", "--client", "fixed-client"],
+      {
+        configDir,
+        credentials: {
+          load: async () => null,
+          save: async (clientId, token) => {
+            assert.equal(clientId, "fixed-client");
+            assert.equal(token, "demo-token-cli");
+          },
+          clear: async () => {},
+        },
+        openBrowser: async (url) => {
+          const authorize = new URL(url);
+          const callback = new URL(authorize.searchParams.get("redirect_uri")!);
+          callback.searchParams.set("token", "demo-token-cli");
+          callback.searchParams.set("state", authorize.searchParams.get("state")!);
+          await fetch(callback);
+        },
+      },
+    );
+    assert.equal(result.exitCode, 0);
+    assert.ok(result.output.some((line) => line.includes('"loggedIn":true')));
+  });
+});
+
+describe("demo command", () => {
+  it("starts the demo site, reports endpoints and waits for shutdown", async () => {
+    let closed = false;
+    const result = await runCli(
+      ["demo", "--port", "0"],
+      {
+        startDemoSite: async () => ({
+          url: "http://127.0.0.1:4317",
+          hubUrl: "ws://127.0.0.1:4317/api/agent-hub/v2/ws",
+          bootstrapToken: "demo-fixed",
+          registry: { list: () => [], register: () => {
+            throw new Error("unused");
+          }, verify: () => null, revoke: () => false } as never,
+          close: async () => {
+            closed = true;
+          },
+        }),
+        demoWaiter: async () => {},
+      },
+    );
+    assert.equal(result.exitCode, 0);
+    assert.ok(result.output.some((line) => line.includes("4317")));
+    assert.ok(result.output.some((line) => line.includes("demo-fixed")));
+    assert.equal(closed, true);
+  });
+});

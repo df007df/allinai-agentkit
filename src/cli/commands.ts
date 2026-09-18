@@ -9,10 +9,13 @@ import {
 } from "../control.js";
 import { createCredentialStore, type CredentialStore } from "../credentials.js";
 import {
+  defaultAgentConfig,
   loadAgentConfig,
   parseAgentConfig,
   type AgentConfig,
 } from "../config.js";
+import { defaultOpenBrowser, runLoginFlow } from "../login.js";
+import { startDemoSite, type DemoSite } from "../demo/index.js";
 import {
   createRotatingJsonlLogger,
   setBridgeLogger,
@@ -93,6 +96,9 @@ export type RunCliOptions = {
   ) => Promise<void>;
   signal?: AbortSignal;
   credentials?: CredentialStore;
+  openBrowser?: (url: string) => Promise<void>;
+  startDemoSite?: (options: { port?: number; host?: string }) => Promise<DemoSite>;
+  demoWaiter?: () => Promise<void>;
 };
 
 export type LocalAgentDaemonOptions = {
@@ -131,6 +137,8 @@ type CommandOptionSpec = {
  */
 const COMMAND_OPTIONS: Readonly<Record<string, CommandOptionSpec>> = {
   init: { values: ["hub", "client", "token", "config-dir"] },
+  login: { values: ["hub", "client", "config-dir"], booleans: ["no-browser"] },
+  demo: { values: ["port", "host", "config-dir"] },
   daemon: { values: ["config-dir"] },
   install: { values: ["config-dir"] },
   status: { values: ["config-dir"] },
@@ -383,7 +391,7 @@ async function defaultFollowLog(
 }
 
 function help(): string {
-  return "Usage: allinai-agent <init|daemon|install|status|logs|sync|restart|uninstall|doctor> [--config-dir PATH]";
+  return "Usage: allinai-agent <init|login|daemon|demo|install|status|logs|sync|restart|uninstall|doctor> [--config-dir PATH]";
 }
 
 /**
@@ -418,6 +426,73 @@ export async function runCli(
     const scopedOptions = configDir ? { ...options, configDir } : options;
     const paths = agentPaths(scopedOptions);
     const command = parsed.command;
+
+    if (command === "login") {
+      const hubBaseUrl = flagValue(parsed.flags, "hub");
+      if (!hubBaseUrl)
+        throw new Error("login requires --hub http://127.0.0.1:4317");
+      const noBrowser = parsed.flags.get("no-browser") === true;
+      const existing = await readConfigIfExists(paths.configFile);
+      const clientId =
+        flagValue(parsed.flags, "client") ??
+        existing?.clientId ??
+        randomUUID();
+      await mkdir(paths.home, { recursive: true });
+      const result = await runLoginFlow({
+        hubBaseUrl,
+        clientId,
+        credentials:
+          scopedOptions.credentials ?? createCredentialStore({ paths }),
+        saveConfig: async (input) => {
+          const config = parseAgentConfig({
+            ...(existing ?? defaultAgentConfig()),
+            hubBaseUrl: input.hubBaseUrl,
+            clientId: input.clientId,
+          });
+          await writeFile(
+            paths.configFile,
+            `${JSON.stringify(config, null, 2)}\n`,
+            { encoding: "utf8", mode: 0o600 },
+          );
+        },
+        open: noBrowser
+          ? async () => {}
+          : scopedOptions.openBrowser ?? defaultOpenBrowser,
+        onAuthorizeUrl: (url) => emit(output, write, { authorizeUrl: url }),
+        timeoutMs: 120_000,
+      });
+      emit(output, write, {
+        loggedIn: true,
+        clientId: result.clientId,
+        hubBaseUrl: result.hubBaseUrl,
+      });
+      return { exitCode: 0, output };
+    }
+
+    if (command === "demo") {
+      const portFlag = flagValue(parsed.flags, "port");
+      const port = portFlag === undefined ? undefined : Number(portFlag);
+      if (
+        port !== undefined &&
+        (!Number.isInteger(port) || port < 0 || port > 65535)
+      ) {
+        throw new Error("--port must be an integer between 0 and 65535");
+      }
+      const host = flagValue(parsed.flags, "host");
+      const site = await (scopedOptions.startDemoSite ?? startDemoSite)({
+        port,
+        host,
+      });
+      emit(output, write, {
+        demoUrl: site.url,
+        hubWsUrl: site.hubUrl,
+        bootstrapToken: site.bootstrapToken,
+      });
+      const wait = scopedOptions.demoWaiter ?? waitForShutdownSignal;
+      await wait();
+      await site.close();
+      return { exitCode: 0, output };
+    }
 
     if (command === "init") {
       const hubBaseUrl = flagValue(parsed.flags, "hub");
@@ -853,4 +928,24 @@ function observeTransport(
       await transport.close();
     },
   };
+}
+
+async function readConfigIfExists(file: string): Promise<AgentConfig | null> {
+  try {
+    return parseAgentConfig(JSON.parse(await readFile(file, "utf8")));
+  } catch {
+    return null;
+  }
+}
+
+function waitForShutdownSignal(): Promise<void> {
+  return new Promise((resolve) => {
+    const onSignal = () => {
+      process.off("SIGINT", onSignal);
+      process.off("SIGTERM", onSignal);
+      resolve();
+    };
+    process.once("SIGINT", onSignal);
+    process.once("SIGTERM", onSignal);
+  });
 }
