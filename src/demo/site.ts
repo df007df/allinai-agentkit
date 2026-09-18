@@ -115,6 +115,20 @@ async function handleLoginDeny(
   );
 }
 
+function parseDemoRuntime(
+  value: string,
+): "codex" | "claude" | "pi" | "zcode" {
+  switch (value) {
+    case "codex":
+    case "claude":
+    case "pi":
+    case "zcode":
+      return value;
+    default:
+      return "codex";
+  }
+}
+
 async function handleOffers(
   context: DemoRouterContext,
   request: IncomingMessage,
@@ -123,7 +137,8 @@ async function handleOffers(
   const body = await readJsonBody(request);
   const clientId = typeof body.clientId === "string" ? body.clientId : "";
   const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
-  const runtime = typeof body.runtime === "string" ? body.runtime : "codex";
+  const runtimeCandidate =
+    typeof body.runtime === "string" ? body.runtime : "";
   if (!clientId || !prompt) {
     response.writeHead(400, { "content-type": "application/json" });
     response.end(JSON.stringify({ error: "invalid_offer_request" }));
@@ -134,6 +149,7 @@ async function handleOffers(
     response.end(JSON.stringify({ error: "unknown_client" }));
     return;
   }
+  const runtime = parseDemoRuntime(runtimeCandidate);
   const offer = await context.hub.offer({
     principal: DEMO_PRINCIPAL,
     targetClientId: clientId,
