@@ -201,47 +201,98 @@ await site.close();</code></pre>
           <div class="scenario-head">
             <span class="step-no">E</span>
             <div>
-              <h3>在自己的网站上替换内存 Hub</h3>
+              <h3>在 Next.js 集成默认内存 Hub</h3>
               <p>
-                demo 站默认用易失内存 Store。生产上实现你自己的
-                <code>HubStore</code> 接口（六个方法），把持久化换成数据库，
-                协议层不用动一行。
+                Next.js 的 Route Handler 拿不到 WebSocket 升级事件，所以走
+                custom server 挂 Hub；页面用 Server Component 直接读
+                Store，列出 client 与在线状态。
               </p>
             </div>
           </div>
-          <pre class="code-block"><code><span class="c">// 1) 实现你自己的持久化 Store（以 Postgres 为例，六个方法）</span>
+          <pre class="code-block"><code><span class="c">// 1) src/server/hub.ts —— 单例；dev 热更新下也保持同一实例</span>
+import { createMemoryHub } from "@allin-ai/agent-client/hub/testkit";
+
+const g = globalThis as unknown as {
+  hub?: ReturnType&lt;typeof createMemoryHub&gt;;
+};
+export const hub =
+  g.hub ?? createMemoryHub({ authorize: myAuthorize }); <span class="c">// 你的鉴权</span>
+if (process.env.NODE_ENV !== "production") g.hub = hub;
+
+<span class="c">// 2) server.ts —— custom server，拿到底层 http.Server 才能挂 WS</span>
+import { createServer } from "node:http";
+import next from "next";
+import { hub } from "./src/server/hub";
+
+const app = next({ dev: false });
+await app.prepare();
+const server = createServer((req, res) =&gt; app.getRequestHandler()(req, res));
+hub.attach(server);            <span class="c">// WS: /api/agent-hub/v2/ws</span>
+server.listen(3000);
+
+<span class="c">// 3) src/app/agents/page.tsx —— 页面上列出 client 与状态</span>
+import { hub } from "@/server/hub";
+
+export const dynamic = "force-dynamic";
+
+export default function AgentsPage() {
+  const online = (t: number) =&gt; Date.now() - t &lt; 30_000;
+  return (
+    &lt;ul&gt;
+      {hub.listClients().map((c) =&gt; (
+        &lt;li key={c.clientId}&gt;
+          {c.clientId} · {online(c.lastSeen) ? "在线" : "心跳超时"}
+          · {c.pendingOutboxCount} 条待投递
+        &lt;/li&gt;
+      ))}
+    &lt;/ul&gt;
+  );
+}</code></pre>
+        </div>
+
+        <div class="scenario">
+          <div class="scenario-head">
+            <span class="step-no">F</span>
+            <div>
+              <h3>在 Next.js 实现自己的 HubStore</h3>
+              <p>
+                生产持久化：实现六个方法换成你的数据库，挂法与内存版完全一致；
+                页面查询也换成你自己 Store 暴露的读方法。
+              </p>
+            </div>
+          </div>
+          <pre class="code-block"><code><span class="c">// src/server/store.ts —— HubStore 的数据库实现（六个方法）</span>
 import {
-  createAgentHub, type HubStore,
+  createAgentHub, type HubStore, type StoredOffer,
 } from "@allin-ai/agent-client/hub";
 
-class PostgresHubStore implements HubStore&lt;MyUser&gt; {
+export class MyDbHubStore implements HubStore&lt;MyUser&gt; {
   async registerClient(input) {
     <span class="c">// 幂等：同 principal+clientId 返回稳定 connectionKey；</span>
     <span class="c">// 归属冲突（同 clientId 不同 principal）必须拒绝</span>
   }
-  async heartbeat(input)     { <span class="c">/* UPDATE clients SET last_seen = now() */</span> }
-  async listPendingOffers(input) {
+  async heartbeat(input) { <span class="c">/* UPDATE clients SET last_seen = now() */</span> }
+  async listPendingOffers(input): Promise&lt;StoredOffer[]&gt; {
     <span class="c">/* 只返回该 principal 拥有、未确认的 offer，按持久投递顺序 */</span>
   }
-  async enqueueOffer(input)  {
+  async enqueueOffer(input): Promise&lt;StoredOffer&gt; {
     <span class="c">/* 先落库再返回；按命令身份去重，connectionKey 与注册一致 */</span>
   }
-  async ingestEvents(input)  {
+  async ingestEvents(input) {
     <span class="c">/* (executionId, eventSeq) 去重落库；只回报已持久化的连续</span>
 <span class="c">       水位；收到即退役 run offer，done/failed 等终态取消 offer */</span>
   }
   async acknowledgePluginSync(input) { <span class="c">/* 记录插件确认水位 */</span> }
+
+  <span class="c">// 页面查询：内存版的 listClients() 是 testkit 专属糖，</span>
+  <span class="c">// 换库后由你的 Store 自己暴露读方法，例如 listClientsFromDb()</span>
 }
 
-<span class="c">// 2a) 挂到你自己的站点</span>
-const hub = createAgentHub({
-  authorize: myAuthorizer,
-  store: new PostgresHubStore(),
-});
-
-<span class="c">// 2b) 或者：让 demo 站本身跑在你的 Store 上（观测与授权页都保留）</span>
-import { startDemoSite } from "@allin-ai/agent-client/demo";
-const site = await startDemoSite({ port: 4317, store: new PostgresHubStore() });</code></pre>
+<span class="c">// src/server/hub.ts —— 换个构造参数，其余（server.ts、页面）不变</span>
+export const hub = createAgentHub({
+  authorize: myAuthorize,
+  store: new MyDbHubStore(),
+});</code></pre>
         </div>
       </section>
 
