@@ -1,0 +1,113 @@
+import { randomUUID } from "node:crypto";
+import http from "node:http";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import { once } from "node:events";
+import { createAgentHub, type AgentHub } from "../hub/index.js";
+import { MemoryHubStore } from "../hub/testkit/index.js";
+import { ObservableStore } from "./observable-store.js";
+import { DemoProjection } from "./projection.js";
+import { createStaticHandler, resolveWebRoot } from "./static.js";
+import {
+  createRegistryAuthorizer,
+  DEMO_PRINCIPAL,
+  TokenRegistry,
+} from "./token-registry.js";
+
+export type DemoRouterContext = {
+  hub: AgentHub<string>;
+  registry: TokenRegistry;
+  projection: DemoProjection;
+  subscribers: Set<ServerResponse>;
+  sequence: { value: number };
+  /** 非 null 时（--host 非回环）随 SSE 快照下发页面警示文案。 */
+  hostWarning: string | null;
+};
+
+export function createDemoRouter(
+  context: DemoRouterContext,
+): (request: IncomingMessage, response: ServerResponse) => void {
+  const staticHandler = createStaticHandler(resolveWebRoot());
+  // SSE / login / offers 路由在后续任务中在此分派（见 Task 6/7/8）。
+  return (request, response) => {
+    staticHandler(request, response);
+  };
+}
+
+export type DemoSiteHandle = {
+  url: string;
+  hubUrl: string;
+  bootstrapToken: string;
+  registry: TokenRegistry;
+  close(): Promise<void>;
+};
+
+export async function startDemoSiteCore(options: {
+  port?: number;
+  host?: string;
+}): Promise<DemoSiteHandle> {
+  const host = options.host ?? "127.0.0.1";
+  const registry = new TokenRegistry();
+  const projection = new DemoProjection();
+  const subscribers = new Set<ServerResponse>();
+  const sequence = { value: 0 };
+  const memory = new MemoryHubStore<string>();
+  const store = new ObservableStore<string>(memory, (observation) => {
+    projection.apply(observation);
+    broadcast(subscribers, sequence, observation);
+  });
+  const hub = createAgentHub<string>({
+    authorize: createRegistryAuthorizer(registry),
+    store,
+  });
+  const context: DemoRouterContext = {
+    hub,
+    registry,
+    projection,
+    subscribers,
+    sequence,
+    hostWarning: isLoopbackHost(host)
+      ? null
+      : `demo 正监听非回环地址（--host ${host}），仅限受信任本机网络使用`,
+  };
+  const server = http.createServer();
+  hub.attach(server, { fallback: createDemoRouter(context) });
+  server.listen(options.port ?? 4317, host);
+  await once(server, "listening");
+  const address = server.address();
+  if (!address || typeof address !== "object") {
+    throw new Error("demo server failed to listen");
+  }
+  const bootstrap = registry.register("bootstrap-cli", "bootstrap");
+  const url = `http://${host}:${address.port}`;
+  return {
+    url,
+    hubUrl: `${url.replace("http", "ws")}/api/agent-hub/v2/ws`,
+    bootstrapToken: bootstrap.token,
+    registry,
+    async close() {
+      for (const response of subscribers) response.destroy();
+      subscribers.clear();
+      await hub.close();
+      server.close();
+      await once(server, "close");
+    },
+  };
+}
+
+function isLoopbackHost(host: string): boolean {
+  return host === "127.0.0.1" || host === "localhost" || host === "::1";
+}
+
+function broadcast(
+  subscribers: Set<ServerResponse>,
+  sequence: { value: number },
+  observation: unknown,
+): void {
+  const payload = `event: observation\ndata: ${JSON.stringify({
+    seq: (sequence.value += 1),
+    ...(observation as object),
+  })}\n\n`;
+  for (const response of subscribers) response.write(payload);
+}
+
+export { DEMO_PRINCIPAL };
