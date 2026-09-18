@@ -1,1 +1,25 @@
-body { font-family: system-ui; margin: 2rem auto; max-width: 860px; }
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  line-height: 1.6;
+}
+body { max-width: 860px; margin: 0 auto; padding: 1.5rem; }
+header h1 { margin-bottom: 0; }
+.tagline { opacity: 0.8; }
+code { background: rgba(127, 127, 127, 0.15); padding: 0 0.3em; border-radius: 4px; }
+section { margin-top: 2.5rem; }
+.card {
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+}
+.hint { opacity: 0.7; font-size: 0.9em; }
+.error { color: #c0392b; }
+.client-list, .timeline { list-style: none; padding-left: 0; }
+.timeline { max-height: 320px; overflow-y: auto; font-family: ui-monospace, monospace; font-size: 0.85em; }
+.actions { display: flex; gap: 0.75rem; }
+button { font: inherit; padding: 0.4rem 1rem; border-radius: 6px; cursor: pointer; }
+button.primary { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+select, textarea { display: block; width: 100%; margin: 0.5rem 0; font: inherit; padding: 0.4rem; box-sizing: border-box; }
+footer { margin-top: 3rem; opacity: 0.6; font-size: 0.85em; }

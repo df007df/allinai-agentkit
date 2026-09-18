@@ -48,3 +48,15 @@ describe("static handler", () => {
     assert.equal((await request(handler, "/missing.css")).status, 404);
   });
 });
+
+describe("landing page content", () => {
+  it("serves the full landing page and console script", async () => {
+    const handler = createStaticHandler(resolveWebRoot());
+    const page = await request(handler, "/");
+    const body = await page.text();
+    assert.match(body, /独立持久 Agent Client/);
+    assert.match(body, /Demo 控制台/);
+    const script = await request(handler, "/app.js");
+    assert.match(await script.text(), /EventSource/);
+  });
+});
