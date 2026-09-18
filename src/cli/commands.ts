@@ -486,7 +486,6 @@ export async function runCli(
       emit(output, write, {
         demoUrl: site.url,
         hubWsUrl: site.hubUrl,
-        bootstrapToken: site.bootstrapToken,
       });
       const wait = scopedOptions.demoWaiter ?? waitForShutdownSignal;
       await wait();

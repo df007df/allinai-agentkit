@@ -6,26 +6,24 @@ import type { HubAuthorizer } from "../hub/index.js";
  * router can enqueue offers without ownership conflicts. */
 export const DEMO_PRINCIPAL = "demo-user";
 
-export type TokenLabel = "login" | "bootstrap";
-
 export type RegisteredToken = {
   readonly token: string;
   readonly clientId: string;
-  readonly label: TokenLabel;
   readonly issuedAt: number;
 };
 
+/** In-memory cache of browser-issued authorizations: token -> clientId.
+ * Lost on restart by design; every access requires a fresh login. */
 export class TokenRegistry {
   private readonly byToken = new Map<string, RegisteredToken>();
 
-  register(clientId: string, label: TokenLabel = "login"): RegisteredToken {
+  register(clientId: string): RegisteredToken {
     if (clientId.trim().length === 0) {
       throw new TypeError("clientId must be a nonempty string");
     }
     const record: RegisteredToken = {
       token: `demo-${randomUUID()}`,
       clientId,
-      label,
       issuedAt: Date.now(),
     };
     this.byToken.set(record.token, record);

@@ -5,19 +5,46 @@ import { WebSocket } from "ws";
 import { WsClientTransport } from "../client/index.js";
 import { startDemoSite } from "./index.js";
 
+type DemoSiteHandle = {
+  url: string;
+  hubUrl: string;
+  registry: { verify(token: string): { clientId: string } | null };
+};
+
+/** 走真实 login approve 端点换一个已授权 token（纯浏览器授权模型）。 */
+async function loginToken(
+  site: DemoSiteHandle,
+  clientId: string,
+): Promise<string> {
+  const response = await fetch(`${site.url}/login/approve`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      clientId,
+      state: "state-smoke",
+      redirectUri: "http://127.0.0.1:49152/callback",
+    }),
+  });
+  assert.equal(response.status, 200);
+  const payload = (await response.json()) as { redirectUrl: string };
+  const token = new URL(payload.redirectUrl).searchParams.get("token") ?? "";
+  assert.match(token, /^demo-/);
+  return token;
+}
+
 describe("demo site", () => {
-  it("starts, authorizes bootstrap tokens and serves the landing page", async () => {
+  it("starts, serves the landing page and authorizes login tokens", async () => {
     const site = await startDemoSite({ port: 0 });
     try {
       assert.ok(site.url.startsWith("http://127.0.0.1:"));
       assert.ok(site.hubUrl.endsWith("/api/agent-hub/v2/ws"));
-      assert.match(site.bootstrapToken, /^demo-/);
 
       const page = await fetch(`${site.url}/`);
       assert.equal(page.status, 200);
       assert.match(page.headers.get("content-type") ?? "", /^text\/html/);
 
-      const socket = new WebSocket(`${site.hubUrl}?token=${site.bootstrapToken}`);
+      const token = await loginToken(site, "smoke-client");
+      const socket = new WebSocket(`${site.hubUrl}?token=${token}`);
       await once(socket, "open");
       socket.send(
         JSON.stringify({
@@ -72,7 +99,9 @@ describe("demo observe endpoint", () => {
         }
       })();
 
-      const socket = new WebSocket(`${site.hubUrl}?token=${site.bootstrapToken}`);
+      const socket = new WebSocket(
+        `${site.hubUrl}?token=${await loginToken(site, "sse-client")}`,
+      );
       await once(socket, "open");
       socket.send(
         JSON.stringify({
@@ -175,7 +204,7 @@ describe("demo offers endpoint", () => {
     let received: unknown = null;
     const transport = new WsClientTransport({
       hubBaseUrl: site.url,
-      token: site.bootstrapToken,
+      token: await loginToken(site, "offer-client"),
       clientId: "offer-client",
     });
     try {

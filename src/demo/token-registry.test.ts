@@ -11,7 +11,6 @@ describe("token registry", () => {
     const registry = new TokenRegistry();
     const record = registry.register("client-1");
     assert.equal(record.clientId, "client-1");
-    assert.equal(record.label, "login");
     assert.deepEqual(registry.verify(record.token), record);
     assert.equal(registry.verify("missing"), null);
     assert.equal(registry.revoke(record.token), true);
@@ -20,7 +19,7 @@ describe("token registry", () => {
 
   it("authorizer accepts registered tokens as the demo principal", async () => {
     const registry = new TokenRegistry();
-    const record = registry.register("client-1", "bootstrap");
+    const record = registry.register("client-1");
     const authorize = createRegistryAuthorizer(registry);
     assert.equal(await authorize(record.token, {} as never), DEMO_PRINCIPAL);
     assert.equal(await authorize("nope", {} as never), null);

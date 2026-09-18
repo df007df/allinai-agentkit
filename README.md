@@ -21,8 +21,7 @@ node bin/allinai-agent daemon
 
 打开 http://127.0.0.1:4317 ：控制台会出现你的 client，可派发任务并观察协议事件时间线。
 
-无浏览器环境：`demo` 启动时终端打印 bootstrap token，改用
-`allinai-agent init --hub <url> --token <token>`。
+授权模型：demo 启动不发放任何全局 token；client 凭自己 config 里的唯一 clientId 发起 `login`，浏览器授权页确认后，web 内存中登记 `token → clientId` 并以此放行后续连接（内存态，重启即清空，需重新 login）。
 
 ## 包结构
 

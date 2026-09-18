@@ -164,7 +164,6 @@ describe("demo command", () => {
         startDemoSite: async () => ({
           url: "http://127.0.0.1:4317",
           hubUrl: "ws://127.0.0.1:4317/api/agent-hub/v2/ws",
-          bootstrapToken: "demo-fixed",
           registry: { list: () => [], register: () => {
             throw new Error("unused");
           }, verify: () => null, revoke: () => false } as never,
@@ -177,7 +176,7 @@ describe("demo command", () => {
     );
     assert.equal(result.exitCode, 0);
     assert.ok(result.output.some((line) => line.includes("4317")));
-    assert.ok(result.output.some((line) => line.includes("demo-fixed")));
+    assert.ok(result.output.some((line) => line.includes("hubWsUrl")));
     assert.equal(closed, true);
   });
 });

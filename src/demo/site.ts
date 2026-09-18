@@ -79,7 +79,7 @@ async function handleLoginApprove(
     response.end(JSON.stringify({ error: "invalid_login_request" }));
     return;
   }
-  const record = context.registry.register(clientId, "login");
+  const record = context.registry.register(clientId);
   response.writeHead(200, { "content-type": "application/json" });
   response.end(
     JSON.stringify({
@@ -233,7 +233,6 @@ function handleObserve(
 export type DemoSiteHandle = {
   url: string;
   hubUrl: string;
-  bootstrapToken: string;
   registry: TokenRegistry;
   close(): Promise<void>;
 };
@@ -274,12 +273,10 @@ export async function startDemoSiteCore(options: {
   if (!address || typeof address !== "object") {
     throw new Error("demo server failed to listen");
   }
-  const bootstrap = registry.register("bootstrap-cli", "bootstrap");
   const url = `http://${host}:${address.port}`;
   return {
     url,
     hubUrl: `${url.replace("http", "ws")}/api/agent-hub/v2/ws`,
-    bootstrapToken: bootstrap.token,
     registry,
     async close() {
       for (const response of subscribers) response.destroy();
