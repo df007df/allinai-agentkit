@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>授权接入 · allinai-agentkit</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main class="card login-card">
+      <h1>授权接入请求</h1>
+      <p>一个 Agent Client 请求接入本 demo Hub：</p>
+      <dl>
+        <dt>Client ID</dt>
+        <dd id="client-id">-</dd>
+      </dl>
+      <p class="hint">仅当你刚刚在本机执行了 allinai-agent login 才应点击允许。</p>
+      <div class="actions">
+        <button id="approve" class="primary">允许接入</button>
+        <button id="deny">拒绝</button>
+      </div>
+      <p id="error" class="error" hidden></p>
+    </main>
+    <script>
+      const params = new URLSearchParams(location.search);
+      const clientId = params.get("client_id") ?? "";
+      const state = params.get("state") ?? "";
+      const redirectUri = params.get("redirect_uri") ?? "";
+      document.getElementById("client-id").textContent = clientId || "(缺失)";
+
+      async function post(path, body) {
+        const response = await fetch(path, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload.error ?? `HTTP ${response.status}`);
+        }
+        return payload;
+      }
+
+      document.getElementById("approve").onclick = async () => {
+        try {
+          const { redirectUrl } = await post("/login/approve", {
+            clientId,
+            state,
+            redirectUri,
+          });
+          location.href = redirectUrl;
+        } catch (error) {
+          showError(error);
+        }
+      };
+      document.getElementById("deny").onclick = async () => {
+        try {
+          const { redirectUrl } = await post("/login/deny", {
+            state,
+            redirectUri,
+          });
+          location.href = redirectUrl;
+        } catch (error) {
+          showError(error);
+        }
+      };
+      function showError(error) {
+        const node = document.getElementById("error");
+        node.textContent = `授权失败：${error.message}`;
+        node.hidden = false;
+      }
+    </script>
+  </body>
+</html>

@@ -23,18 +23,130 @@ export type DemoRouterContext = {
   hostWarning: string | null;
 };
 
+export function isLoopbackRedirect(value: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== "http:") return false;
+  return (
+    url.hostname === "127.0.0.1" ||
+    url.hostname === "localhost" ||
+    url.hostname === "[::1]" ||
+    url.hostname === "::1"
+  );
+}
+
+async function readJsonBody(
+  request: IncomingMessage,
+): Promise<Record<string, unknown>> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of request) chunks.push(Buffer.from(chunk));
+  const text = Buffer.concat(chunks).toString("utf8").trim();
+  if (!text) return {};
+  try {
+    const parsed: unknown = JSON.parse(text);
+    return parsed && typeof parsed === "object"
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function appendQuery(target: string, params: Record<string, string>): string {
+  const url = new URL(target);
+  for (const [key, value] of Object.entries(params)) {
+    url.searchParams.set(key, value);
+  }
+  return url.toString();
+}
+
+async function handleLoginApprove(
+  context: DemoRouterContext,
+  request: IncomingMessage,
+  response: ServerResponse,
+): Promise<void> {
+  const body = await readJsonBody(request);
+  const clientId = typeof body.clientId === "string" ? body.clientId : "";
+  const state = typeof body.state === "string" ? body.state : "";
+  const redirectUri =
+    typeof body.redirectUri === "string" ? body.redirectUri : "";
+  if (!clientId || !state || !isLoopbackRedirect(redirectUri)) {
+    response.writeHead(400, { "content-type": "application/json" });
+    response.end(JSON.stringify({ error: "invalid_login_request" }));
+    return;
+  }
+  const record = context.registry.register(clientId, "login");
+  response.writeHead(200, { "content-type": "application/json" });
+  response.end(
+    JSON.stringify({
+      redirectUrl: appendQuery(redirectUri, {
+        token: record.token,
+        state,
+      }),
+    }),
+  );
+}
+
+async function handleLoginDeny(
+  request: IncomingMessage,
+  response: ServerResponse,
+): Promise<void> {
+  const body = await readJsonBody(request);
+  const state = typeof body.state === "string" ? body.state : "";
+  const redirectUri =
+    typeof body.redirectUri === "string" ? body.redirectUri : "";
+  if (!state || !isLoopbackRedirect(redirectUri)) {
+    response.writeHead(400, { "content-type": "application/json" });
+    response.end(JSON.stringify({ error: "invalid_login_request" }));
+    return;
+  }
+  response.writeHead(200, { "content-type": "application/json" });
+  response.end(
+    JSON.stringify({
+      redirectUrl: appendQuery(redirectUri, {
+        error: "access_denied",
+        state,
+      }),
+    }),
+  );
+}
+
 export function createDemoRouter(
   context: DemoRouterContext,
 ): (request: IncomingMessage, response: ServerResponse) => void {
   const staticHandler = createStaticHandler(resolveWebRoot());
-  // login / offers 路由在后续任务中在此分派（见 Task 7/8）。
+  // offers 路由在后续任务中在此分派（见 Task 8）。
   return (request, response) => {
-    const url = new URL(request.url ?? "/", "http://demo.invalid");
-    if (request.method === "GET" && url.pathname === "/api/demo/observe") {
-      handleObserve(context, request, response);
-      return;
-    }
-    staticHandler(request, response);
+    void (async () => {
+      try {
+        const url = new URL(request.url ?? "/", "http://demo.invalid");
+        if (
+          request.method === "GET" &&
+          url.pathname === "/api/demo/observe"
+        ) {
+          handleObserve(context, request, response);
+          return;
+        }
+        if (request.method === "POST" && url.pathname === "/login/approve") {
+          await handleLoginApprove(context, request, response);
+          return;
+        }
+        if (request.method === "POST" && url.pathname === "/login/deny") {
+          await handleLoginDeny(request, response);
+          return;
+        }
+        staticHandler(request, response);
+      } catch {
+        if (!response.headersSent) {
+          response.writeHead(500, { "content-type": "application/json" });
+        }
+        response.end(JSON.stringify({ error: "internal_error" }));
+      }
+    })();
   };
 }
 

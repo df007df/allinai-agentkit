@@ -97,3 +97,73 @@ describe("demo observe endpoint", () => {
     }
   });
 });
+
+describe("demo login routes", () => {
+  it("approves loopback logins with a registered token", async () => {
+    const site = await startDemoSite({ port: 0 });
+    try {
+      const response = await fetch(`${site.url}/login/approve`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          clientId: "login-client",
+          state: "state-1",
+          redirectUri: "http://127.0.0.1:49152/callback",
+        }),
+      });
+      assert.equal(response.status, 200);
+      const payload = (await response.json()) as { redirectUrl: string };
+      const target = new URL(payload.redirectUrl);
+      assert.equal(target.host, "127.0.0.1:49152");
+      assert.equal(target.searchParams.get("state"), "state-1");
+      const token = target.searchParams.get("token") ?? "";
+      assert.match(token, /^demo-/);
+      assert.equal(site.registry.verify(token)?.clientId, "login-client");
+    } finally {
+      await site.close();
+    }
+  });
+
+  it("denies and rejects non-loopback redirect targets", async () => {
+    const site = await startDemoSite({ port: 0 });
+    try {
+      const denied = await fetch(`${site.url}/login/deny`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          state: "state-2",
+          redirectUri: "http://127.0.0.1:49152/callback",
+        }),
+      });
+      assert.equal(denied.status, 200);
+      const payload = (await denied.json()) as { redirectUrl: string };
+      assert.match(payload.redirectUrl, /error=access_denied/);
+
+      const evil = await fetch(`${site.url}/login/approve`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          clientId: "evil",
+          state: "state-3",
+          redirectUri: "http://evil.example/callback",
+        }),
+      });
+      assert.equal(evil.status, 400);
+    } finally {
+      await site.close();
+    }
+  });
+
+  it("serves the authorization page at /login", async () => {
+    const site = await startDemoSite({ port: 0 });
+    try {
+      const page = await fetch(
+        `${site.url}/login?client_id=c&state=s&redirect_uri=${encodeURIComponent("http://127.0.0.1:1/callback")}`,
+      );
+      assert.equal(page.status, 200);
+      assert.match(await page.text(), /授权接入请求/);
+    } finally {
+      await site.close();
+    }
+  });
+});
