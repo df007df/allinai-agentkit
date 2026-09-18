@@ -197,6 +197,52 @@ console.log(site.url, site.hubUrl);
 
 await site.close();</code></pre>
         </div>
+        <div class="scenario">
+          <div class="scenario-head">
+            <span class="step-no">E</span>
+            <div>
+              <h3>在自己的网站上替换内存 Hub</h3>
+              <p>
+                demo 站默认用易失内存 Store。生产上实现你自己的
+                <code>HubStore</code> 接口（六个方法），把持久化换成数据库，
+                协议层不用动一行。
+              </p>
+            </div>
+          </div>
+          <pre class="code-block"><code><span class="c">// 1) 实现你自己的持久化 Store（以 Postgres 为例，六个方法）</span>
+import {
+  createAgentHub, type HubStore,
+} from "@allin-ai/agent-client/hub";
+
+class PostgresHubStore implements HubStore&lt;MyUser&gt; {
+  async registerClient(input) {
+    <span class="c">// 幂等：同 principal+clientId 返回稳定 connectionKey；</span>
+    <span class="c">// 归属冲突（同 clientId 不同 principal）必须拒绝</span>
+  }
+  async heartbeat(input)     { <span class="c">/* UPDATE clients SET last_seen = now() */</span> }
+  async listPendingOffers(input) {
+    <span class="c">/* 只返回该 principal 拥有、未确认的 offer，按持久投递顺序 */</span>
+  }
+  async enqueueOffer(input)  {
+    <span class="c">/* 先落库再返回；按命令身份去重，connectionKey 与注册一致 */</span>
+  }
+  async ingestEvents(input)  {
+    <span class="c">/* (executionId, eventSeq) 去重落库；只回报已持久化的连续</span>
+<span class="c">       水位；收到即退役 run offer，done/failed 等终态取消 offer */</span>
+  }
+  async acknowledgePluginSync(input) { <span class="c">/* 记录插件确认水位 */</span> }
+}
+
+<span class="c">// 2a) 挂到你自己的站点</span>
+const hub = createAgentHub({
+  authorize: myAuthorizer,
+  store: new PostgresHubStore(),
+});
+
+<span class="c">// 2b) 或者：让 demo 站本身跑在你的 Store 上（观测与授权页都保留）</span>
+import { startDemoSite } from "@allin-ai/agent-client/demo";
+const site = await startDemoSite({ port: 4317, store: new PostgresHubStore() });</code></pre>
+        </div>
       </section>
 
       <section id="exports" class="section">

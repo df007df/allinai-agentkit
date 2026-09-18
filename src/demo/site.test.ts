@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import { WebSocket } from "ws";
 import { WsClientTransport } from "../client/index.js";
 import { startDemoSite } from "./index.js";
+import { MemoryHubStore } from "../hub/testkit/index.js";
 
 type DemoSiteHandle = {
   url: string;
@@ -262,6 +263,47 @@ describe("demo offers endpoint", () => {
       assert.equal(missing.status, 404);
     } finally {
       await transport.close();
+      await site.close();
+    }
+  });
+});
+
+describe("custom hub store injection", () => {
+  it("routes registrations through a caller-provided store", async () => {
+    const registered: string[] = [];
+    class RecordingStore extends MemoryHubStore<string> {
+      override async registerClient(input: {
+        clientId: string;
+      }): Promise<{ clientId: string; connectionKey: string }> {
+        registered.push(input.clientId);
+        return await super.registerClient(
+          input as Parameters<MemoryHubStore<string>["registerClient"]>[0],
+        );
+      }
+    }
+    const { startDemoSite } = await import("./index.js");
+    const site = await startDemoSite({
+      port: 0,
+      store: new RecordingStore(),
+    });
+    try {
+      const token = await loginToken(site, "custom-store-client");
+      const socket = new WebSocket(`${site.hubUrl}?token=${token}`);
+      await once(socket, "open");
+      socket.send(
+        JSON.stringify({
+          type: "client.hello",
+          protocolVersion: 2,
+          clientId: "custom-store-client",
+        }),
+      );
+      const deadline = Date.now() + 2_000;
+      while (!registered.includes("custom-store-client") && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      assert.deepEqual(registered, ["custom-store-client"]);
+      socket.close();
+    } finally {
       await site.close();
     }
   });

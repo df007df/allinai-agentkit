@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import http from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { once } from "node:events";
-import { createAgentHub, type AgentHub } from "../hub/index.js";
+import { createAgentHub, type AgentHub, type HubStore } from "../hub/index.js";
 import { MemoryHubStore } from "../hub/testkit/index.js";
 import { ObservableStore } from "./observable-store.js";
 import { DemoProjection } from "./projection.js";
@@ -240,13 +240,14 @@ export type DemoSiteHandle = {
 export async function startDemoSiteCore(options: {
   port?: number;
   host?: string;
+  store?: HubStore<string>;
 }): Promise<DemoSiteHandle> {
   const host = options.host ?? "127.0.0.1";
   const registry = new TokenRegistry();
   const projection = new DemoProjection();
   const subscribers = new Set<ServerResponse>();
   const sequence = { value: 0 };
-  const memory = new MemoryHubStore<string>();
+  const memory = options.store ?? new MemoryHubStore<string>();
   const store = new ObservableStore<string>(memory, (observation) => {
     projection.apply(observation);
     broadcast(subscribers, sequence, observation);
