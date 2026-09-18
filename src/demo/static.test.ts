@@ -7,7 +7,7 @@ import { createStaticHandler, resolveWebRoot } from "./static.js";
 async function request(
   handler: http.RequestListener,
   path: string,
-): Promise<http.IncomingMessage> {
+): Promise<Response> {
   const server = http.createServer(handler);
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
@@ -16,7 +16,7 @@ async function request(
     redirect: "manual",
   });
   server.close();
-  return response as unknown as http.IncomingMessage;
+  return response;
 }
 
 describe("static handler", () => {
