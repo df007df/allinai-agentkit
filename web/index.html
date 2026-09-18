@@ -3,61 +3,165 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
     <title>allinai-agentkit · 独立持久 Agent Client</title>
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
-    <header>
-      <h1>allinai-agentkit</h1>
-      <p class="tagline">独立持久 Agent Client：连接 Hub，可靠执行本地平台 Agent 与受策略门控的能力，并向上游回报状态。</p>
-    </header>
-
-    <section id="landing">
-      <h2>它是什么</h2>
-      <p>一个 npm 包 <code>@allin-ai/agent-client</code> + CLI <code>allinai-agent</code>：协议层（versioned wire schema）、通用 Node Hub（<code>HubStore</code> 端口）、可重连执行 client、运行时适配（Codex / Claude / Pi，均为可选 peer）与插件能力。</p>
-
-      <h2>快速开始</h2>
-      <ol>
-        <li>终端 A：<code>node bin/allinai-agent demo</code> 启动官网与 demo Hub</li>
-        <li>终端 B：<code>allinai-agent login --hub http://127.0.0.1:4317</code> 浏览器授权</li>
-        <li>终端 B：<code>allinai-agent daemon</code> 常驻接入</li>
-        <li>回到本页控制台派发任务、观察协议事件流</li>
-      </ol>
-      <p class="hint">无浏览器环境：demo 启动时终端会打印 bootstrap token，可用 <code>init --hub &lt;url&gt; --token &lt;token&gt;</code> 代替 login。</p>
-
-      <h2>导出一览</h2>
-      <ul class="exports">
-        <li><code>/protocol</code> 协议 · <code>/hub</code> Node Hub · <code>/hub/testkit</code> 内存实现</li>
-        <li><code>/client</code> 执行 client · <code>/runtime</code> 运行时适配 · <code>/plugins</code> 插件</li>
-        <li><code>/demo</code> 本页 demo 服务 · <code>/cli</code> 命令入口</li>
-      </ul>
-    </section>
-
-    <section id="console">
-      <h2>Demo 控制台</h2>
-      <p class="hint">demo 使用内存 Store，重启即清空；仅监听本机回环地址。</p>
-      <p id="host-warning" class="error" hidden></p>
-
-      <div class="card" id="connect-card">
-        <h3>已接入 Client</h3>
-        <ul id="client-list" class="client-list"><li>（等待接入…）</li></ul>
+    <nav class="nav">
+      <a class="brand" href="#top">allinai-agentkit</a>
+      <div class="nav-links">
+        <a href="#how">运作方式</a>
+        <a href="#exports">模块导出</a>
+        <a href="#console">控制台</a>
       </div>
+    </nav>
 
-      <div class="card" id="offer-card">
-        <h3>派发任务</h3>
-        <select id="offer-client"></select>
-        <textarea id="offer-prompt" rows="3" placeholder="输入要派发给 Agent 的 prompt"></textarea>
-        <button id="offer-send" class="primary">派发 agent.run</button>
-        <p id="offer-result" class="hint" hidden></p>
-      </div>
+    <main id="top">
+      <section class="hero">
+        <div class="hero-copy">
+          <h1>独立持久的<br />Agent Client</h1>
+          <p class="subtext">
+            连接 Hub，可靠执行本地 Agent 与受控能力，向上游回报状态。
+            本页就是内置 demo：授权你的 client 接入，实时看协议流动。
+          </p>
+          <div class="cta-row">
+            <a class="btn primary" href="#console">接入你的 Agent</a>
+            <a class="btn ghost" href="#exports">查看模块导出</a>
+          </div>
+        </div>
+        <div class="hero-terminal" aria-label="快速开始命令">
+          <div class="term-bar">
+            <span class="term-dot"></span>
+            <span class="term-title">quickstart.sh</span>
+            <button class="copy-btn" type="button" data-copy>复制全部</button>
+          </div>
+          <pre class="term-body"><code><span class="c"># 终端 A：启动官网与 demo hub</span>
+node bin/allinai-agent demo
 
-      <div class="card" id="timeline-card">
-        <h3>协议事件时间线</h3>
-        <ul id="timeline" class="timeline"></ul>
-      </div>
-    </section>
+<span class="c"># 终端 B：浏览器授权（会打开本站授权页）</span>
+node bin/allinai-agent login \
+  --hub http://127.0.0.1:4317
 
-    <footer>MIT License · @allin-ai/agent-client</footer>
+<span class="c"># 终端 B：常驻接入，然后回到本页控制台</span>
+node bin/allinai-agent daemon</code></pre>
+        </div>
+      </section>
+
+      <section id="how" class="section">
+        <h2>运作方式</h2>
+        <ol class="steps">
+          <li>
+            <span class="step-no">01</span>
+            <div>
+              <h3>浏览器授权</h3>
+              <p>
+                client 持有唯一 clientId，执行 login 后在授权页确认。
+                web 只在内存登记 token 到 clientId 的映射，重启即清空，
+                不发放任何全局令牌。
+              </p>
+            </div>
+          </li>
+          <li>
+            <span class="step-no">02</span>
+            <div>
+              <h3>连接与注册</h3>
+              <p>
+                daemon 通过 WebSocket 长连 Hub，凭已授权 token 注册，
+                断线自动重连，注册与心跳在控制台实时可见。
+              </p>
+            </div>
+          </li>
+          <li>
+            <span class="step-no">03</span>
+            <div>
+              <h3>派发与回报</h3>
+              <p>
+                从控制台派发 agent.run，client 在本地执行并持续上报事件，
+                全程走版本化的 v2 wire 协议。
+              </p>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="exports" class="section">
+        <h2>模块导出</h2>
+        <div class="exports-grid">
+          <div class="export-cell tint">
+            <code>/protocol</code>
+            <p>版本化 wire 协议与编解码</p>
+          </div>
+          <div class="export-cell">
+            <code>/hub</code>
+            <p>Node HTTP/WebSocket Hub，HubStore 端口</p>
+          </div>
+          <div class="export-cell">
+            <code>/hub/testkit</code>
+            <p>内存 Store 与 Hub，本站所用</p>
+          </div>
+          <div class="export-cell">
+            <code>/client</code>
+            <p>可重连执行 client 与传输层</p>
+          </div>
+          <div class="export-cell">
+            <code>/runtime</code>
+            <p>Codex / Claude / Pi 适配，可选 peer</p>
+          </div>
+          <div class="export-cell">
+            <code>/demo</code>
+            <p>本站服务，startDemoSite()</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="console" class="section console-section">
+        <div class="console-head">
+          <h2>Demo 控制台</h2>
+          <span class="sse-status" id="sse-status" data-state="connecting">
+            观测流连接中
+          </span>
+        </div>
+        <p class="hint" id="console-hint">
+          内存 Store，重启即清空；demo 仅监听本机回环地址。
+        </p>
+        <p class="error" id="host-warning" hidden></p>
+
+        <div class="console-grid">
+          <div class="console-left">
+            <div class="panel">
+              <h3>已接入 Client</h3>
+              <ul id="client-list" class="client-list">
+                <li class="empty">等待接入。先在终端执行左侧 login 与 daemon。</li>
+              </ul>
+            </div>
+            <div class="panel">
+              <h3>派发任务</h3>
+              <label class="field-label" for="offer-client">目标 client</label>
+              <select id="offer-client"></select>
+              <label class="field-label" for="offer-prompt">prompt</label>
+              <textarea
+                id="offer-prompt"
+                rows="3"
+                placeholder="输入要派发给 Agent 的 prompt"
+              ></textarea>
+              <button id="offer-send" class="btn primary full">派发 agent.run</button>
+              <p id="offer-result" class="hint" hidden></p>
+            </div>
+          </div>
+          <div class="panel timeline-panel">
+            <h3>协议事件时间线</h3>
+            <ul id="timeline" class="timeline"></ul>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span>MIT License</span>
+      <span>@allin-ai/agent-client</span>
+    </footer>
+
     <script type="module" src="/app.js"></script>
   </body>
 </html>

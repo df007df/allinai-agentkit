@@ -3,24 +3,35 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
     <title>授权接入 · allinai-agentkit</title>
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
-    <main class="card login-card">
-      <h1>授权接入请求</h1>
-      <p>一个 Agent Client 请求接入本 demo Hub：</p>
-      <dl>
-        <dt>Client ID</dt>
-        <dd id="client-id">-</dd>
-      </dl>
-      <p class="hint">仅当你刚刚在本机执行了 allinai-agent login 才应点击允许。</p>
-      <div class="actions">
-        <button id="approve" class="primary">允许接入</button>
-        <button id="deny">拒绝</button>
+    <main class="login-wrap">
+      <div class="login-card">
+        <a class="brand" href="/">allinai-agentkit</a>
+        <h1>授权接入请求</h1>
+        <p class="subtext">一个 Agent Client 请求接入本 demo Hub。</p>
+
+        <div class="login-client">
+          <span class="field-label">Client ID</span>
+          <code id="client-id">-</code>
+        </div>
+
+        <p class="hint">
+          仅当你刚刚在本机终端执行了 allinai-agent login，才应点击允许。
+          授权仅对本机 demo 有效，web 重启后自动失效。
+        </p>
+
+        <div class="cta-row">
+          <button id="approve" class="btn primary">允许接入</button>
+          <button id="deny" class="btn ghost">拒绝</button>
+        </div>
+        <p id="error" class="error" hidden></p>
       </div>
-      <p id="error" class="error" hidden></p>
     </main>
+
     <script>
       const params = new URLSearchParams(location.search);
       const clientId = params.get("client_id") ?? "";
