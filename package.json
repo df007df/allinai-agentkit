@@ -1,0 +1,170 @@
+{
+  "name": "@allin-ai/agent-client",
+  "version": "0.2.0",
+  "description": "Standalone persistent Agent Client: connect to a Hub, durably execute local platform agents and policy-gated capabilities, and report state upstream.",
+  "type": "module",
+  "license": "MIT",
+  "private": false,
+  "keywords": [
+    "agent",
+    "sdk",
+    "websocket",
+    "hub",
+    "daemon",
+    "agent-client",
+    "cli"
+  ],
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./protocol": "./src/protocol/index.ts",
+    "./wire": "./src/wire.ts",
+    "./hub": "./src/hub/index.ts",
+    "./hub/testkit": "./src/hub/testkit/index.ts",
+    "./client": "./src/client/index.ts",
+    "./logger": "./src/logger.ts",
+    "./paths": "./src/paths.ts",
+    "./config": "./src/config.ts",
+    "./credentials": "./src/credentials.ts",
+    "./control": "./src/control.ts",
+    "./runtime": "./src/runtime/index.ts",
+    "./plugins": "./src/plugins/manager.ts",
+    "./cli": "./src/cli/commands.ts",
+    "./service/launchd": "./src/service/launchd.ts",
+    "./service/systemd": "./src/service/systemd.ts"
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js",
+        "default": "./dist/index.js"
+      },
+      "./protocol": {
+        "types": "./dist/protocol/index.d.ts",
+        "import": "./dist/protocol/index.js",
+        "default": "./dist/protocol/index.js"
+      },
+      "./wire": {
+        "types": "./dist/wire.d.ts",
+        "import": "./dist/wire.js",
+        "default": "./dist/wire.js"
+      },
+      "./hub": {
+        "types": "./dist/hub/index.d.ts",
+        "import": "./dist/hub/index.js",
+        "default": "./dist/hub/index.js"
+      },
+      "./hub/testkit": {
+        "types": "./dist/hub/testkit/index.d.ts",
+        "import": "./dist/hub/testkit/index.js",
+        "default": "./dist/hub/testkit/index.js"
+      },
+      "./client": {
+        "types": "./dist/client/index.d.ts",
+        "import": "./dist/client/index.js",
+        "default": "./dist/client/index.js"
+      },
+      "./logger": {
+        "types": "./dist/logger.d.ts",
+        "import": "./dist/logger.js",
+        "default": "./dist/logger.js"
+      },
+      "./paths": {
+        "types": "./dist/paths.d.ts",
+        "import": "./dist/paths.js",
+        "default": "./dist/paths.js"
+      },
+      "./config": {
+        "types": "./dist/config.d.ts",
+        "import": "./dist/config.js",
+        "default": "./dist/config.js"
+      },
+      "./credentials": {
+        "types": "./dist/credentials.d.ts",
+        "import": "./dist/credentials.js",
+        "default": "./dist/credentials.js"
+      },
+      "./control": {
+        "types": "./dist/control.d.ts",
+        "import": "./dist/control.js",
+        "default": "./dist/control.js"
+      },
+      "./runtime": {
+        "types": "./dist/runtime/index.d.ts",
+        "import": "./dist/runtime/index.js",
+        "default": "./dist/runtime/index.js"
+      },
+      "./plugins": {
+        "types": "./dist/plugins/manager.d.ts",
+        "import": "./dist/plugins/manager.js",
+        "default": "./dist/plugins/manager.js"
+      },
+      "./cli": {
+        "types": "./dist/cli/commands.d.ts",
+        "import": "./dist/cli/commands.js",
+        "default": "./dist/cli/commands.js"
+      },
+      "./service/launchd": {
+        "types": "./dist/service/launchd.d.ts",
+        "import": "./dist/service/launchd.js",
+        "default": "./dist/service/launchd.js"
+      },
+      "./service/systemd": {
+        "types": "./dist/service/systemd.d.ts",
+        "import": "./dist/service/systemd.js",
+        "default": "./dist/service/systemd.js"
+      }
+    },
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "access": "public"
+  },
+  "bin": {
+    "allinai-agent": "./bin/allinai-agent"
+  },
+  "files": [
+    "bin",
+    "dist"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "tsx --tsconfig ./tsconfig.json --test 'src/**/*.test.ts'",
+    "typecheck": "tsc --noEmit",
+    "prepack": "node scripts/build.mjs && node scripts/publish-manifest.mjs prepare",
+    "postpack": "node scripts/publish-manifest.mjs restore",
+    "verify:artifact": "node scripts/verify-package-artifact.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "peerDependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.168",
+    "@earendil-works/pi-coding-agent": "0.85.1",
+    "@openai/codex-sdk": "^0.142.4"
+  },
+  "peerDependenciesMeta": {
+    "@anthropic-ai/claude-agent-sdk": {
+      "optional": true
+    },
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    },
+    "@openai/codex-sdk": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.168",
+    "@earendil-works/pi-coding-agent": "0.85.1",
+    "@openai/codex-sdk": "^0.142.4",
+    "@types/node": "^22.15.3",
+    "@types/ws": "^8.5.14",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3",
+    "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=22.18.0"
+  }
+}

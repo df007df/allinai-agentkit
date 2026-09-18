@@ -1,0 +1,105 @@
+import type { IncomingMessage, Server, ServerResponse } from "node:http";
+import type { Duplex } from "node:stream";
+import type {
+  ClientCommand,
+  ClientEventBatch,
+  ClientHello,
+  HubEventAcknowledgement,
+  PluginSyncAcknowledgement,
+} from "../protocol/index.js";
+
+/** Principal is opaque: the Hub never serializes it or derives it from client input. */
+export type HubAuthorizer<Principal> = (
+  token: string,
+  request: IncomingMessage,
+) => Promise<Principal | null>;
+export interface HubClientRegistration<Principal> {
+  principal: Principal;
+  clientId: ClientHello["clientId"];
+  protocolVersion: ClientHello["protocolVersion"];
+}
+export interface HubClientRecord {
+  clientId: string;
+  /** Host-issued stable opaque key, unique per authorized owner/client pair. Never on wire. */
+  connectionKey: string;
+}
+export interface HubHeartbeat<Principal> {
+  principal: Principal;
+  clientId: string;
+}
+export interface HubOfferInput<Principal> {
+  principal: Principal;
+  targetClientId: string;
+  command: ClientCommand;
+}
+export interface StoredOffer {
+  offerId: string;
+  targetClientId: string;
+  /** Must match the target's registerClient key. Never on wire. */
+  connectionKey: string;
+  command: ClientCommand;
+}
+export interface HubOfferDelivery<Principal> {
+  principal: Principal;
+  clientId: string;
+}
+export interface HubEventBatch<Principal> {
+  principal: Principal;
+  clientId: string;
+  events: ClientEventBatch["events"];
+}
+export type HubEventIngestResult = HubEventAcknowledgement["watermarks"];
+export interface HubPluginAcknowledgement<Principal> {
+  principal: Principal;
+  clientId: string;
+  acknowledgement: PluginSyncAcknowledgement;
+}
+
+/**
+ * All methods enforce host-owned authorization for principal/clientId.
+ * registerClient must reject ownership conflicts, even without a live socket.
+ * connectionKey stays stable across registration and enqueueOffer; the Hub
+ * cannot compare opaque principals to establish ownership.
+ */
+export interface HubStore<Principal> {
+  registerClient(
+    input: HubClientRegistration<Principal>,
+  ): Promise<HubClientRecord>;
+  heartbeat(input: HubHeartbeat<Principal>): Promise<void>;
+  /** Return only authorized unacknowledged offers, in durable delivery order. */
+  listPendingOffers(input: HubOfferDelivery<Principal>): Promise<StoredOffer[]>;
+  /** Commit before resolving and deduplicate immutable command identities. */
+  enqueueOffer(input: HubOfferInput<Principal>): Promise<StoredOffer>;
+  /**
+   * Deduplicate (executionId,eventSeq), persist events, return contiguous stored
+   * watermarks. Retire run offers on received, cancel offers on terminal events.
+   * Never acknowledge events before durable commit.
+   */
+  ingestEvents(input: HubEventBatch<Principal>): Promise<HubEventIngestResult>;
+  acknowledgePluginSync(
+    input: HubPluginAcknowledgement<Principal>,
+  ): Promise<void>;
+}
+export interface AgentHubOptions<Principal> {
+  authorize: HubAuthorizer<Principal>;
+  store: HubStore<Principal>;
+  /** Default /api/agent-hub/v2; absolute path without trailing slash. */
+  pathPrefix?: string;
+  maxPayloadBytes?: number;
+}
+export interface HubAttachOptions {
+  /** Supply the application's handler; attach to a server without request handlers. */
+  fallback?: (request: IncomingMessage, response: ServerResponse) => void;
+  onUnknownUpgrade?: (
+    request: IncomingMessage,
+    socket: Duplex,
+    head: Buffer,
+  ) => void;
+}
+export interface AgentHub<Principal> {
+  /** Attach once; the caller owns listen() and closing the HTTP server. */
+  attach(server: Server, options?: HubAttachOptions): void;
+  offer(input: HubOfferInput<Principal>): Promise<StoredOffer>;
+  /** Detach handlers and close Hub sockets without closing the caller's server. */
+  close(): Promise<void>;
+}
