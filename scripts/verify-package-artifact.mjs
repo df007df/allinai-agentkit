@@ -89,6 +89,14 @@ function assertTarballContents(filename, manifest) {
   for (const target of getProductionTargets(manifest)) {
     requireEntry(`package/${target.slice(2)}`);
   }
+  for (const webAsset of [
+    "web/index.html",
+    "web/login.html",
+    "web/app.js",
+    "web/style.css",
+  ]) {
+    requireEntry(`package/${webAsset}`);
+  }
 
   for (const entry of entries) {
     assert(
@@ -150,6 +158,17 @@ function assertHubOnlyConsumer(manifest) {
       "--input-type=module",
       "--eval",
       `import { createAgentHub } from ${JSON.stringify(moduleSpecifier)};\nif (typeof createAgentHub !== \"function\") throw new Error(\"hub export missing createAgentHub\");`,
+    ],
+    { cwd: consumerDir, stdio: "inherit" },
+  );
+
+  const demoSpecifier = `${manifest.name}/demo`;
+  execFileSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "--eval",
+      `import { startDemoSite } from ${JSON.stringify(demoSpecifier)};\nif (typeof startDemoSite !== \"function\") throw new Error(\"demo export missing startDemoSite\");`,
     ],
     { cwd: consumerDir, stdio: "inherit" },
   );
