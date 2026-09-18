@@ -115,6 +115,42 @@ async function handleLoginDeny(
   );
 }
 
+async function handleOffers(
+  context: DemoRouterContext,
+  request: IncomingMessage,
+  response: ServerResponse,
+): Promise<void> {
+  const body = await readJsonBody(request);
+  const clientId = typeof body.clientId === "string" ? body.clientId : "";
+  const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
+  const runtime = typeof body.runtime === "string" ? body.runtime : "codex";
+  if (!clientId || !prompt) {
+    response.writeHead(400, { "content-type": "application/json" });
+    response.end(JSON.stringify({ error: "invalid_offer_request" }));
+    return;
+  }
+  if (!context.projection.hasClient(clientId)) {
+    response.writeHead(404, { "content-type": "application/json" });
+    response.end(JSON.stringify({ error: "unknown_client" }));
+    return;
+  }
+  const offer = await context.hub.offer({
+    principal: DEMO_PRINCIPAL,
+    targetClientId: clientId,
+    command: {
+      kind: "agent.run",
+      commandId: randomUUID(),
+      executionId: randomUUID(),
+      taskId: `demo-${randomUUID()}`,
+      attempt: 1,
+      runtime,
+      payload: { prompt },
+    },
+  });
+  response.writeHead(200, { "content-type": "application/json" });
+  response.end(JSON.stringify({ offerId: offer.offerId }));
+}
+
 export function createDemoRouter(
   context: DemoRouterContext,
 ): (request: IncomingMessage, response: ServerResponse) => void {
@@ -137,6 +173,10 @@ export function createDemoRouter(
         }
         if (request.method === "POST" && url.pathname === "/login/deny") {
           await handleLoginDeny(request, response);
+          return;
+        }
+        if (request.method === "POST" && url.pathname === "/api/demo/offers") {
+          await handleOffers(context, request, response);
           return;
         }
         staticHandler(request, response);

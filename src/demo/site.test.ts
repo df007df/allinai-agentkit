@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import { describe, it } from "node:test";
 import { WebSocket } from "ws";
+import { WsClientTransport } from "../client/index.js";
 import { startDemoSite } from "./index.js";
 
 describe("demo site", () => {
@@ -163,6 +164,75 @@ describe("demo login routes", () => {
       assert.equal(page.status, 200);
       assert.match(await page.text(), /授权接入请求/);
     } finally {
+      await site.close();
+    }
+  });
+});
+
+describe("demo offers endpoint", () => {
+  it("delivers an agent.run offer to a connected client", async () => {
+    const site = await startDemoSite({ port: 0 });
+    let received: unknown = null;
+    const transport = new WsClientTransport({
+      hubBaseUrl: site.url,
+      token: site.bootstrapToken,
+      clientId: "offer-client",
+    });
+    try {
+      await transport.connect({
+        command: async (command) => {
+          received = command;
+        },
+        connected: async () => {},
+      });
+
+      let response = await fetch(`${site.url}/api/demo/offers`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          clientId: "offer-client",
+          prompt: "写一首关于秋天的诗",
+        }),
+      });
+      // connect() 返回时服务端注册可能尚未落地，404 短暂重试。
+      const registerDeadline = Date.now() + 2_000;
+      while (response.status === 404 && Date.now() < registerDeadline) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        response = await fetch(`${site.url}/api/demo/offers`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            clientId: "offer-client",
+            prompt: "写一首关于秋天的诗",
+          }),
+        });
+      }
+      assert.equal(response.status, 200);
+      const payload = (await response.json()) as { offerId: string };
+      assert.match(payload.offerId, /.+/);
+
+      const deadline = Date.now() + 2_000;
+      while (!received && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      assert.ok(received);
+      assert.equal(
+        (received as { kind: string }).kind,
+        "agent.run",
+      );
+      assert.equal(
+        (received as { payload: { prompt: string } }).payload.prompt,
+        "写一首关于秋天的诗",
+      );
+
+      const missing = await fetch(`${site.url}/api/demo/offers`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ clientId: "ghost", prompt: "x" }),
+      });
+      assert.equal(missing.status, 404);
+    } finally {
+      await transport.close();
       await site.close();
     }
   });
