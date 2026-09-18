@@ -221,7 +221,40 @@ main {
 .steps h3 { margin: 0 0 0.35rem; font-size: 1.05rem; }
 .steps p { margin: 0; color: var(--text-dim); max-width: 62ch; }
 
-/* exports：2 列，首个 cell emerald 着色制造差异 */
+/* scenarios：场景块 = 说明行 + 代码块，区别于 steps/exports 的版式 */
+
+.scenario {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  margin-bottom: 1.1rem;
+  overflow: hidden;
+}
+.scenario-head {
+  display: grid;
+  grid-template-columns: 3rem 1fr;
+  gap: 1rem;
+  align-items: start;
+  padding: 1.1rem 1.25rem 0.25rem;
+}
+.scenario-head .step-no { font-size: 1.1rem; }
+.scenario-head h3 { margin: 0 0 0.3rem; font-size: 1.02rem; }
+.scenario-head p { margin: 0; color: var(--text-dim); font-size: 0.9rem; max-width: 62ch; }
+
+.code-block {
+  margin: 1rem 0 0;
+  padding: 1rem 1.25rem 1.15rem;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  line-height: 1.85;
+  overflow-x: auto;
+  color: var(--text);
+}
+.code-block .c { color: var(--text-dim); }
+
+/* ---------- exports ---------- */
 
 .exports-grid {
   display: grid;
