@@ -327,6 +327,12 @@ export function parseInventoryReport(value: unknown): InventoryReport | null {
   };
 }
 
+export function encodeInventoryReport(value: InventoryReport): InventoryReport {
+  const parsed = parseInventoryReport(value);
+  if (!parsed) throw new TypeError("Invalid inventory report");
+  return parsed;
+}
+
 export function parsePluginSyncAcknowledgement(
   value: unknown,
 ): PluginSyncAcknowledgement | null {

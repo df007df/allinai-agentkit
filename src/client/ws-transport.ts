@@ -2,10 +2,12 @@ import { bridgeLog } from "../logger.js";
 import {
   encodeClientEventBatch,
   encodeClientHello,
+  encodeInventoryReport,
   encodePluginSyncAcknowledgement,
   parseHubDownlink,
   parseHubEventAcknowledgement,
   type ClientEvent,
+  type InventoryReport,
   type PluginSyncAcknowledgement,
 } from "../protocol/index.js";
 import type { ClientTransport, ClientTransportHandlers } from "./transport.js";
@@ -146,6 +148,14 @@ export class WsClientTransport implements ClientTransport {
     );
   }
 
+  async reportInventory(report: InventoryReport): Promise<void> {
+    const socket = this.socket;
+    if (!socket || socket.readyState !== WS_OPEN) {
+      throw new Error("Hub WebSocket is not connected");
+    }
+    socket.send(JSON.stringify(encodeInventoryReport(report)));
+  }
+
   async close(): Promise<void> {
     this.stopped = true;
     this.clearReconnect();
@@ -241,6 +251,7 @@ export class WsClientTransport implements ClientTransport {
         await this.handlers.pluginSync?.({
           revision: downlink.revision,
           plugins: downlink.plugins,
+          inventoryQuery: downlink.inventoryQuery === true,
         });
       }
     } catch (error) {

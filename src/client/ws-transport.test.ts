@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import { AgentClientConfigurationError } from "./types.js";
 import { WsClientTransport, type ClientWebSocketLike } from "./ws-transport.js";
 import type { ClientCommand, ClientEvent } from "./types.js";
+import type { InventoryReport } from "../protocol/index.js";
 
 function agentRun(
   executionId = "e1",
@@ -29,6 +30,26 @@ function event(executionId = "e1"): ClientEvent {
 
 async function nextTurn(): Promise<void> {
   await new Promise<void>((resolve) => setTimeout(resolve, 0));
+}
+
+function inventoryReport(): InventoryReport {
+  return {
+    type: "inventory.report",
+    reportedAt: "2026-09-19T00:00:00.000Z",
+    platforms: [
+      { platform: "codex", installed: true, version: "1.2.3" },
+    ],
+    plugins: [
+      {
+        id: "demo",
+        gitUrl: "https://example.test/demo.git",
+        enabled: true,
+        status: "active",
+        resolvedCommit: "a".repeat(40),
+        installedAt: "2026-09-19T00:00:00.000Z",
+      },
+    ],
+  };
 }
 
 describe("WsClientTransport", () => {
@@ -116,6 +137,71 @@ describe("WsClientTransport", () => {
     await new Promise<void>((resolve) => setTimeout(resolve, 12));
     assert.ok(sockets.length >= 2);
     assert.ok(connected >= 2);
+    await transport.close();
+  });
+
+  it("reportInventory sends the report when connected and throws when not", async () => {
+    fakeSockets.splice(0, fakeSockets.length);
+    const transport = new WsClientTransport({
+      hubBaseUrl: "http://hub.example",
+      token: "test-token",
+      clientId: "client-a",
+      WebSocketImpl: FakeWebSocket as unknown as new (
+        url: string,
+      ) => ClientWebSocketLike,
+    });
+
+    await assert.rejects(
+      () => transport.reportInventory(inventoryReport()),
+      /Hub WebSocket is not connected/,
+    );
+
+    await transport.connect({
+      command: async () => undefined,
+      connected: async () => undefined,
+    });
+    await nextTurn();
+    const report = inventoryReport();
+    await transport.reportInventory(report);
+    assert.deepEqual(JSON.parse(fakeSockets[0]!.sent.at(-1)!), report);
+    await transport.close();
+  });
+
+  it("passes inventoryQuery through to the pluginSync handler", async () => {
+    fakeSockets.splice(0, fakeSockets.length);
+    const transport = new WsClientTransport({
+      hubBaseUrl: "http://hub.example",
+      token: "test-token",
+      clientId: "client-a",
+      WebSocketImpl: FakeWebSocket as unknown as new (
+        url: string,
+      ) => ClientWebSocketLike,
+    });
+    const pluginSyncInputs: Array<{
+      revision: string;
+      plugins: unknown[];
+      inventoryQuery: boolean;
+    }> = [];
+
+    await transport.connect({
+      command: async () => undefined,
+      pluginSync: async (input) => {
+        pluginSyncInputs.push(input);
+      },
+      connected: async () => undefined,
+    });
+    await nextTurn();
+
+    fakeSockets[0]!.message({
+      type: "plugin.sync",
+      revision: "q1",
+      plugins: [],
+      inventoryQuery: true,
+    });
+    await nextTurn();
+    assert.deepEqual(pluginSyncInputs, [
+      { revision: "q1", plugins: [], inventoryQuery: true },
+    ]);
     await transport.close();
   });
 

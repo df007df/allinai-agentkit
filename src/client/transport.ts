@@ -1,6 +1,7 @@
 import type {
   ClientCommand,
   ClientEvent,
+  InventoryReport,
   PluginConfig,
   PluginSyncAcknowledgement,
 } from "./types.js";
@@ -11,6 +12,8 @@ export type ClientTransportHandlers = {
   pluginSync?(input: {
     revision: string;
     plugins: PluginConfig[];
+    /** Query-only downlink: report inventory and apply no side effects. */
+    inventoryQuery: boolean;
   }): Promise<void>;
   connected(): Promise<void>;
 };
@@ -25,6 +28,8 @@ export type ClientTransport = {
   push(events: ClientEvent[]): Promise<Record<string, number>>;
   /** Optional while older Hubs ignore plugin desired-state acknowledgements. */
   reportPluginSync?(acknowledgement: PluginSyncAcknowledgement): Promise<void>;
+  /** Optional while older Hubs tolerate missing inventory reports. */
+  reportInventory?(report: InventoryReport): Promise<void>;
   close(): Promise<void>;
 };
 

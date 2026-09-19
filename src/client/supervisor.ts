@@ -6,6 +6,10 @@ import {
 import { bridgeLog } from "../logger.js";
 import type { ClientCommand } from "./types.js";
 import type { PluginSyncAcknowledgement } from "./types.js";
+import type {
+  InventoryReport,
+  PluginInventoryEntry,
+} from "../protocol/index.js";
 import type { ClientTransport } from "./transport.js";
 import type {
   ActivePluginSnapshot,
@@ -56,6 +60,8 @@ export type ClientSupervisorOptions = {
   maxConcurrentRuns?: number;
   policy?: LocalPolicy;
   plugins?: PluginManagerPort;
+  /** Supplies the full local inventory for inventory reports; injected like plugins. */
+  inventoryProvider?: () => Promise<InventoryReport>;
   capabilityHost?: CapabilityHostPort;
   capabilityPolicy?: CapabilityLocalPolicy;
   capabilityContext?: CapabilityContextResolver;
@@ -223,6 +229,7 @@ export class ClientSupervisor {
   private readonly capabilityContext: CapabilityContextResolver;
   private readonly maxConcurrentRuns: number;
   private readonly pluginSyncInFlight = new Map<string, Promise<void>>();
+  private lastInventoryReportAt = 0;
   private readonly capabilityAbortControllers = new Map<
     string,
     AbortController
@@ -253,7 +260,10 @@ export class ClientSupervisor {
     await this.options.transport.connect({
       command: async (command) => this.handleCommand(command),
       pluginSync: async (input) => this.handlePluginSync(input),
-      connected: async () => this.flush(),
+      connected: async () => {
+        await this.flush();
+        void this.reportInventory();
+      },
     });
     this.started = true;
   }
@@ -654,6 +664,7 @@ export class ClientSupervisor {
   private async handlePluginSync(input: {
     revision: string;
     plugins: PluginConfig[];
+    inventoryQuery: boolean;
   }): Promise<void> {
     const existing = this.pluginSyncInFlight.get(input.revision);
     if (existing) return existing;
@@ -672,6 +683,7 @@ export class ClientSupervisor {
   private async syncPluginRevision(input: {
     revision: string;
     plugins: PluginConfig[];
+    inventoryQuery: boolean;
   }): Promise<void> {
     const plugins = this.options.plugins;
     if (!plugins) {
@@ -685,6 +697,19 @@ export class ClientSupervisor {
           message: "plugin_manager_unavailable",
         },
       });
+      return;
+    }
+
+    if (input.inventoryQuery) {
+      // A query-only downlink must never install, deactivate, or advance the
+      // durable revision watermark; it is answered from the current snapshot.
+      await this.reportPluginSync({
+        type: "plugin.sync.ack",
+        revision: input.revision,
+        status: "already_applied",
+        plugins: plugins.snapshotActivePlugins(),
+      });
+      await this.reportInventory({ force: true });
       return;
     }
 
@@ -721,6 +746,7 @@ export class ClientSupervisor {
         status: "applied",
         plugins: plugins.snapshotActivePlugins(),
       });
+      void this.reportInventory();
     } catch (error) {
       await this.reportPluginSync({
         type: "plugin.sync.ack",
@@ -743,6 +769,69 @@ export class ClientSupervisor {
     } catch {
       // The revision outcome is durable locally; a later plugin.sync delivery
       // receives an already_applied or retryable failed acknowledgement.
+    }
+  }
+
+  /**
+   * Builds the report from local state only. A platform probe failure degrades
+   * to an empty platform list so the Hub still learns the plugin inventory.
+   */
+  private async buildInventoryReport(): Promise<InventoryReport> {
+    const provider = this.options.inventoryProvider;
+    if (!provider) {
+      throw new Error("Inventory provider is unavailable");
+    }
+    let platforms: InventoryReport["platforms"] = [];
+    let plugins: PluginInventoryEntry[] = [];
+    try {
+      const report = await provider();
+      platforms = report.platforms;
+      plugins = report.plugins;
+    } catch {
+      platforms = [];
+    }
+    plugins = this.pluginInventoryEntries();
+    return {
+      type: "inventory.report",
+      reportedAt: new Date().toISOString(),
+      platforms,
+      plugins,
+    };
+  }
+
+  private pluginInventoryEntries(): PluginInventoryEntry[] {
+    return this.options.store.listPluginStates().map(({ plugin }) => ({
+      id: plugin.id,
+      gitUrl: plugin.gitUrl,
+      ...(plugin.ref ? { ref: plugin.ref } : {}),
+      enabled: plugin.enabled,
+      status: plugin.status,
+      resolvedCommit: plugin.resolvedCommit,
+      installedAt: plugin.installedAt,
+      ...(plugin.lastError ? { lastError: plugin.lastError } : {}),
+    }));
+  }
+
+  /**
+   * Inventory reporting is best-effort: it never blocks flush, ack, or the
+   * plugin sync lifecycle. Proactive reports (connect, post-sync) share a
+   * short throttle; Hub-issued queries bypass it via force.
+   */
+  private async reportInventory(
+    { force = false }: { force?: boolean } = {},
+  ): Promise<void> {
+    if (!this.options.inventoryProvider) return;
+    if (typeof this.options.transport.reportInventory !== "function") return;
+    const now = Date.now();
+    if (!force && now - this.lastInventoryReportAt < 5_000) return;
+    try {
+      const report = await this.buildInventoryReport();
+      await this.options.transport.reportInventory(report);
+      this.lastInventoryReportAt = Date.now();
+    } catch (error) {
+      bridgeLog.warn("execution", "inventory_report_failed", {
+        error: String(error),
+      });
     }
   }
 

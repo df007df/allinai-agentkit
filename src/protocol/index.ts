@@ -2,6 +2,7 @@ export {
   AGENT_CLIENT_PROTOCOL_VERSION,
   encodeClientEventBatch,
   encodeClientHello,
+  encodeInventoryReport,
   encodePluginSyncAcknowledgement,
   parseClientCommand,
   parseClientEvent,

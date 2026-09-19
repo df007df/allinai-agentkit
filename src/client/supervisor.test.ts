@@ -7,6 +7,7 @@ import { ClientStateStore, type ExecutionState } from "./state-store.js";
 import { ClientSupervisor } from "./supervisor.js";
 import type { ClientTransport, ClientTransportHandlers } from "./transport.js";
 import type { ClientCommand, ClientEvent } from "./types.js";
+import type { InventoryReport } from "../protocol/index.js";
 import type { PluginSyncAcknowledgement } from "./types.js";
 import type {
   ActivePluginSnapshot,
@@ -215,12 +216,29 @@ class DeferredShutdownCapabilityHost extends FakeCapabilityHost {
   }
 }
 
+const inventoryReport = (): InventoryReport => ({
+  type: "inventory.report",
+  reportedAt: "2026-09-19T00:00:00.000Z",
+  platforms: [{ platform: "codex", installed: true, version: "1.2.3" }],
+  plugins: [
+    {
+      id: "demo",
+      gitUrl: "https://example.test/demo.git",
+      enabled: true,
+      status: "active",
+      resolvedCommit: "a".repeat(40),
+      installedAt: "2026-09-19T00:00:00.000Z",
+    },
+  ],
+});
+
 class FakeTransport implements ClientTransport {
   handlers: ClientTransportHandlers | null = null;
   pushed: ClientEvent[][] = [];
   acknowledgements: Record<string, number> = {};
   pushFailure: Error | null = null;
   pluginAcknowledgements: PluginSyncAcknowledgement[] = [];
+  inventoryReports: InventoryReport[] = [];
   closed = false;
 
   async connect(handlers: ClientTransportHandlers): Promise<void> {
@@ -243,6 +261,10 @@ class FakeTransport implements ClientTransport {
     this.pluginAcknowledgements.push(acknowledgement);
   }
 
+  async reportInventory(report: InventoryReport): Promise<void> {
+    this.inventoryReports.push(report);
+  }
+
   async deliver(command: ClientCommand): Promise<void> {
     if (!this.handlers) throw new Error("transport is not connected");
     await this.handlers.command(command);
@@ -256,11 +278,16 @@ class FakeTransport implements ClientTransport {
   async deliverPluginSync(input: {
     revision: string;
     plugins: PluginConfig[];
+    inventoryQuery?: boolean;
   }): Promise<void> {
     if (!this.handlers?.pluginSync) {
       throw new Error("plugin sync handler is not connected");
     }
-    await this.handlers.pluginSync(input);
+    await this.handlers.pluginSync({
+      revision: input.revision,
+      plugins: input.plugins,
+      inventoryQuery: input.inventoryQuery === true,
+    });
   }
 }
 
@@ -1481,5 +1508,193 @@ describe("ClientSupervisor", () => {
       transport.pushed.at(-1)?.map((event) => event.type),
       ["received", "running", "done"],
     );
+  });
+
+  it("answers an inventoryQuery plugin.sync with ack + report and no side effects", async () => {
+    const transport = new FakeTransport();
+    const runner = new FakeRunner(store);
+    const plugins = new FakePluginManager();
+    const recordedRevisions: string[] = [];
+    const originalRecord = store.recordPluginSyncSuccess.bind(store);
+    store.recordPluginSyncSuccess = (revision: string) => {
+      recordedRevisions.push(revision);
+      originalRecord(revision);
+    };
+    const supervisor = new ClientSupervisor({
+      store,
+      transport,
+      runner,
+      plugins,
+      policy: () => "auto",
+      inventoryProvider: async () => inventoryReport(),
+    });
+    await supervisor.start();
+
+    await transport.deliverPluginSync({
+      revision: "q1",
+      plugins: [],
+      inventoryQuery: true,
+    });
+
+    assert.equal(transport.inventoryReports.length, 1);
+    assert.equal(transport.inventoryReports[0]?.type, "inventory.report");
+    assert.equal(
+      transport.pluginAcknowledgements.at(-1)?.status,
+      "already_applied",
+    );
+    assert.equal(transport.pluginAcknowledgements.at(-1)?.revision, "q1");
+    assert.equal(transport.pluginAcknowledgements.at(-1)?.plugins.length, 1);
+    assert.deepEqual(recordedRevisions, []);
+    assert.equal(store.getLastPluginSyncRevision(), null);
+  });
+
+  it("reports inventory after a real plugin sync completes", async () => {
+    const transport = new FakeTransport();
+    const runner = new FakeRunner(store);
+    const plugins = new FakePluginManager();
+    const supervisor = new ClientSupervisor({
+      store,
+      transport,
+      runner,
+      plugins,
+      policy: () => "auto",
+      inventoryProvider: async () => inventoryReport(),
+    });
+    await supervisor.start();
+    assert.equal(transport.inventoryReports.length, 0);
+
+    await transport.deliverPluginSync({
+      revision: "plugins-v1",
+      plugins: [
+        {
+          id: "demo",
+          gitUrl: "https://github.com/allin-ai/demo.git",
+          enabled: true,
+        },
+      ],
+    });
+
+    await eventually(() => {
+      assert.equal(transport.inventoryReports.length, 1);
+    });
+    assert.equal(transport.inventoryReports[0]?.type, "inventory.report");
+  });
+
+  it("reports inventory once on connect", async () => {
+    const transport = new FakeTransport();
+    const runner = new FakeRunner(store);
+    const supervisor = new ClientSupervisor({
+      store,
+      transport,
+      runner,
+      policy: () => "auto",
+      inventoryProvider: async () => inventoryReport(),
+    });
+    await supervisor.start();
+    assert.equal(transport.inventoryReports.length, 0);
+
+    await transport.reconnect();
+
+    await eventually(() => {
+      assert.equal(transport.inventoryReports.length, 1);
+    });
+  });
+
+  it("degrades to an empty-platform report when inventoryProvider throws", async () => {
+    store.savePluginState({
+      plugin: {
+        id: "demo",
+        gitUrl: "https://example.test/demo.git",
+        enabled: true,
+        resolvedCommit: "a".repeat(40),
+        installedAt: "2026-09-19T00:00:00.000Z",
+        status: "active",
+      },
+      active: null,
+    });
+    const transport = new FakeTransport();
+    const runner = new FakeRunner(store);
+    const plugins = new FakePluginManager();
+    const supervisor = new ClientSupervisor({
+      store,
+      transport,
+      runner,
+      plugins,
+      policy: () => "auto",
+      inventoryProvider: async () => {
+        throw new Error("probe failure");
+      },
+    });
+    await supervisor.start();
+
+    await transport.deliverPluginSync({
+      revision: "q2",
+      plugins: [],
+      inventoryQuery: true,
+    });
+
+    assert.equal(transport.inventoryReports.length, 1);
+    assert.deepEqual(transport.inventoryReports[0], {
+      type: "inventory.report",
+      reportedAt: transport.inventoryReports[0]?.reportedAt,
+      platforms: [],
+      plugins: [
+        {
+          id: "demo",
+          gitUrl: "https://example.test/demo.git",
+          enabled: true,
+          status: "active",
+          resolvedCommit: "a".repeat(40),
+          installedAt: "2026-09-19T00:00:00.000Z",
+        },
+      ],
+    });
+    assert.notEqual(transport.inventoryReports[0]?.reportedAt, "");
+  });
+
+  it("throttles proactive inventory reports within 5s", async () => {
+    const transport = new FakeTransport();
+    const runner = new FakeRunner(store);
+    const plugins = new FakePluginManager();
+    const supervisor = new ClientSupervisor({
+      store,
+      transport,
+      runner,
+      plugins,
+      policy: () => "auto",
+      inventoryProvider: async () => inventoryReport(),
+    });
+    await supervisor.start();
+
+    // Connect reports proactively.
+    await transport.reconnect();
+    await eventually(() => {
+      assert.equal(transport.inventoryReports.length, 1);
+    });
+
+    // A real sync right after the connect report is throttled.
+    await transport.deliverPluginSync({
+      revision: "plugins-v1",
+      plugins: [
+        {
+          id: "demo",
+          gitUrl: "https://github.com/allin-ai/demo.git",
+          enabled: true,
+        },
+      ],
+    });
+    await eventually(() => {
+      assert.equal(transport.pluginAcknowledgements.length, 1);
+    });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(transport.inventoryReports.length, 1);
+
+    // An inventoryQuery downlink is never throttled.
+    await transport.deliverPluginSync({
+      revision: "q3",
+      plugins: [],
+      inventoryQuery: true,
+    });
+    assert.equal(transport.inventoryReports.length, 2);
   });
 });
