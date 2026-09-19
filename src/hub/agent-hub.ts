@@ -7,9 +7,12 @@ import {
   parseClientHello,
   parseHubDownlink,
   parseHubEventAcknowledgement,
+  parseInventoryReport,
   parsePluginSyncAcknowledgement,
+  type InventoryReport,
   type PluginConfig,
 } from "../protocol/index.js";
+import { bridgeLog } from "../logger.js";
 import type {
   AgentHub,
   AgentHubOptions,
@@ -221,9 +224,23 @@ export function createAgentHub<Principal>(
           });
           return;
         }
+        const inventory = parseInventoryReport(message);
+        if (inventory) {
+          await store.recordInventory({
+            principal,
+            clientId: connection.clientId,
+            report: inventory,
+          });
+          return;
+        }
         const events = parseClientEventBatch(message);
         if (!events) {
-          socket.close(1008, "invalid message");
+          // Forward compatibility: a newer client may send message types this
+          // Hub does not know. Dropping the socket would break mixed-version
+          // fleets, so unknown frames are logged and ignored.
+          bridgeLog.warn("agent-hub", "Ignoring unknown client message", {
+            type: (message as Record<string, unknown>).type,
+          });
           return;
         }
         const watermarks = await store.ingestEvents({
@@ -348,6 +365,7 @@ export function createAgentHub<Principal>(
       targetClientId: string;
       revision: string;
       plugins: PluginConfig[];
+      inventoryQuery?: boolean;
     }): Promise<{ delivered: boolean }> {
       if (closed) throw new Error("AgentHub is closed");
       if (!input.targetClientId.trim() || !input.revision.trim()) {
@@ -358,6 +376,7 @@ export function createAgentHub<Principal>(
         type: "plugin.sync",
         revision: input.revision,
         plugins: input.plugins,
+        ...(input.inventoryQuery ? { inventoryQuery: true } : {}),
       });
       if (!downlink || downlink.type !== "plugin.sync") {
         throw new TypeError("Invalid plugin sync");
@@ -375,6 +394,13 @@ export function createAgentHub<Principal>(
       if (!connected || !active(connected)) return Promise.resolve({ delivered: false });
       connected.socket.send(JSON.stringify(downlink));
       return Promise.resolve({ delivered: true });
+    },
+    getInventory(input: {
+      principal: Principal;
+      clientId: string;
+    }): Promise<InventoryReport | null> {
+      // Ownership validation lives in the store, consistent with recordInventory.
+      return store.getInventory(input);
     },
     close() {
       if (closePromise) return closePromise;

@@ -1,5 +1,6 @@
 import type {
   ClientEvent,
+  InventoryReport,
   PluginSyncAcknowledgement,
 } from "../../protocol/index.js";
 import { bridgeLog } from "../../logger.js";
@@ -9,6 +10,7 @@ import type {
   HubEventBatch,
   HubEventIngestResult,
   HubHeartbeat,
+  HubInventoryReport,
   HubOfferDelivery,
   HubOfferInput,
   HubPluginAcknowledgement,
@@ -31,6 +33,7 @@ export type MemoryHubSnapshot<Principal> = {
   events: ClientEvent[];
   seenEventSequences: Array<[string, number[]]>;
   watermarks: Record<string, number>;
+  inventory: Array<[string, InventoryReport]>;
   nextConnectionKey: number;
 };
 
@@ -59,6 +62,7 @@ export class MemoryHubStore<Principal> implements HubStore<Principal> {
   private readonly events = new Map<string, ClientEvent>();
   private readonly seenEventSequences = new Map<string, Set<number>>();
   private readonly watermarks = new Map<string, number>();
+  private readonly inventory = new Map<string, InventoryReport>();
   private nextConnectionKey = 1;
 
   constructor(
@@ -176,6 +180,24 @@ export class MemoryHubStore<Principal> implements HubStore<Principal> {
     this.onPluginSyncAcknowledgement?.(input.clientId, input.acknowledgement);
   }
 
+  async recordInventory(
+    input: HubInventoryReport<Principal>,
+  ): Promise<void> {
+    this.assertClient(input.principal, input.clientId);
+    this.inventory.set(input.clientId, input.report);
+    bridgeLog.info("memory-hub", "test inventory recorded", {
+      clientId: input.clientId,
+    });
+  }
+
+  async getInventory(input: {
+    principal: Principal;
+    clientId: string;
+  }): Promise<InventoryReport | null> {
+    this.assertClient(input.principal, input.clientId);
+    return this.inventory.get(input.clientId) ?? null;
+  }
+
   listClients(): MemoryHubClient[] {
     return [...this.clients.values()].map(
       ({ principal: _principal, ...client }) => ({
@@ -202,6 +224,9 @@ export class MemoryHubStore<Principal> implements HubStore<Principal> {
         ([executionId, sequences]) => [executionId, [...sequences]],
       ),
       watermarks: Object.fromEntries(this.watermarks),
+      inventory: [...this.inventory.entries()].map(
+        ([clientId, report]) => [clientId, { ...report }] as const,
+      ),
       nextConnectionKey: this.nextConnectionKey,
     };
   }
@@ -223,6 +248,10 @@ export class MemoryHubStore<Principal> implements HubStore<Principal> {
     this.watermarks.clear();
     Object.entries(snapshot.watermarks).forEach(([executionId, watermark]) =>
       this.watermarks.set(executionId, watermark),
+    );
+    this.inventory.clear();
+    snapshot.inventory.forEach(([clientId, report]) =>
+      this.inventory.set(clientId, { ...report }),
     );
     this.nextConnectionKey = snapshot.nextConnectionKey;
   }

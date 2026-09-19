@@ -9,6 +9,7 @@ export type {
   HubEventBatch,
   HubEventIngestResult,
   HubHeartbeat,
+  HubInventoryReport,
   HubOfferDelivery,
   HubOfferInput,
   HubPluginAcknowledgement,

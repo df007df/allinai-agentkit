@@ -4,6 +4,7 @@ import type {
   HubEventBatch,
   HubEventIngestResult,
   HubHeartbeat,
+  HubInventoryReport,
   HubOfferDelivery,
   HubOfferInput,
   HubPluginAcknowledgement,
@@ -17,7 +18,8 @@ export type HubObservation =
   | { kind: "offer.enqueued"; offerId: string; targetClientId: string; commandKind: string; at: number }
   | { kind: "offers.delivered"; clientId: string; count: number; at: number }
   | { kind: "events.ingested"; clientId: string; count: number; at: number }
-  | { kind: "plugin.acknowledged"; clientId: string; at: number };
+  | { kind: "plugin.acknowledged"; clientId: string; at: number }
+  | { kind: "inventory.recorded"; clientId: string; at: number };
 
 export type HubObservationSink = (observation: HubObservation) => void;
 
@@ -109,5 +111,23 @@ export class ObservableStore<Principal> implements HubStore<Principal> {
       clientId: input.clientId,
       at: Date.now(),
     });
+  }
+
+  async recordInventory(
+    input: HubInventoryReport<Principal>,
+  ): Promise<void> {
+    await this.inner.recordInventory(input);
+    this.notify({
+      kind: "inventory.recorded",
+      clientId: input.clientId,
+      at: Date.now(),
+    });
+  }
+
+  async getInventory(input: {
+    principal: Principal;
+    clientId: string;
+  }) {
+    return this.inner.getInventory(input);
   }
 }

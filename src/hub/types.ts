@@ -5,6 +5,7 @@ import type {
   ClientEventBatch,
   ClientHello,
   HubEventAcknowledgement,
+  InventoryReport,
   PluginConfig,
   PluginSyncAcknowledgement,
 } from "../protocol/index.js";
@@ -55,6 +56,11 @@ export interface HubPluginAcknowledgement<Principal> {
   clientId: string;
   acknowledgement: PluginSyncAcknowledgement;
 }
+export interface HubInventoryReport<Principal> {
+  principal: Principal;
+  clientId: string;
+  report: InventoryReport;
+}
 
 /**
  * All methods enforce host-owned authorization for principal/clientId.
@@ -80,6 +86,13 @@ export interface HubStore<Principal> {
   acknowledgePluginSync(
     input: HubPluginAcknowledgement<Principal>,
   ): Promise<void>;
+  /** Persist the latest inventory report; ownership must be enforced here. */
+  recordInventory(input: HubInventoryReport<Principal>): Promise<void>;
+  /** Return the client's latest report, or null when the store has none. */
+  getInventory(input: {
+    principal: Principal;
+    clientId: string;
+  }): Promise<InventoryReport | null>;
 }
 export interface AgentHubOptions<Principal> {
   authorize: HubAuthorizer<Principal>;
@@ -110,7 +123,14 @@ export interface AgentHub<Principal> {
     targetClientId: string;
     revision: string;
     plugins: PluginConfig[];
+    /** Ask the client to answer with an inventory.report. */
+    inventoryQuery?: boolean;
   }): Promise<{ delivered: boolean }>;
+  /** Latest inventory report for a client; ownership is enforced in the store. */
+  getInventory(input: {
+    principal: Principal;
+    clientId: string;
+  }): Promise<InventoryReport | null>;
   /** Detach handlers and close Hub sockets without closing the caller's server. */
   close(): Promise<void>;
 }

@@ -141,4 +141,49 @@ describe("test-only memory hub", () => {
       [pending[2]],
     );
   });
+
+  it("stores and returns the latest inventory report per client", async () => {
+    const hub = createMemoryHub({ token: "test-token" });
+    try {
+      await hub.store.registerClient({
+        principal: "test-token",
+        clientId: "c1",
+        protocolVersion: 2,
+      });
+      const report = {
+        type: "inventory.report" as const,
+        reportedAt: "2026-09-19T00:00:00.000Z",
+        platforms: [],
+        plugins: [],
+      };
+      await hub.store.recordInventory({
+        principal: "test-token",
+        clientId: "c1",
+        report,
+      });
+      assert.deepEqual(
+        await hub.getInventory({ principal: "test-token", clientId: "c1" }),
+        report,
+      );
+      // Ownership is enforced in the store: another principal cannot read c1.
+      await assert.rejects(
+        hub.getInventory({ principal: "someone-else", clientId: "c1" }),
+        /ownership conflict/,
+      );
+      const updated = { ...report, reportedAt: "2026-09-19T01:00:00.000Z" };
+      await hub.store.recordInventory({
+        principal: "test-token",
+        clientId: "c1",
+        report: updated,
+      });
+      assert.equal(
+        (
+          await hub.getInventory({ principal: "test-token", clientId: "c1" })
+        )?.reportedAt,
+        "2026-09-19T01:00:00.000Z",
+      );
+    } finally {
+      await hub.close();
+    }
+  });
 });

@@ -16,10 +16,11 @@ import type {
 import type {
   AgentHubOptions,
   HubClientRegistration,
-  HubHeartbeat,
-  HubOfferInput,
-  HubOfferDelivery,
   HubEventBatch,
+  HubHeartbeat,
+  HubInventoryReport,
+  HubOfferDelivery,
+  HubOfferInput,
   HubPluginAcknowledgement,
   HubStore,
   StoredOffer,
@@ -106,6 +107,15 @@ class RecordingStore implements HubStore<Principal> {
   }
   async acknowledgePluginSync(input: HubPluginAcknowledgement<Principal>) {
     this.calls.push({ method: "plugin", input });
+  }
+  async recordInventory(
+    input: HubInventoryReport<Principal>,
+  ): Promise<void> {
+    this.calls.push({ method: "inventory", input });
+  }
+  async getInventory(input: { principal: Principal; clientId: string }) {
+    this.calls.push({ method: "getInventory", input });
+    return null;
   }
 }
 
@@ -646,6 +656,63 @@ test("close aborts pending upgrade authorization and late authorization cannot r
   await setImmediate();
   assert.equal(response.includes("101 Switching Protocols"), false);
   assert.deepEqual(store.calls, []);
+});
+
+test("tolerates unknown client messages without dropping the connection", async (t) => {
+  const { connect, store } = await setup(t);
+  const { socket, messages } = await connect();
+  socket.send(JSON.stringify(hello));
+  await until(() => store.calls.some((call) => call.method === "pending"));
+  socket.send(JSON.stringify({ type: "something.unknown", extra: 1 }));
+  socket.send(JSON.stringify({ type: "event.push", events: [] }));
+  await until(() => messages.length === 1);
+  // RecordingStore always acknowledges the persisted watermark for execution-one.
+  assert.deepEqual(messages, [
+    { type: "event.ack", watermarks: { "execution-one": 41 } },
+  ]);
+  assert.equal(socket.readyState, WebSocket.OPEN);
+});
+
+test("forwards inventory reports to the store as ownership-scoped records", async (t) => {
+  const { connect, store } = await setup(t);
+  const { socket } = await connect();
+  socket.send(JSON.stringify(hello));
+  await until(() => store.calls.some((call) => call.method === "pending"));
+  const report = {
+    type: "inventory.report",
+    reportedAt: "2026-09-19T00:00:00.000Z",
+    platforms: [{ platform: "codex", installed: true, version: "1.2.3" }],
+    plugins: [],
+  };
+  socket.send(JSON.stringify(report));
+  await until(() => store.calls.some((call) => call.method === "inventory"));
+  assert.deepEqual(
+    store.calls.find((call) => call.method === "inventory")!.input,
+    { principal, clientId: "client-1", report },
+  );
+  assert.equal(socket.readyState, WebSocket.OPEN);
+});
+
+test("syncPlugins forwards the inventoryQuery flag on plugin.sync downlinks", async (t) => {
+  const { hub, store, connect } = await setup(t);
+  const { socket, messages } = await connect();
+  socket.send(JSON.stringify(hello));
+  await until(() => store.calls.some((call) => call.method === "pending"));
+  const delivered = await hub.syncPlugins({
+    principal,
+    targetClientId: "client-1",
+    revision: "plugins-v8",
+    plugins: [],
+    inventoryQuery: true,
+  });
+  assert.equal(delivered.delivered, true);
+  await until(() => messages.length === 1);
+  assert.deepEqual(messages[0], {
+    type: "plugin.sync",
+    revision: "plugins-v8",
+    plugins: [],
+    inventoryQuery: true,
+  });
 });
 
 test("syncPlugins pushes desired plugin state to the connected owner client", async (t) => {
