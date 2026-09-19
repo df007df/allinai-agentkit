@@ -4,7 +4,74 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, it } from "node:test";
 import { createAgentControlClient } from "../control.js";
-import { createLocalAgentDaemon } from "./commands.js";
+import type {
+  ClientTransport,
+  ClientTransportHandlers,
+} from "../client/transport.js";
+import type {
+  InventoryReport,
+  PluginSyncAcknowledgement,
+} from "../protocol/index.js";
+import { createLocalAgentDaemon, type RuntimeProbeResult } from "./commands.js";
+
+/**
+ * Records every handler registration and uplink report. `connect` never fires
+ * the connected handler, so tests drive pluginSync deterministically.
+ */
+function createRecordingTransport(): ClientTransport & {
+  recorded: {
+    handlers: ClientTransportHandlers | null;
+    pluginSyncAcks: PluginSyncAcknowledgement[];
+    inventoryReports: InventoryReport[];
+  };
+} {
+  const recorded = {
+    handlers: null as ClientTransportHandlers | null,
+    pluginSyncAcks: [] as PluginSyncAcknowledgement[],
+    inventoryReports: [] as InventoryReport[],
+  };
+  return {
+    recorded,
+    async connect(handlers) {
+      recorded.handlers = handlers;
+    },
+    async push() {
+      return {};
+    },
+    async reportPluginSync(acknowledgement) {
+      recorded.pluginSyncAcks.push(acknowledgement);
+    },
+    async reportInventory(report) {
+      recorded.inventoryReports.push(report);
+    },
+    async close() {},
+  };
+}
+
+const INVENTORY_PROBE_RESULTS: RuntimeProbeResult[] = [
+  { id: "codex", probe: { installed: true, version: null } },
+  { id: "claude", probe: { installed: true, version: "4.5.0" } },
+  { id: "pi", probe: { installed: true, version: "0.1.2" } },
+  {
+    id: "zcode",
+    probe: {
+      installed: false,
+      version: null,
+      reason: "zcode sdk is not installed",
+    },
+  },
+];
+
+async function waitFor(
+  condition: () => boolean,
+  description: string,
+): Promise<void> {
+  for (let attempt = 0; attempt < 150; attempt += 1) {
+    if (condition()) return;
+    await new Promise<void>((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`Timed out waiting for ${description}`);
+}
 
 describe("local agent daemon composition", () => {
   let dir = "";
@@ -55,6 +122,118 @@ describe("local agent daemon composition", () => {
     await assert.rejects(
       createLocalAgentDaemon({ configDir: dir, credentials }),
       /control socket is already active/,
+    );
+  });
+
+  it("wires an inventoryProvider that reports installed plugins and probed platforms", async () => {
+    if (process.platform === "win32") return;
+    dir = mkdtempSync(path.join(tmpdir(), "allinai-agent-daemon-inventory-"));
+    writeFileSync(
+      path.join(dir, "config.json"),
+      JSON.stringify({
+        hubBaseUrl: "https://hub.example.test",
+        clientId: "test-client",
+        maxConcurrentRuns: 1,
+        policy: {
+          autoRuntimes: [],
+          autoPermissions: [],
+          allowedGitOrigins: ["fixture.test"],
+          deniedPluginIds: [],
+          allowedWorkspaceRoots: [],
+        },
+      }),
+    );
+    const credentials = {
+      load: async () => "daemon-inventory-token",
+      save: async () => undefined,
+      clear: async () => undefined,
+    };
+    const transport = createRecordingTransport();
+
+    const daemon = await createLocalAgentDaemon({
+      configDir: dir,
+      credentials,
+      probeRuntimes: async () => INVENTORY_PROBE_RESULTS,
+      createTransport: () => transport,
+    });
+    close = () => daemon.close();
+
+    // Drive one real plugin sync so the store holds an InstalledPlugin before
+    // the inventory query is answered from local state.
+    const handlers = transport.recorded.handlers;
+    assert.ok(handlers?.pluginSync, "daemon must register a pluginSync handler");
+    await handlers.pluginSync({
+      revision: "install-rev-1",
+      plugins: [
+        {
+          id: "smoke-plugin",
+          gitUrl: "https://fixture.test/daemon-inventory-plugin.git",
+          ref: "refs/heads/main",
+          enabled: false,
+        },
+      ],
+      inventoryQuery: false,
+    });
+    assert.equal(
+      transport.recorded.pluginSyncAcks.at(-1)?.status,
+      "applied",
+      "the plugin sync must apply before the inventory query",
+    );
+    // Wait for the fire-and-forget proactive post-sync report so the later
+    // forced query report below is not asserted against a moving baseline.
+    await waitFor(
+      () => transport.recorded.inventoryReports.length >= 1,
+      "the proactive post-sync inventory report",
+    );
+
+    // The transport-level inventoryQuery path must reach the wired provider
+    // through observeTransport and produce a full inventory report. The
+    // proactive post-sync report (void, throttled) has already landed; the
+    // forced query report below is never throttled and must also arrive.
+    await handlers.pluginSync({
+      revision: "inventory-query-rev-1",
+      plugins: [],
+      inventoryQuery: true,
+    });
+    await waitFor(
+      () => transport.recorded.inventoryReports.length >= 2,
+      "the forced inventory report after the query",
+    );
+
+    const reports = transport.recorded.inventoryReports;
+    assert.ok(reports.length >= 2);
+    // Reports converge: every delivered report carries the same durable
+    // platform and plugin snapshot built from local state.
+    for (const report of reports) {
+      assert.equal(report.type, "inventory.report");
+      assert.equal(typeof report.reportedAt, "string");
+      assert.equal(report.platforms.length, 4);
+      assert.equal(report.plugins.length, 1);
+      assert.equal(report.plugins[0]?.id, "smoke-plugin");
+    }
+    const report = reports.at(-1)!;
+
+    assert.equal(report.platforms.length, 4);
+    const zcode = report.platforms.find(
+      (platform) => platform.platform === "zcode",
+    );
+    assert.ok(zcode, "the zcode probe must appear in the platform list");
+    assert.equal(zcode.installed, false);
+    assert.equal(zcode.reason, "zcode sdk is not installed");
+    const claude = report.platforms.find(
+      (platform) => platform.platform === "claude",
+    );
+    assert.ok(claude?.installed);
+    assert.equal(claude.version, "4.5.0");
+
+    assert.equal(report.plugins.length, 1);
+    assert.equal(report.plugins[0]?.id, "smoke-plugin");
+    assert.equal(report.plugins[0]?.status, "blocked");
+    assert.equal(report.plugins[0]?.enabled, false);
+    assert.equal(report.plugins[0]?.resolvedCommit, "unresolved");
+    assert.equal(
+      report.plugins[0]?.gitUrl,
+      "https://fixture.test/daemon-inventory-plugin.git",
     );
   });
 });

@@ -31,6 +31,10 @@ import { ClientStateStore } from "../client/state-store.js";
 import { ClientSupervisor } from "../client/supervisor.js";
 import type { ClientTransport } from "../client/transport.js";
 import { WsClientTransport } from "../client/ws-transport.js";
+import type {
+  InventoryReport,
+  PlatformInventoryEntry,
+} from "../protocol/index.js";
 import {
   createPlatformAdapterRegistry,
   createRunnerManager,
@@ -116,6 +120,8 @@ export type LocalAgentDaemonOptions = {
   }) => ClientTransport;
   createRunner?: () => RunnerManager;
   loadConfig?: (paths: Pick<AgentPaths, "configFile">) => AgentConfig;
+  /** Same shape as RunCliOptions.probeRuntimes; backs the inventory provider. */
+  probeRuntimes?: () => Promise<RuntimeProbeResult[]>;
   mkdir?: (
     dir: string,
     options: { recursive: true },
@@ -792,6 +798,46 @@ function capabilityHost(
   };
 }
 
+const INVENTORY_PROBE_TTL_MS = 60_000;
+
+/**
+ * Supplies local inventory to the supervisor's inventory reports. Platform
+ * probes are cached briefly because every sync, connect, and Hub query
+ * refreshes otherwise. A probe failure is deliberately not swallowed here:
+ * the supervisor degrades platforms to an empty list, and the cache is only
+ * written after a successful probe so the next call retries.
+ */
+function createInventoryProvider(input: {
+  store: ClientStateStore;
+  probeRuntimes: () => Promise<RuntimeProbeResult[]>;
+}): () => Promise<InventoryReport> {
+  let cache: { at: number; platforms: PlatformInventoryEntry[] } | null = null;
+  return async () => {
+    const now = Date.now();
+    if (!cache || now - cache.at > INVENTORY_PROBE_TTL_MS) {
+      const probes = await input.probeRuntimes();
+      const platforms = probes.map(
+        ({ id, probe }): PlatformInventoryEntry => ({
+          platform: id as PlatformInventoryEntry["platform"],
+          installed: probe.installed,
+          version: probe.version,
+          ...(probe.reason !== undefined ? { reason: probe.reason } : {}),
+        }),
+      );
+      cache = { at: now, platforms };
+    }
+    const probed = cache;
+    // The supervisor derives plugin entries from the store itself; the report
+    // contract keeps plugins so the wire shape stays complete.
+    return {
+      type: "inventory.report",
+      reportedAt: new Date().toISOString(),
+      platforms: probed.platforms,
+      plugins: [],
+    };
+  };
+}
+
 /**
  * Compose the local daemon once. The Unix control socket is acquired before
  * SQLite and transports, which makes it the single-instance lock per Agent
@@ -920,6 +966,10 @@ export async function createLocalAgentDaemon(
       runner,
       maxConcurrentRuns: config.maxConcurrentRuns,
       plugins,
+      inventoryProvider: createInventoryProvider({
+        store,
+        probeRuntimes: options.probeRuntimes ?? defaultProbeRuntimes,
+      }),
       capabilityHost: capabilityHost(
         store,
         paths,
@@ -1017,6 +1067,8 @@ function observeTransport(
     push: (events) => transport.push(events),
     reportPluginSync: (acknowledgement) =>
       transport.reportPluginSync?.(acknowledgement) ?? Promise.resolve(),
+    reportInventory: (report) =>
+      transport.reportInventory?.(report) ?? Promise.resolve(),
     async close() {
       disconnected();
       await transport.close();
