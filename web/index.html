@@ -380,6 +380,28 @@ export const hub = createAgentHub({
               <button id="plugin-sync" class="btn ghost full">推送 plugin.sync</button>
               <p id="plugin-result" class="hint" hidden></p>
             </div>
+            <div class="panel">
+              <h3>插件与平台清单</h3>
+              <p class="hint">触发 client 上报本地已安装插件与平台探测结果。</p>
+              <label class="field-label" for="inventory-client">目标 client</label>
+              <select id="inventory-client"></select>
+              <button id="inventory-query" class="btn ghost full">查询清单</button>
+              <p id="inventory-result" class="hint" hidden></p>
+              <div id="inventory-platforms" hidden>
+                <h4>平台</h4>
+                <table class="inventory-table">
+                  <thead><tr><th>platform</th><th>installed</th><th>version</th><th>reason</th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+              <div id="inventory-plugins" hidden>
+                <h4>插件</h4>
+                <table class="inventory-table">
+                  <thead><tr><th>id</th><th>status</th><th>enabled</th><th>commit</th><th>ref</th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
           </div>
           <div class="panel timeline-panel">
             <h3>协议事件时间线</h3>

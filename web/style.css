@@ -384,6 +384,37 @@ textarea::placeholder { color: var(--text-dim); }
 .timeline li:first-child { color: var(--text); }
 .timeline li .t { color: var(--accent); }
 
+/* inventory tables：等宽字体 + 行分隔线，对齐面板内列表风格 */
+#inventory-platforms h4,
+#inventory-plugins h4 {
+  margin: 0.9rem 0 0.4rem;
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+.inventory-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+}
+.inventory-table th {
+  text-align: left;
+  color: var(--text-dim);
+  font-weight: 500;
+  padding: 0.3rem 0.5rem 0.3rem 0;
+  border-bottom: 1px solid var(--border-strong);
+}
+.inventory-table td {
+  padding: 0.3rem 0.5rem 0.3rem 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  word-break: break-all;
+}
+.inventory-table tr:last-child td { border-bottom: none; }
+.inventory-table .row-failed td { color: var(--danger); }
+.inventory-table .row-muted td { opacity: 0.5; }
+
 /* ---------- footer ---------- */
 
 .footer {

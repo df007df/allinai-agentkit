@@ -10,6 +10,12 @@ const pluginUrl = document.getElementById("plugin-url");
 const pluginId = document.getElementById("plugin-id");
 const pluginSyncBtn = document.getElementById("plugin-sync");
 const pluginResult = document.getElementById("plugin-result");
+const inventoryClient = document.getElementById("inventory-client");
+const inventoryQueryBtn = document.getElementById("inventory-query");
+const inventoryResult = document.getElementById("inventory-result");
+const inventoryPlatforms = document.getElementById("inventory-platforms");
+const inventoryPlugins = document.getElementById("inventory-plugins");
+let lastInventoryClient = null;
 const timeline = document.getElementById("timeline");
 const sseStatus = document.getElementById("sse-status");
 
@@ -41,6 +47,7 @@ function renderClients() {
     option.textContent = clientId;
     offerClient.append(option);
     pluginClient.append(option.cloneNode(true));
+    inventoryClient.append(option.cloneNode(true));
   }
 }
 
@@ -117,6 +124,81 @@ pluginSyncBtn.onclick = async () => {
   pluginResult.hidden = false;
 };
 
+inventoryQueryBtn.onclick = async () => {
+  const clientId = inventoryClient.value;
+  inventoryResult.hidden = true;
+  if (!clientId) {
+    inventoryResult.textContent = "请选择 client";
+    inventoryResult.hidden = false;
+    return;
+  }
+  try {
+    const response = await fetch("/api/demo/inventory/query", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ clientId }),
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error ?? response.status);
+    inventoryResult.textContent = payload.delivered
+      ? "已请求上报，等待 client 回传清单…"
+      : "client 当前不在线，未请求";
+  } catch (error) {
+    inventoryResult.textContent = `请求失败：${error.message}`;
+  }
+  inventoryResult.hidden = false;
+};
+
+async function loadInventory(clientId) {
+  const response = await fetch(`/api/demo/inventory/${encodeURIComponent(clientId)}`);
+  if (!response.ok) return null;
+  return response.json();
+}
+
+function renderInventory(report) {
+  if (!report) {
+    inventoryPlatforms.hidden = true;
+    inventoryPlugins.hidden = true;
+    inventoryResult.textContent = "该 client 尚未上报清单";
+    inventoryResult.hidden = false;
+    return;
+  }
+  inventoryResult.hidden = true;
+  const pBody = inventoryPlatforms.querySelector("tbody");
+  pBody.replaceChildren(
+    ...report.platforms.map((p) => {
+      const tr = document.createElement("tr");
+      if (!p.installed) tr.className = "row-muted";
+      tr.append(
+        cell(p.platform), cell(p.installed ? "✓" : "✗"),
+        cell(p.version ?? "-"), cell(p.reason ?? ""),
+      );
+      return tr;
+    }),
+  );
+  inventoryPlatforms.hidden = false;
+  const jBody = inventoryPlugins.querySelector("tbody");
+  jBody.replaceChildren(
+    ...report.plugins.map((j) => {
+      const tr = document.createElement("tr");
+      if (j.status === "failed") tr.className = "row-failed";
+      tr.append(
+        cell(j.id), cell(j.status), cell(j.enabled ? "✓" : "✗"),
+        cell(j.resolvedCommit === "unresolved" ? "unresolved" : j.resolvedCommit.slice(0, 7)),
+        cell(j.ref ?? "-"),
+      );
+      return tr;
+    }),
+  );
+  inventoryPlugins.hidden = false;
+}
+
+function cell(text) {
+  const td = document.createElement("td");
+  td.textContent = String(text ?? "");
+  return td;
+}
+
 function setSseState(state, label) {
   sseStatus.dataset.state = state;
   sseStatus.textContent = label;
@@ -142,6 +224,15 @@ source.addEventListener("observation", (event) => {
   const observation = JSON.parse(event.data);
   if ("clientId" in observation && observation.clientId) {
     clients.set(observation.clientId, Date.now());
+  }
+  if (observation.kind === "inventory.recorded") {
+    const clientId = observation.clientId;
+    lastInventoryClient = clientId;
+    if (clientId === inventoryClient.value || !inventoryClient.value) {
+      loadInventory(clientId).then((report) => {
+        if (report) renderInventory(report);
+      });
+    }
   }
   appendTimeline(observation);
   renderClients();
