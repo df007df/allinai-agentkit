@@ -5,8 +5,10 @@ import {
   parseClientCommand,
   parseClientEventBatch,
   parseClientHello,
+  parseHubDownlink,
   parseHubEventAcknowledgement,
   parsePluginSyncAcknowledgement,
+  type PluginConfig,
 } from "../protocol/index.js";
 import type {
   AgentHub,
@@ -340,6 +342,39 @@ export function createAgentHub<Principal>(
         }
       }
       return stored;
+    },
+    syncPlugins(input: {
+      principal: Principal;
+      targetClientId: string;
+      revision: string;
+      plugins: PluginConfig[];
+    }): Promise<{ delivered: boolean }> {
+      if (closed) throw new Error("AgentHub is closed");
+      if (!input.targetClientId.trim() || !input.revision.trim()) {
+        throw new TypeError("Invalid plugin sync");
+      }
+      // Protocol round-trip keeps the desired state wire-shaped.
+      const downlink = parseHubDownlink({
+        type: "plugin.sync",
+        revision: input.revision,
+        plugins: input.plugins,
+      });
+      if (!downlink || downlink.type !== "plugin.sync") {
+        throw new TypeError("Invalid plugin sync");
+      }
+      let connected: ConnectedSocket<Principal> | null = null;
+      for (const connection of sockets.values()) {
+        if (
+          connection.clientId === input.targetClientId &&
+          Object.is(connection.principal, input.principal)
+        ) {
+          connected = connection;
+          break;
+        }
+      }
+      if (!connected || !active(connected)) return Promise.resolve({ delivered: false });
+      connected.socket.send(JSON.stringify(downlink));
+      return Promise.resolve({ delivered: true });
     },
     close() {
       if (closePromise) return closePromise;

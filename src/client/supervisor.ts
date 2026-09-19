@@ -3,6 +3,7 @@ import {
   type ExecutionState,
   type StoredExecution,
 } from "./state-store.js";
+import { bridgeLog } from "../logger.js";
 import type { ClientCommand } from "./types.js";
 import type { PluginSyncAcknowledgement } from "./types.js";
 import type { ClientTransport } from "./transport.js";
@@ -58,6 +59,12 @@ export type ClientSupervisorOptions = {
   capabilityHost?: CapabilityHostPort;
   capabilityPolicy?: CapabilityLocalPolicy;
   capabilityContext?: CapabilityContextResolver;
+  /**
+   * Resolves a Hub-requested project name to its locally registered working
+   * directory. Unknown or absent project names resolve to undefined; the
+   * runner adapter decides its own default cwd.
+   */
+  resolveProject?: ProjectResolver;
 };
 
 export type PluginManagerPort = {
@@ -96,6 +103,17 @@ export type CapabilityContextResolver = (
   resolved: ResolvedActiveCapability,
 ) => LocalContextSource;
 
+/** Locally registered projects; the Hub may select one by name per run. */
+export type ProjectDirectory = {
+  name: string;
+  path: string;
+};
+
+export type ProjectResolver = (
+  name: string | undefined,
+  runtime: AgentRunCommand["runtime"],
+) => string | undefined;
+
 const ACTIVE_STATES: readonly ExecutionState[] = [
   "received",
   "awaiting_approval",
@@ -120,7 +138,20 @@ function runnerStreamFailurePayload(error: unknown): Record<string, unknown> {
   };
 }
 
-function platformRunInput(command: AgentRunCommand): PlatformRunInput {
+function describeCommand(command: ClientCommand): string {
+  if (command.kind === "agent.run") return command.runtime;
+  if (command.kind === "capability.invoke") return command.capabilityId;
+  return "cancel";
+}
+
+function logExecution(level: "debug" | "info" | "warn", event: string, executionId: string, meta?: Record<string, unknown>): void {
+  bridgeLog[level]("execution", event, { executionId, ...meta });
+}
+
+function platformRunInput(
+  command: AgentRunCommand,
+  resolveProject?: ProjectResolver,
+): PlatformRunInput {
   const prompt = command.payload.prompt;
   if (typeof prompt !== "string" || prompt.trim().length === 0) {
     throw new TypeError("agent.run payload.prompt must be a nonempty string");
@@ -129,13 +160,20 @@ function platformRunInput(command: AgentRunCommand): PlatformRunInput {
   const optionalString = (value: unknown): string | undefined =>
     typeof value === "string" && value.length > 0 ? value : undefined;
 
+  const requestedProject = optionalString(command.payload.project);
+  const projectPath = resolveProject?.(requestedProject, command.runtime);
+  const cwd = optionalString(command.payload.cwd) ?? projectPath;
+
   return {
     platform: command.runtime,
     prompt,
-    cwd: optionalString(command.payload.cwd),
+    cwd,
     sessionId: optionalString(command.payload.sessionId),
     model: optionalString(command.payload.model),
-    context: command.payload,
+    context: {
+      ...command.payload,
+      ...(requestedProject ? { resolvedProjectPath: cwd } : {}),
+    },
   };
 }
 
@@ -266,12 +304,14 @@ export class ClientSupervisor {
   /**
    * Pushes durable outbox rows and removes only the watermark each execution
    * actually received. A failed push does not touch local state, so reconnect
-   * replay remains possible.
+   * replay remains possible; the failure propagates to the caller.
    */
   async flush(): Promise<void> {
-    const events = this.options.store.listUnackedEvents();
-    if (events.length === 0) return;
+    await this.deliver(this.options.store.listUnackedEvents());
+  }
 
+  /** Pushes and acknowledges without swallowing failures, for callers that await delivery. */
+  private async deliver(events: ReturnType<ClientStateStore["listUnackedEvents"]>): Promise<void> {
     const receivedWatermarks = await this.options.transport.push(events);
     const sentWatermarks = new Map<string, number>();
     for (const event of events) {
@@ -298,9 +338,15 @@ export class ClientSupervisor {
 
   private async handleCommand(command: ClientCommand): Promise<void> {
     if (command.kind === "cancel") {
+      logExecution("info", "cancel_requested", command.executionId);
       await this.cancelActiveExecution(command.executionId);
       return;
     }
+
+    logExecution("info", "command_received", command.executionId, {
+      kind: command.kind,
+      runtime: describeCommand(command),
+    });
 
     const pluginSnapshot =
       command.kind === "agent.run"
@@ -319,12 +365,14 @@ export class ClientSupervisor {
     if (!execution || execution.state !== "received") return;
 
     if (decision === "deny") {
+      logExecution("warn", "local_policy_denied", command.executionId);
       this.options.store.transition(command.executionId, "rejected", {
         reason: "local_policy_denied",
       });
       return;
     }
     if (decision === "approval") {
+      logExecution("info", "awaiting_approval", command.executionId);
       this.options.store.transition(command.executionId, "awaiting_approval", {
         reason: "local_policy_requires_approval",
       });
@@ -649,7 +697,6 @@ export class ClientSupervisor {
       });
       return;
     }
-
     try {
       const result = await plugins.sync(input.plugins);
       const failed = result.find((plugin) => plugin.status === "failed");
@@ -699,6 +746,23 @@ export class ClientSupervisor {
     }
   }
 
+  /**
+   * Local refresh on operator demand: re-reports the currently installed
+   * plugins without waiting for a Hub-pushed plugin.sync. The revision is
+   * the last applied one when known, or a client-local marker otherwise.
+   */
+  async refreshPlugins(): Promise<void> {
+    const plugins = this.options.plugins;
+    if (!plugins) throw new Error("Plugin manager is unavailable");
+    const revision = this.options.store.getLastPluginSyncRevision();
+    await this.reportPluginSync({
+      type: "plugin.sync.ack",
+      revision: revision ?? `local-${new Date().toISOString()}`,
+      status: revision ? "already_applied" : "applied",
+      plugins: plugins.snapshotActivePlugins(),
+    });
+  }
+
   private async startPersistedAgentRun(
     execution: StoredExecution,
   ): Promise<void> {
@@ -732,7 +796,7 @@ export class ClientSupervisor {
     try {
       const events = this.options.runner.start(
         execution.executionId,
-        platformRunInput(execution.command),
+        platformRunInput(execution.command, this.options.resolveProject),
       );
       this.trackConsumptionTask(
         this.runnerConsumptionTasks,
@@ -783,13 +847,24 @@ export class ClientSupervisor {
           event.type === "thinking_delta" ||
           event.type === "tool"
         ) {
+          if (event.type === "init" || event.type === "tool") {
+            logExecution("debug", `runner_${event.type}`, executionId, {
+              payload: event.payload,
+            });
+          }
           this.appendProgressIfRunning(executionId, event);
           continue;
         }
         if (event.type === "done") {
+          logExecution("info", "runner_done", executionId, {
+            payload: event.payload,
+          });
           this.transitionRunningExecution(executionId, "done", event.payload);
           return;
         }
+        logExecution("warn", "runner_failed", executionId, {
+          payload: event.payload,
+        });
         this.transitionRunningExecution(
           executionId,
           "failed",
@@ -797,6 +872,7 @@ export class ClientSupervisor {
         );
         return;
       }
+      logExecution("warn", "runner_stream_ended", executionId);
       this.transitionRunningExecution(executionId, "failed", {
         reason: "runner_stream_ended",
       });
@@ -868,7 +944,21 @@ export class ClientSupervisor {
     if (this.options.store.getExecution(executionId)?.state !== "running") {
       return;
     }
-    this.options.store.transition(executionId, nextState, payload);
+    const event = this.options.store.transition(executionId, nextState, payload);
+    logExecution(nextState === "done" ? "info" : "warn", "execution_terminal", executionId, {
+      state: nextState,
+    });
+    // A terminal state exists only to be observed upstream: deliver it now so a
+    // healthy connection reports completion immediately; a failed push stays
+    // durable for reconnect replay.
+    void (async () => {
+      const events = this.options.store.listUnackedEvents(executionId);
+      try {
+        await this.deliver(events);
+      } catch {
+        // Reconnect replay owns redelivery.
+      }
+    })();
   }
 
   private requireExecution(executionId: string): StoredExecution {

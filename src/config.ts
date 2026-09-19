@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
 import type { AgentPaths } from "./paths.js";
 
 export type AgentLocalPolicy = {
@@ -10,11 +11,19 @@ export type AgentLocalPolicy = {
   allowedWorkspaceRoots: string[];
 };
 
+/** A locally registered project name and its working directory. */
+export type AgentProject = {
+  name: string;
+  path: string;
+};
+
 export type AgentConfig = {
   hubBaseUrl: string;
   clientId: string;
   maxConcurrentRuns: number;
   policy: AgentLocalPolicy;
+  /** Locally owned project registry; Hub payloads select a project by name. */
+  projects: AgentProject[];
 };
 
 export type ConfigFileSystem = {
@@ -51,9 +60,9 @@ function clonePolicy(policy = DEFAULT_POLICY): AgentLocalPolicy {
 /** Defaults apply only to bounded local settings; Hub identity remains explicit. */
 export function defaultAgentConfig(): Pick<
   AgentConfig,
-  "maxConcurrentRuns" | "policy"
+  "maxConcurrentRuns" | "policy" | "projects"
 > {
-  return { maxConcurrentRuns: 1, policy: clonePolicy() };
+  return { maxConcurrentRuns: 1, policy: clonePolicy(), projects: [] };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -122,6 +131,38 @@ function parsePolicy(value: unknown): AgentLocalPolicy {
   };
 }
 
+/** Projects must be locally absolute directories with unique names. */
+export function parseProjects(value: unknown): AgentProject[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value))
+    throw new TypeError("projects must be an array of { name, path }");
+  const names = new Set<string>();
+  return value.map((entry) => {
+    if (
+      !isRecord(entry) ||
+      typeof entry.name !== "string" ||
+      entry.name.trim().length === 0 ||
+      typeof entry.path !== "string" ||
+      entry.path.trim().length === 0
+    ) {
+      throw new TypeError(
+        "projects entries must be objects with nonempty name and path strings",
+      );
+    }
+    if (!path.isAbsolute(entry.path.trim())) {
+      throw new TypeError(
+        `Project ${entry.name} path must be an absolute directory`,
+      );
+    }
+    const name = entry.name.trim();
+    if (names.has(name)) {
+      throw new TypeError(`Project name ${name} is duplicated`);
+    }
+    names.add(name);
+    return { name, path: path.resolve(entry.path.trim()) };
+  });
+}
+
 function parseHubBaseUrl(value: unknown): string {
   const raw = requireString(value, "hubBaseUrl");
   let url: URL;
@@ -149,6 +190,7 @@ export function parseAgentConfig(value: unknown): AgentConfig {
     "clientId",
     "maxConcurrentRuns",
     "policy",
+    "projects",
   ]);
   for (const key of Object.keys(value)) {
     if (!allowed.has(key))
@@ -171,6 +213,7 @@ export function parseAgentConfig(value: unknown): AgentConfig {
     clientId: requireString(value.clientId, "clientId"),
     maxConcurrentRuns: maxConcurrentRuns as number,
     policy: parsePolicy(value.policy),
+    projects: parseProjects(value.projects),
   };
 }
 

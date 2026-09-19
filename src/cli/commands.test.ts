@@ -180,3 +180,92 @@ describe("demo command", () => {
     assert.equal(closed, true);
   });
 });
+
+describe("project commands", () => {
+  it("registers and removes a project in the client-owned config", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "allinai-cli-project-"));
+    try {
+      const configDir = path.join(dir, "agent-home");
+      const config = path.join(configDir, "config.json");
+      const output: string[] = [];
+      const init = await runCli(
+        ["init", "--hub", "https://hub.example.test", "--client", "cli-project"],
+        {
+          configDir,
+          write: () => undefined,
+        },
+      );
+      assert.equal(init.exitCode, 0);
+
+      const added = await runCli(
+        ["project", "--name", "web", "--path", "/work/web/"],
+        { configDir, write: (line) => output.push(line) },
+      );
+      assert.equal(added.exitCode, 0);
+      const stored = JSON.parse(await import("node:fs/promises").then((fs) => fs.readFile(config, "utf8")));
+      assert.deepEqual(stored.projects, [{ name: "web", path: "/work/web" }]);
+
+      const list = await runCli(["projects"], {
+        configDir,
+        write: (line) => output.push(line),
+      });
+      assert.equal(list.exitCode, 0);
+      assert.ok(output.some((line) => line.includes('"web"')));
+
+      const removed = await runCli(
+        ["project", "--name", "web", "--remove"],
+        { configDir, write: () => undefined },
+      );
+      assert.equal(removed.exitCode, 0);
+      const after = JSON.parse(await import("node:fs/promises").then((fs) => fs.readFile(config, "utf8")));
+      assert.deepEqual(after.projects, []);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects project registration without an absolute path", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "allinai-cli-project-"));
+    try {
+      const configDir = path.join(dir, "agent-home");
+      await runCli(
+        ["init", "--hub", "https://hub.example.test", "--client", "cli-project"],
+        { configDir, write: () => undefined },
+      );
+      const result = await runCli(
+        ["project", "--name", "bad", "--path", "relative/path"],
+        { configDir, write: () => undefined },
+      );
+      assert.equal(result.exitCode, 1);
+      assert.ok(result.output.some((line) => line.includes("absolute")));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("plugins command", () => {
+  it("lists plugins over the control port and refreshes on demand", async () => {
+    const output: string[] = [];
+    const refreshed: number[] = [];
+    const result = await runCli(["plugins", "--refresh"], {
+      homeDir: "/tmp/allinai-cli-test",
+      write: (line) => output.push(line),
+      createControlClient: () => ({
+        health: async () => ({ status: "ok" }),
+        status: async () => ({ state: "ok" }),
+        approve: async () => undefined,
+        plugins: async () => [
+          { id: "demo-plugin", resolvedCommit: "a".repeat(40), status: "active" },
+        ],
+        refreshPlugins: async () => {
+          refreshed.push(1);
+        },
+      }),
+    });
+    assert.equal(result.exitCode, 0);
+    assert.deepEqual(refreshed, [1]);
+    assert.ok(output.some((line) => line.includes("demo-plugin")));
+    assert.ok(output.some((line) => line.includes('"refreshed":true')));
+  });
+});

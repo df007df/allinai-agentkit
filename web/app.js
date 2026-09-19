@@ -1,8 +1,15 @@
 const clientList = document.getElementById("client-list");
 const offerClient = document.getElementById("offer-client");
+const offerRuntime = document.getElementById("offer-runtime");
+const offerProject = document.getElementById("offer-project");
 const offerPrompt = document.getElementById("offer-prompt");
 const offerSend = document.getElementById("offer-send");
 const offerResult = document.getElementById("offer-result");
+const pluginClient = document.getElementById("plugin-client");
+const pluginUrl = document.getElementById("plugin-url");
+const pluginId = document.getElementById("plugin-id");
+const pluginSyncBtn = document.getElementById("plugin-sync");
+const pluginResult = document.getElementById("plugin-result");
 const timeline = document.getElementById("timeline");
 const sseStatus = document.getElementById("sse-status");
 
@@ -33,6 +40,7 @@ function renderClients() {
     option.value = clientId;
     option.textContent = clientId;
     offerClient.append(option);
+    pluginClient.append(option.cloneNode(true));
   }
 }
 
@@ -52,6 +60,7 @@ function appendTimeline(entry) {
 offerSend.onclick = async () => {
   const clientId = offerClient.value;
   const prompt = offerPrompt.value.trim();
+  const project = offerProject.value.trim();
   offerResult.hidden = true;
   if (!clientId || !prompt) {
     offerResult.textContent = "请选择 client 并输入 prompt";
@@ -62,15 +71,50 @@ offerSend.onclick = async () => {
     const response = await fetch("/api/demo/offers", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ clientId, prompt }),
+      body: JSON.stringify({
+        clientId,
+        prompt,
+        runtime: offerRuntime.value,
+        ...(project ? { project } : {}),
+      }),
     });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error ?? response.status);
-    offerResult.textContent = `已入队 offer ${payload.offerId}`;
+    offerResult.textContent = `已入队 offer ${payload.offerId}（runtime=${offerRuntime.value}${project ? `，project=${project}` : ""}）`;
   } catch (error) {
     offerResult.textContent = `派发失败：${error.message}`;
   }
   offerResult.hidden = false;
+};
+
+pluginSyncBtn.onclick = async () => {
+  const clientId = pluginClient.value;
+  const gitUrl = pluginUrl.value.trim();
+  const id = pluginId.value.trim();
+  pluginResult.hidden = true;
+  if (!clientId || !gitUrl || !id) {
+    pluginResult.textContent = "请选择 client 并填写插件 ID 与 Git URL";
+    pluginResult.hidden = false;
+    return;
+  }
+  try {
+    const response = await fetch("/api/demo/plugins/sync", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        clientId,
+        plugins: [{ id, gitUrl, enabled: true }],
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error ?? response.status);
+    pluginResult.textContent = payload.delivered
+      ? "已推送 plugin.sync，等待 client 回执（见时间线 plugin.acknowledged）"
+      : "client 当前不在线，未推送";
+  } catch (error) {
+    pluginResult.textContent = `推送失败：${error.message}`;
+  }
+  pluginResult.hidden = false;
 };
 
 function setSseState(state, label) {

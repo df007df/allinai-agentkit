@@ -350,6 +350,15 @@ export const hub = createAgentHub({
               <h3>派发任务</h3>
               <label class="field-label" for="offer-client">目标 client</label>
               <select id="offer-client"></select>
+              <label class="field-label" for="offer-runtime">runtime</label>
+              <select id="offer-runtime">
+                <option value="codex">codex</option>
+                <option value="claude">claude</option>
+                <option value="pi">pi</option>
+                <option value="zcode">zcode</option>
+              </select>
+              <label class="field-label" for="offer-project">project（可选，client 本地注册的目录名）</label>
+              <input id="offer-project" placeholder="留空使用 runner 默认目录" />
               <label class="field-label" for="offer-prompt">prompt</label>
               <textarea
                 id="offer-prompt"
@@ -358,6 +367,18 @@ export const hub = createAgentHub({
               ></textarea>
               <button id="offer-send" class="btn primary full">派发 agent.run</button>
               <p id="offer-result" class="hint" hidden></p>
+            </div>
+            <div class="panel">
+              <h3>插件推送</h3>
+              <p class="hint">向在线 client 下发 plugin.sync 期望状态（Git 插件仓库列表）。</p>
+              <label class="field-label" for="plugin-client">目标 client</label>
+              <select id="plugin-client"></select>
+              <label class="field-label" for="plugin-url">插件 Git URL</label>
+              <input id="plugin-url" placeholder="https://example.com/org/plugin.git" />
+              <label class="field-label" for="plugin-id">插件 ID</label>
+              <input id="plugin-id" placeholder="my-plugin" />
+              <button id="plugin-sync" class="btn ghost full">推送 plugin.sync</button>
+              <p id="plugin-result" class="hint" hidden></p>
             </div>
           </div>
           <div class="panel timeline-panel">

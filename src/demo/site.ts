@@ -139,6 +139,10 @@ async function handleOffers(
   const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
   const runtimeCandidate =
     typeof body.runtime === "string" ? body.runtime : "";
+  const project =
+    typeof body.project === "string" && body.project.trim()
+      ? body.project.trim()
+      : undefined;
   if (!clientId || !prompt) {
     response.writeHead(400, { "content-type": "application/json" });
     response.end(JSON.stringify({ error: "invalid_offer_request" }));
@@ -160,11 +164,52 @@ async function handleOffers(
       taskId: `demo-${randomUUID()}`,
       attempt: 1,
       runtime,
-      payload: { prompt },
+      payload: { prompt, ...(project ? { project } : {}) },
     },
   });
   response.writeHead(200, { "content-type": "application/json" });
   response.end(JSON.stringify({ offerId: offer.offerId }));
+}
+
+async function handlePluginSync(
+  context: DemoRouterContext,
+  request: IncomingMessage,
+  response: ServerResponse,
+): Promise<void> {
+  const body = await readJsonBody(request);
+  const clientId = typeof body.clientId === "string" ? body.clientId : "";
+  const revision =
+    typeof body.revision === "string" && body.revision.trim()
+      ? body.revision.trim()
+      : `demo-${Date.now()}`;
+  const plugins = Array.isArray(body.plugins) ? body.plugins : [];
+  if (!clientId) {
+    response.writeHead(400, { "content-type": "application/json" });
+    response.end(JSON.stringify({ error: "invalid_plugin_sync_request" }));
+    return;
+  }
+  if (!context.projection.hasClient(clientId)) {
+    response.writeHead(404, { "content-type": "application/json" });
+    response.end(JSON.stringify({ error: "unknown_client" }));
+    return;
+  }
+  try {
+    const result = await context.hub.syncPlugins({
+      principal: DEMO_PRINCIPAL,
+      targetClientId: clientId,
+      revision,
+      plugins: plugins as never,
+    });
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify(result));
+  } catch (error) {
+    response.writeHead(400, { "content-type": "application/json" });
+    response.end(
+      JSON.stringify({
+        error: error instanceof Error ? error.message : "invalid_plugin_sync",
+      }),
+    );
+  }
 }
 
 export function createDemoRouter(
@@ -193,6 +238,10 @@ export function createDemoRouter(
         }
         if (request.method === "POST" && url.pathname === "/api/demo/offers") {
           await handleOffers(context, request, response);
+          return;
+        }
+        if (request.method === "POST" && url.pathname === "/api/demo/plugins/sync") {
+          await handlePluginSync(context, request, response);
           return;
         }
         staticHandler(request, response);

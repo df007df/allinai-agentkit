@@ -20,6 +20,10 @@ export type AgentControl = {
   status(): AgentStatus | Promise<AgentStatus>;
   /** Flush locally durable work; it never accepts a Hub-provided command. */
   sync?(): Promise<void>;
+  /** Locally installed plugins; also reported upstream on refresh. */
+  plugins?(): Promise<unknown>;
+  /** Re-report installed plugin state to the Hub without a plugin.sync push. */
+  refreshPlugins?(): Promise<void>;
 };
 
 export type AgentControlServer = {
@@ -50,6 +54,8 @@ export type AgentControlClient = {
   approve(executionId: string): Promise<void>;
   status(): Promise<AgentStatus>;
   sync?(): Promise<void>;
+  plugins?(): Promise<unknown>;
+  refreshPlugins?(): Promise<void>;
 };
 
 export type AgentControlClientOptions = {
@@ -61,12 +67,16 @@ type ControlRequest =
   | { id: string; method: "health" }
   | { id: string; method: "status" }
   | { id: string; method: "sync" }
+  | { id: string; method: "plugins" }
+  | { id: string; method: "refreshPlugins" }
   | { id: string; method: "approve"; executionId: string };
 
 type ControlRequestInput =
   | { method: "health" }
   | { method: "status" }
   | { method: "sync" }
+  | { method: "plugins" }
+  | { method: "refreshPlugins" }
   | { method: "approve"; executionId: string };
 
 type ControlResponse = {
@@ -101,6 +111,9 @@ function parseRequest(value: unknown): ControlRequest {
   if (input.method === "health") return { id: input.id, method: "health" };
   if (input.method === "status") return { id: input.id, method: "status" };
   if (input.method === "sync") return { id: input.id, method: "sync" };
+  if (input.method === "plugins") return { id: input.id, method: "plugins" };
+  if (input.method === "refreshPlugins")
+    return { id: input.id, method: "refreshPlugins" };
   if (
     input.method === "approve" &&
     typeof input.executionId === "string" &&
@@ -239,6 +252,19 @@ async function handleLine(
         throw new Error("Local Agent Client does not support sync");
       await control.sync();
       response = { id: request.id, ok: true };
+    } else if (request.method === "plugins") {
+      if (!control.plugins)
+        throw new Error("Local Agent Client does not support plugin queries");
+      response = {
+        id: request.id,
+        ok: true,
+        result: await control.plugins(),
+      };
+    } else if (request.method === "refreshPlugins") {
+      if (!control.refreshPlugins)
+        throw new Error("Local Agent Client does not support plugin refresh");
+      await control.refreshPlugins();
+      response = { id: request.id, ok: true };
     } else {
       await control.approve(request.executionId);
       response = { id: request.id, ok: true };
@@ -330,6 +356,20 @@ export function createAgentControlClient(
     },
     async sync() {
       await sendControlRequest(endpoint, { method: "sync" }, options);
+    },
+    async plugins() {
+      return await sendControlRequest(
+        endpoint,
+        { method: "plugins" },
+        options,
+      ) as unknown;
+    },
+    async refreshPlugins() {
+      await sendControlRequest(
+        endpoint,
+        { method: "refreshPlugins" },
+        options,
+      );
     },
   };
 }

@@ -18,6 +18,7 @@ import { defaultOpenBrowser, runLoginFlow } from "../login.js";
 import { startDemoSite, type DemoSite } from "../demo/index.js";
 import {
   createRotatingJsonlLogger,
+  bridgeLog,
   setBridgeLogger,
   serializeLog,
 } from "../logger.js";
@@ -147,6 +148,12 @@ const COMMAND_OPTIONS: Readonly<Record<string, CommandOptionSpec>> = {
   restart: { values: ["config-dir"] },
   uninstall: { values: ["config-dir"] },
   doctor: { values: ["config-dir"] },
+  projects: { values: ["config-dir"] },
+  project: {
+    values: ["name", "path", "config-dir"],
+    booleans: ["remove"],
+  },
+  plugins: { values: ["config-dir"], booleans: ["refresh"] },
 };
 
 function parseArgs(args: readonly string[]): ParsedArgs {
@@ -391,7 +398,12 @@ async function defaultFollowLog(
 }
 
 function help(): string {
-  return "Usage: allinai-agent <init|login|daemon|demo|install|status|logs|sync|restart|uninstall|doctor> [--config-dir PATH]";
+  return [
+    "Usage: allinai-agent <init|login|daemon|demo|install|status|logs|sync|restart|uninstall|doctor|projects|project|plugins> [--config-dir PATH]",
+    "  project --name NAME --path DIR   register a local project working directory",
+    "  project --name NAME --remove     remove a registered project",
+    "  plugins [--refresh]              list installed plugins; --refresh re-reports them to the Hub",
+  ].join("\n");
 }
 
 /**
@@ -614,6 +626,70 @@ export async function runCli(
       }
       return { exitCode: 0, output };
     }
+    if (command === "projects") {
+      const config = loadAgentConfig(paths);
+      emit(output, write, {
+        projects: config.projects,
+        defaultHint:
+          "agent.run 不带 project 字段时使用 runner 默认目录；带 project 时使用此处注册的目录",
+      });
+      return { exitCode: 0, output };
+    }
+
+    if (command === "project") {
+      const name = flagValue(parsed.flags, "name");
+      const projectPath = flagValue(parsed.flags, "path");
+      const remove = parsed.flags.get("remove") === true;
+      if (!name) throw new Error("project requires --name NAME");
+      if (remove && projectPath)
+        throw new Error("--path cannot be combined with --remove");
+      if (!remove && !projectPath)
+        throw new Error("project requires --path DIR (or --remove)");
+
+      const existing = await readConfigIfExists(paths.configFile);
+      if (!existing) throw new Error(`No agent config at ${paths.configFile}`);
+      const projects = existing.projects.filter(
+        (project) => project.name !== name,
+      );
+      if (!remove) {
+        // Validate the raw operator input before any cwd-relative resolution
+        // could silently turn a relative path into one inside the CLI process.
+        if (!path.isAbsolute(projectPath!.trim()))
+          throw new Error("--path must be an absolute directory");
+        projects.push({ name, path: path.resolve(projectPath!.trim()) });
+      }
+      const config = parseAgentConfig({ ...existing, projects });
+      await mkdir(paths.home, { recursive: true });
+      await writeFile(paths.configFile, `${JSON.stringify(config, null, 2)}\n`, {
+        encoding: "utf8",
+        mode: 0o600,
+      });
+      emit(output, write, {
+        registered: !remove,
+        removed: remove,
+        name,
+        projects: config.projects,
+        restartHint: remove
+          ? undefined
+          : "运行中的 daemon 在下一条 agent.run 时读取最新配置；也可执行 restart 立即生效",
+      });
+      return { exitCode: 0, output };
+    }
+
+    if (command === "plugins") {
+      const refresh = parsed.flags.get("refresh") === true;
+      if (!control.plugins)
+        throw new Error("This daemon does not expose plugins");
+      const plugins = await control.plugins();
+      if (refresh) {
+        if (!control.refreshPlugins)
+          throw new Error("This daemon does not support plugin refresh");
+        await control.refreshPlugins();
+      }
+      emit(output, write, { plugins, refreshed: refresh });
+      return { exitCode: 0, output };
+    }
+
     if (command === "doctor") {
       const which = scopedOptions.which ?? defaultWhich;
       const git = await which("git");
@@ -775,6 +851,12 @@ export async function createLocalAgentDaemon(
           if (!supervisor) throw new Error("Agent daemon is still starting");
           await supervisor.flush();
         },
+        plugins: async () =>
+          store?.listPluginStates().map((state) => state.plugin) ?? [],
+        refreshPlugins: async () => {
+          if (!supervisor) throw new Error("Agent daemon is still starting");
+          await supervisor.refreshPlugins();
+        },
       },
     },
   );
@@ -856,6 +938,19 @@ export async function createLocalAgentDaemon(
             ? config.policy.allowedWorkspaceRoots[0]
             : undefined,
       }),
+      // Projects are registered locally (CLI `project add`); a Hub run may
+      // select one by name, and unknown names fall back to the runner default.
+      resolveProject: (name) => {
+        if (!name) return undefined;
+        const project = config.projects.find(
+          (entry) => entry.name === name,
+        );
+        if (!project) {
+          bridgeLog.warn("daemon", "unknown project requested", { project: name });
+          return undefined;
+        }
+        return project.path;
+      },
     });
     await supervisor.start();
   } catch (error) {

@@ -647,3 +647,57 @@ test("close aborts pending upgrade authorization and late authorization cannot r
   assert.equal(response.includes("101 Switching Protocols"), false);
   assert.deepEqual(store.calls, []);
 });
+
+test("syncPlugins pushes desired plugin state to the connected owner client", async (t) => {
+  const { hub, store, connect } = await setup(t);
+  const { socket, messages } = await connect();
+  socket.send(JSON.stringify(hello));
+  // Registration is asynchronous; the socket only becomes routable after it.
+  await until(() => store.calls.some((call) => call.method === "pending"));
+
+  const desired = {
+    revision: "plugins-v7",
+    plugins: [
+      {
+        id: "demo-plugin",
+        gitUrl: "https://github.com/allin-ai/demo-plugin.git",
+        enabled: true,
+      },
+    ],
+  };
+  const delivered = await hub.syncPlugins({
+    principal,
+    targetClientId: "client-1",
+    ...desired,
+  });
+  assert.equal(delivered.delivered, true);
+  await until(() => messages.length === 1);
+  assert.deepEqual(messages[0], { type: "plugin.sync", ...desired });
+
+  // Offline clients are not deliverable; hosts re-push on registration.
+  const offline = await hub.syncPlugins({
+    principal,
+    targetClientId: "unknown-client",
+    ...desired,
+  });
+  assert.equal(offline.delivered, false);
+
+  // A different principal cannot target a client it does not own.
+  const foreign = await hub.syncPlugins({
+    principal: otherPrincipal,
+    targetClientId: "client-1",
+    ...desired,
+  });
+  assert.equal(foreign.delivered, false);
+
+  assert.throws(
+    () =>
+      hub.syncPlugins({
+        principal,
+        targetClientId: "client-1",
+        revision: "bad",
+        plugins: [{ id: "", gitUrl: "", enabled: true }] as never,
+      }),
+    /Invalid plugin sync/,
+  );
+});

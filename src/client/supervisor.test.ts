@@ -1372,4 +1372,114 @@ describe("ClientSupervisor", () => {
     await supervisor.approve("after-recovery");
     assert.equal(store.getExecution("after-recovery")?.state, "running");
   });
+
+  it("refreshPlugins re-reports installed plugins without a plugin.sync push", async () => {
+    const transport = new FakeTransport();
+    const supervisor = new ClientSupervisor({
+      store,
+      transport,
+      runner: new StreamingRunner(store),
+      policy: () => "auto",
+      plugins: new FakePluginManager(),
+    });
+    store.recordPluginSyncSuccess("plugins-v1");
+    await supervisor.refreshPlugins();
+
+    assert.equal(transport.pluginAcknowledgements.length, 1);
+    assert.deepEqual(transport.pluginAcknowledgements[0], {
+      type: "plugin.sync.ack",
+      revision: "plugins-v1",
+      status: "already_applied",
+      plugins: [{ id: "demo", resolvedCommit: "a".repeat(40) }],
+    });
+
+    const noRevision = new FakeTransport();
+    const fresh = new ClientSupervisor({
+      store: new ClientStateStore(path.join(dir, "state-2.db")),
+      transport: noRevision,
+      runner: new StreamingRunner(store),
+      plugins: new FakePluginManager(),
+    });
+    await fresh.refreshPlugins();
+    assert.equal(noRevision.pluginAcknowledgements[0]?.status, "applied");
+    assert.match(
+      noRevision.pluginAcknowledgements[0]?.revision ?? "",
+      /^local-/,
+    );
+  });
+
+  it("refreshPlugins fails loudly when the plugin manager is absent", async () => {
+    const supervisor = new ClientSupervisor({
+      store,
+      transport: new FakeTransport(),
+      runner: new StreamingRunner(store),
+    });
+    await assert.rejects(() => supervisor.refreshPlugins(), /unavailable/);
+  });
+
+  it("resolves a hub-requested project name to its local directory", async () => {
+    const transport = new FakeTransport();
+    const runner = new StreamingRunner(store);
+    const started: PlatformRunInput[] = [];
+    const original = runner.start.bind(runner);
+    runner.start = (executionId: string, input: PlatformRunInput) => {
+      started.push(input);
+      return original(executionId, input);
+    };
+    const supervisor = new ClientSupervisor({
+      store,
+      transport,
+      runner,
+      policy: () => "auto",
+      resolveProject: (name) =>
+        name === "web" ? "/work/web" : undefined,
+    });
+    await supervisor.start();
+
+    await transport.deliver({
+      ...agentRun("project-run"),
+      payload: { prompt: "hello", project: "web" },
+    });
+    await eventually(() => {
+      assert.equal(store.getExecution("project-run")?.state, "running");
+    });
+    assert.equal(started[0]?.cwd, "/work/web");
+    assert.equal(started[0]?.context?.resolvedProjectPath, "/work/web");
+
+    await transport.deliver({
+      ...agentRun("unknown-project-run"),
+      payload: { prompt: "hello", project: "missing" },
+    });
+    await eventually(() => {
+      assert.equal(store.getExecution("unknown-project-run")?.state, "running");
+    });
+    assert.equal(started[1]?.cwd, undefined);
+  });
+
+  it("delivers terminal events immediately after a run completes", async () => {
+    const transport = new FakeTransport();
+    transport.acknowledgements = { e1: 3 };
+    const runner = new StreamingRunner(store);
+    const supervisor = new ClientSupervisor({
+      store,
+      transport,
+      runner,
+      policy: () => "auto",
+    });
+    await supervisor.start();
+
+    await transport.deliver(agentRun());
+    runner.emit("e1", { type: "done", payload: { sessionId: "s1" } });
+    await eventually(() => {
+      assert.equal(transport.pushed.length >= 1, true);
+    });
+    await eventually(() => {
+      assert.equal(store.listUnackedEvents("e1").length, 0);
+    });
+    // The single post-terminal push carried the whole durable sequence.
+    assert.deepEqual(
+      transport.pushed.at(-1)?.map((event) => event.type),
+      ["received", "running", "done"],
+    );
+  });
 });

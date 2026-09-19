@@ -64,6 +64,7 @@ describe("agent config", () => {
       hubBaseUrl: "https://hub.example.test/",
       clientId: "client-1",
       maxConcurrentRuns: 2,
+      projects: [],
       policy: {
         autoRuntimes: ["codex"],
         autoPermissions: [],
@@ -84,6 +85,44 @@ describe("agent config", () => {
         deniedPluginIds: [],
         allowedWorkspaceRoots: [],
       },
+      projects: [],
     });
+  });
+
+  it("parses locally registered projects with unique names and absolute paths", () => {
+    const config = parseAgentConfig({
+      hubBaseUrl: "https://hub.example.test",
+      clientId: "client-1",
+      projects: [
+        { name: "web", path: "/work/web" },
+        { name: "api", path: "/work/api/" },
+      ],
+    });
+    assert.deepEqual(config.projects, [
+      { name: "web", path: "/work/web" },
+      { name: "api", path: "/work/api" },
+    ]);
+
+    assert.throws(
+      () =>
+        parseAgentConfig({
+          hubBaseUrl: "https://hub.example.test",
+          clientId: "client-1",
+          projects: [
+            { name: "web", path: "/work/web" },
+            { name: "web", path: "/work/other" },
+          ],
+        }),
+      /duplicated/,
+    );
+    assert.throws(
+      () =>
+        parseAgentConfig({
+          hubBaseUrl: "https://hub.example.test",
+          clientId: "client-1",
+          projects: [{ name: "relative", path: "work/relative" }],
+        }),
+      /absolute/,
+    );
   });
 });

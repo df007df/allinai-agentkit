@@ -5,6 +5,7 @@ import type {
   ClientEventBatch,
   ClientHello,
   HubEventAcknowledgement,
+  PluginConfig,
   PluginSyncAcknowledgement,
 } from "../protocol/index.js";
 
@@ -100,6 +101,16 @@ export interface AgentHub<Principal> {
   /** Attach once; the caller owns listen() and closing the HTTP server. */
   attach(server: Server, options?: HubAttachOptions): void;
   offer(input: HubOfferInput<Principal>): Promise<StoredOffer>;
+  /**
+   * Push desired plugin state to a connected client. Offline or unknown
+   * clients reject; hosts re-push on the client's next registration.
+   */
+  syncPlugins(input: {
+    principal: Principal;
+    targetClientId: string;
+    revision: string;
+    plugins: PluginConfig[];
+  }): Promise<{ delivered: boolean }>;
   /** Detach handlers and close Hub sockets without closing the caller's server. */
   close(): Promise<void>;
 }

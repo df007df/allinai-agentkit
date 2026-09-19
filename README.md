@@ -23,6 +23,16 @@ node bin/allinai-agent daemon
 
 授权模型：demo 启动不发放任何全局 token；client 凭自己 config 里的唯一 clientId 发起 `login`，浏览器授权页确认后，web 内存中登记 `token → clientId` 并以此放行后续连接（内存态，重启即清空，需重新 login）。
 
+## 安装（一键 sh 脚本）
+
+```bash
+sh scripts/install.sh                 # npm 全局安装最新版
+sh scripts/install.sh 0.2.0           # 指定版本
+sh scripts/install.sh --from-source   # 本仓库构建 + npm link（开发）
+```
+
+脚本会检查 Node.js ≥ 22.18，安装后验证 `allinai-agent --help`。
+
 ## 包结构
 
 | 入口 | 内容 |
@@ -37,8 +47,31 @@ node bin/allinai-agent daemon
 ## CLI
 
 ```
-allinai-agent <init|login|daemon|demo|install|status|logs|sync|restart|uninstall|doctor>
+allinai-agent <init|login|daemon|demo|install|status|logs|sync|restart|uninstall|doctor|projects|project|plugins>
+allinai-agent project --name web --path /work/web    # 注册项目工作目录
+allinai-agent project --name web --remove            # 移除
+allinai-agent projects                               # 列出已注册项目
+allinai-agent plugins [--refresh]                    # 查看已装插件；--refresh 重新上报 Hub
 ```
+
+### 项目目录
+
+项目在 client 本地 config.json 的 `projects` 中注册（`project add` 即写入）。Hub 下发的 `agent.run` 可携带 `payload.project`：
+
+- 不带 `project`（或名字未注册）：使用各 runtime 的默认工作目录；
+- 带 `project` 且已注册：在该目录中执行，同时把 `resolvedProjectPath` 附进执行上下文。
+
+Hub 无法自选任意路径——只能从本地注册的目录里按名字挑选。
+
+### 插件
+
+- Hub 主动推送：`hub.syncPlugins({ principal, targetClientId, revision, plugins })`（demo 站点提供 `POST /api/demo/plugins/sync`）。
+- client 收到后校验清单、克隆到不可变修订目录并原子激活，随后回 `plugin.sync.ack`（含每个插件的 resolvedCommit）。
+- 本地随时查看：`allinai-agent plugins`；重新上报：`allinai-agent plugins --refresh`。
+
+### 执行日志
+
+daemon 把每条命令的接收、策略判定、runner 终态写入 `~/.allinai/agent/logs/agent.log`（滚动 JSONL，自动脱敏）。`allinai-agent logs [-f]` 查看并再次脱敏输出。
 
 ## 开发
 
