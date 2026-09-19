@@ -13,6 +13,7 @@ import type {
   PluginSyncAcknowledgement,
 } from "../protocol/index.js";
 import { createLocalAgentDaemon, type RuntimeProbeResult } from "./commands.js";
+import type { PlatformProbe } from "../runtime/index.js";
 
 /**
  * Records every handler registration and uplink report. `connect` never fires
@@ -71,6 +72,14 @@ async function waitFor(
     await new Promise<void>((resolve) => setTimeout(resolve, 10));
   }
   throw new Error(`Timed out waiting for ${description}`);
+}
+
+const INVENTORY_PROBE_REJECTION = new Error(
+  "pi sdk is not installed (optional dependency missing)",
+);
+
+function probe(id: string, probeResult: PlatformProbe): RuntimeProbeResult {
+  return { id, probe: probeResult };
 }
 
 describe("local agent daemon composition", () => {
@@ -235,5 +244,91 @@ describe("local agent daemon composition", () => {
       report.plugins[0]?.gitUrl,
       "https://fixture.test/daemon-inventory-plugin.git",
     );
+  });
+
+  it("degrades a rejecting platform probe to installed:false and keeps the other platforms", async () => {
+    if (process.platform === "win32") return;
+    dir = mkdtempSync(path.join(tmpdir(), "allinai-agent-daemon-probe-fail-"));
+    writeFileSync(
+      path.join(dir, "config.json"),
+      JSON.stringify({
+        hubBaseUrl: "https://hub.example.test",
+        clientId: "test-client",
+        maxConcurrentRuns: 1,
+        policy: {
+          autoRuntimes: [],
+          autoPermissions: [],
+          allowedGitOrigins: ["fixture.test"],
+          deniedPluginIds: [],
+          allowedWorkspaceRoots: [],
+        },
+      }),
+    );
+    const credentials = {
+      load: async () => "daemon-probe-fail-token",
+      save: async () => undefined,
+      clear: async () => undefined,
+    };
+    const transport = createRecordingTransport();
+
+    const daemon = await createLocalAgentDaemon({
+      configDir: dir,
+      credentials,
+      // One platform's probe rejects (the typical missing optional SDK case);
+      // the provider must not turn that into an empty platform list. The cast
+      // mirrors the array-construction stage where probe() has already been
+      // invoked but not yet awaited.
+      probeRuntimes: async () => [
+        probe("codex", { installed: true, version: "1.2.3" }),
+        probe("claude", { installed: true, version: null }),
+        {
+          id: "pi",
+          probe: Promise.reject(
+            INVENTORY_PROBE_REJECTION,
+          ) as unknown as PlatformProbe,
+        },
+      ],
+      createTransport: () => transport,
+    });
+    close = () => daemon.close();
+
+    // Drive a forced inventory query so the report reflects the probe run.
+    const handlers = transport.recorded.handlers;
+    assert.ok(handlers?.pluginSync, "daemon must register a pluginSync handler");
+    await handlers.pluginSync({
+      revision: "probe-fail-rev-1",
+      plugins: [],
+      inventoryQuery: true,
+    });
+    await waitFor(
+      () => transport.recorded.inventoryReports.length >= 1,
+      "the forced inventory report after the query",
+    );
+
+    const report = transport.recorded.inventoryReports.at(-1)!;
+    assert.equal(report.type, "inventory.report");
+    assert.equal(
+      report.platforms.length,
+      3,
+      "a single rejecting probe must not empty the platform list",
+    );
+    const pi = report.platforms.find((platform) => platform.platform === "pi");
+    assert.ok(pi, "the failing platform must still be listed");
+    assert.equal(pi.installed, false);
+    assert.equal(pi.version, null);
+    assert.ok(
+      pi.reason?.includes(INVENTORY_PROBE_REJECTION.message),
+      `the reason must carry the probe error, got: ${pi.reason}`,
+    );
+    const codex = report.platforms.find(
+      (platform) => platform.platform === "codex",
+    );
+    assert.ok(codex?.installed, "the healthy platform must stay installed");
+    assert.equal(codex.version, "1.2.3");
+    const claude = report.platforms.find(
+      (platform) => platform.platform === "claude",
+    );
+    assert.ok(claude?.installed);
+    assert.equal(claude.version, null);
   });
 });

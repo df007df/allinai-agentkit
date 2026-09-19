@@ -39,6 +39,7 @@ import {
   createPlatformAdapterRegistry,
   createRunnerManager,
   type PlatformProbe,
+  type RegisteredPlatformAdapter,
   type RunnerManager,
 } from "../runtime/index.js";
 import {
@@ -369,14 +370,31 @@ async function defaultWhich(name: string): Promise<string | null> {
   });
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * A missing optional runtime SDK is a normal condition, not a daemon failure:
+ * one rejecting probe degrades that platform to `installed: false` so the
+ * remaining platforms stay visible in the inventory.
+ */
+async function probeOrUnavailable(
+  adapter: RegisteredPlatformAdapter,
+): Promise<RuntimeProbeResult> {
+  try {
+    return { id: adapter.id, probe: await adapter.probe() };
+  } catch (error) {
+    return {
+      id: adapter.id,
+      probe: { installed: false, version: null, reason: errorMessage(error) },
+    };
+  }
+}
+
 async function defaultProbeRuntimes(): Promise<RuntimeProbeResult[]> {
   const registry = createPlatformAdapterRegistry();
-  return await Promise.all(
-    registry.list().map(async (adapter) => ({
-      id: adapter.id,
-      probe: await adapter.probe(),
-    })),
-  );
+  return await Promise.all(registry.list().map(probeOrUnavailable));
 }
 
 /** Follow only the client-owned JSONL file and reapply redaction before output. */
@@ -803,27 +821,43 @@ const INVENTORY_PROBE_TTL_MS = 60_000;
 /**
  * Supplies local inventory to the supervisor's inventory reports. Platform
  * probes are cached briefly because every sync, connect, and Hub query
- * refreshes otherwise. A probe failure is deliberately not swallowed here:
- * the supervisor degrades platforms to an empty list, and the cache is only
- * written after a successful probe so the next call retries.
+ * refreshes otherwise. A rejecting probe degrades that single platform to
+ * `installed: false` (with the error as reason) so the remaining platforms
+ * stay visible; the supervisor still degrades to an empty list if the
+ * provider itself throws. The cache is only written after the probe batch
+ * resolves so the next call retries.
  */
 function createInventoryProvider(input: {
   store: ClientStateStore;
   probeRuntimes: () => Promise<RuntimeProbeResult[]>;
 }): () => Promise<InventoryReport> {
   let cache: { at: number; platforms: PlatformInventoryEntry[] } | null = null;
+  const toEntry = async ({
+    id,
+    probe,
+  }: RuntimeProbeResult): Promise<PlatformInventoryEntry> => {
+    let resolved: PlatformProbe;
+    try {
+      resolved = await probe;
+    } catch (error) {
+      resolved = {
+        installed: false,
+        version: null,
+        reason: errorMessage(error),
+      };
+    }
+    return {
+      platform: id as PlatformInventoryEntry["platform"],
+      installed: resolved.installed,
+      version: resolved.version,
+      ...(resolved.reason !== undefined ? { reason: resolved.reason } : {}),
+    };
+  };
   return async () => {
     const now = Date.now();
     if (!cache || now - cache.at > INVENTORY_PROBE_TTL_MS) {
       const probes = await input.probeRuntimes();
-      const platforms = probes.map(
-        ({ id, probe }): PlatformInventoryEntry => ({
-          platform: id as PlatformInventoryEntry["platform"],
-          installed: probe.installed,
-          version: probe.version,
-          ...(probe.reason !== undefined ? { reason: probe.reason } : {}),
-        }),
-      );
+      const platforms = await Promise.all(probes.map(toEntry));
       cache = { at: now, platforms };
     }
     const probed = cache;
