@@ -7,7 +7,10 @@ import {
   type ClientEventBatch,
   type ClientEventType,
   type HubDownlink,
+  type InventoryReport,
+  type PlatformInventoryEntry,
   type PluginConfig,
+  type PluginInventoryEntry,
   type PluginSyncAcknowledgement,
   type RuntimeId,
 } from "./types.js";
@@ -263,6 +266,67 @@ function isPluginSyncAcknowledgement(
   );
 }
 
+function isPlatformInventoryEntry(value: unknown): value is PlatformInventoryEntry {
+  if (
+    !isPlainObject(value) ||
+    !hasOnlyKeys(value, ["platform", "installed", "version", "reason"]) ||
+    !isRuntimeId(value.platform) ||
+    typeof value.installed !== "boolean" ||
+    (value.version !== null && typeof value.version !== "string")
+  )
+    return false;
+  return value.reason === undefined || isNonEmptyString(value.reason);
+}
+
+function isPluginInventoryEntry(value: unknown): value is PluginInventoryEntry {
+  if (
+    !isPlainObject(value) ||
+    !hasOnlyKeys(
+      value,
+      [
+        "id",
+        "gitUrl",
+        "ref",
+        "enabled",
+        "status",
+        "resolvedCommit",
+        "installedAt",
+        "lastError",
+      ],
+    ) ||
+    !isNonEmptyString(value.id) ||
+    !isNonEmptyString(value.gitUrl) ||
+    typeof value.enabled !== "boolean" ||
+    !["active", "blocked", "failed"].includes(value.status as string) ||
+    typeof value.resolvedCommit !== "string" ||
+    !(value.resolvedCommit === "unresolved" || /^[0-9a-f]{40}$/i.test(value.resolvedCommit)) ||
+    !isNonEmptyString(value.installedAt)
+  )
+    return false;
+  if (value.ref !== undefined && !isNonEmptyString(value.ref)) return false;
+  return value.lastError === undefined || isNonEmptyString(value.lastError);
+}
+
+export function parseInventoryReport(value: unknown): InventoryReport | null {
+  if (
+    !isPlainObject(value) ||
+    !hasOnlyKeys(value, ["type", "reportedAt", "platforms", "plugins"]) ||
+    value.type !== "inventory.report" ||
+    !isNonEmptyString(value.reportedAt) ||
+    !Array.isArray(value.platforms) ||
+    !value.platforms.every(isPlatformInventoryEntry) ||
+    !Array.isArray(value.plugins) ||
+    !value.plugins.every(isPluginInventoryEntry)
+  )
+    return null;
+  return {
+    type: "inventory.report",
+    reportedAt: value.reportedAt,
+    platforms: value.platforms,
+    plugins: value.plugins,
+  };
+}
+
 export function parsePluginSyncAcknowledgement(
   value: unknown,
 ): PluginSyncAcknowledgement | null {
@@ -328,15 +392,17 @@ export function parseHubDownlink(value: unknown): HubDownlink | null {
   }
   if (
     value.type === "plugin.sync" &&
-    hasOnlyKeys(value, ["type", "revision", "plugins"]) &&
+    hasOnlyKeys(value, ["type", "revision", "plugins", "inventoryQuery"]) &&
     isNonEmptyString(value.revision) &&
     Array.isArray(value.plugins) &&
-    value.plugins.every(isPluginConfig)
+    value.plugins.every(isPluginConfig) &&
+    (value.inventoryQuery === undefined || value.inventoryQuery === true)
   )
     return {
       type: "plugin.sync",
       revision: value.revision,
       plugins: value.plugins,
+      ...(value.inventoryQuery === true ? { inventoryQuery: true } : {}),
     };
   return null;
 }

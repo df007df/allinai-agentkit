@@ -64,7 +64,13 @@ export type PluginConfig = {
 
 export type HubDownlink =
   | { type: "task.offer"; command: ClientCommand }
-  | { type: "plugin.sync"; revision: string; plugins: PluginConfig[] };
+  | {
+      type: "plugin.sync";
+      revision: string;
+      plugins: PluginConfig[];
+      /** Query-only downlink: report inventory, apply no side effects. */
+      inventoryQuery?: true;
+    };
 
 export type PluginSyncStatus = "applied" | "already_applied" | "failed";
 
@@ -93,4 +99,29 @@ export type HubRuntimeEvent = {
   kind: string;
   ts: string;
   payload: unknown;
+};
+
+export type PlatformInventoryEntry = {
+  platform: RuntimeId;
+  installed: boolean;
+  version: string | null;
+  reason?: string;
+};
+
+export type PluginInventoryEntry = {
+  id: string;
+  gitUrl: string;
+  ref?: string;
+  enabled: boolean;
+  status: "active" | "blocked" | "failed";
+  resolvedCommit: string;
+  installedAt: string;
+  lastError?: string;
+};
+
+export type InventoryReport = {
+  type: "inventory.report";
+  reportedAt: string;
+  platforms: PlatformInventoryEntry[];
+  plugins: PluginInventoryEntry[];
 };

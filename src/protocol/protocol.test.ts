@@ -13,6 +13,7 @@ import {
   parseClientHello,
   parseHubDownlink,
   parseHubEventAcknowledgement,
+  parseInventoryReport,
   parsePluginSyncAcknowledgement,
 } from "./index.js";
 import * as compatibilityWire from "../wire.js";
@@ -146,6 +147,91 @@ describe("agent-client protocol export boundary", () => {
     }
   });
 
+  it("parses a valid inventory report", () => {
+    const report = {
+      type: "inventory.report",
+      reportedAt: "2026-09-19T00:00:00.000Z",
+      platforms: [
+        { platform: "codex", installed: true, version: "1.2.3" },
+        { platform: "zcode", installed: false, version: null, reason: "not configured" },
+      ],
+      plugins: [
+        {
+          id: "demo",
+          gitUrl: "https://example.com/demo.git",
+          ref: "v1",
+          enabled: true,
+          status: "active",
+          resolvedCommit: "a".repeat(40),
+          installedAt: "2026-09-19T00:00:00.000Z",
+        },
+        {
+          id: "broken",
+          gitUrl: "https://example.com/broken.git",
+          enabled: false,
+          status: "failed",
+          resolvedCommit: "unresolved",
+          installedAt: "2026-09-19T00:00:00.000Z",
+          lastError: "git clone failed",
+        },
+      ],
+    };
+    assert.deepEqual(parseInventoryReport(report), report);
+  });
+
+  it("rejects invalid inventory reports", () => {
+    assert.equal(parseInventoryReport(null), null);
+    assert.equal(parseInventoryReport({ type: "inventory.report" }), null);
+    assert.equal(
+      parseInventoryReport({
+        type: "inventory.report",
+        reportedAt: "2026-09-19T00:00:00.000Z",
+        platforms: [{ platform: "nope", installed: true, version: null }],
+        plugins: [],
+      }),
+      null,
+    );
+    assert.equal(
+      parseInventoryReport({
+        type: "inventory.report",
+        reportedAt: "2026-09-19T00:00:00.000Z",
+        platforms: [],
+        plugins: [
+          {
+            id: "x",
+            gitUrl: "https://example.com/x.git",
+            enabled: true,
+            status: "unknown",
+            resolvedCommit: "a".repeat(40),
+            installedAt: "2026-09-19T00:00:00.000Z",
+          },
+        ],
+      }),
+      null,
+    );
+  });
+
+  it("accepts plugin.sync with inventoryQuery flag and rejects extra keys", () => {
+    assert.deepEqual(
+      parseHubDownlink({
+        type: "plugin.sync",
+        revision: "r1",
+        plugins: [],
+        inventoryQuery: true,
+      }),
+      { type: "plugin.sync", revision: "r1", plugins: [], inventoryQuery: true },
+    );
+    assert.equal(
+      parseHubDownlink({
+        type: "plugin.sync",
+        revision: "r1",
+        plugins: [],
+        inventoryQuery: "yes",
+      }),
+      null,
+    );
+  });
+
   it("round-trips version, execution, ordering, watermarks, and plugin revisions", () => {
     const hello = encodeClientHello("client-1");
     assert.equal(hello.protocolVersion, AGENT_CLIENT_PROTOCOL_VERSION);
@@ -194,6 +280,7 @@ describe("agent-client protocol export boundary", () => {
       parseClientHello,
       parseHubDownlink,
       parseHubEventAcknowledgement,
+      parseInventoryReport,
       parsePluginSyncAcknowledgement,
     };
     assert.deepEqual(
