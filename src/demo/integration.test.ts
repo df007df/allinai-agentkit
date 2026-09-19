@@ -9,6 +9,13 @@ import { runLoginFlow } from "../login.js";
 import { resolveAgentPathsAt } from "../paths.js";
 import { startDemoSite } from "./index.js";
 
+const report = {
+  type: "inventory.report" as const,
+  reportedAt: "2026-09-19T00:00:00.000Z",
+  platforms: [],
+  plugins: [],
+};
+
 describe("demo site end-to-end", () => {
   it("login issues a token that a real client uses to receive offers", async () => {
     const site = await startDemoSite({ port: 0 });
@@ -95,10 +102,20 @@ describe("demo site end-to-end", () => {
       }
       assert.equal((received as { kind: string } | null)?.kind, "agent.run");
 
+      // 触发一次 inventory.query；client 回报后观测流应出现 inventory 记录。
+      const queried = await fetch(`${site.url}/api/demo/inventory/query`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ clientId: "e2e-client" }),
+      });
+      assert.equal(queried.status, 200);
+      await transport.reportInventory?.(report);
+
       const seenDeadline = Date.now() + 2_000;
       while (
         !seen.includes("client.registered") ||
-        !seen.includes("offer.enqueued")
+        !seen.includes("offer.enqueued") ||
+        !seen.includes("inventory.recorded")
       ) {
         assert.ok(Date.now() < seenDeadline, "timed out waiting for sse events");
         await new Promise((resolve) => setTimeout(resolve, 10));

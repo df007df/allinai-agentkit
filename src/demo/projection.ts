@@ -41,6 +41,8 @@ export class DemoProjection {
         break;
       }
       default:
+        // plugin.acknowledged / inventory.recorded 不改投影状态：它们已通过
+        // startDemoSiteCore 的 sink 原样进入 SSE observation 广播（页面时间线）。
         break;
     }
   }

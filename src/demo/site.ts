@@ -212,6 +212,59 @@ async function handlePluginSync(
   }
 }
 
+async function handleInventoryQuery(
+  context: DemoRouterContext,
+  request: IncomingMessage,
+  response: ServerResponse,
+): Promise<void> {
+  const body = await readJsonBody(request);
+  const clientId = typeof body.clientId === "string" ? body.clientId : "";
+  if (!clientId) {
+    response.writeHead(400, { "content-type": "application/json" });
+    response.end(JSON.stringify({ error: "invalid_inventory_request" }));
+    return;
+  }
+  if (!context.projection.hasClient(clientId)) {
+    response.writeHead(404, { "content-type": "application/json" });
+    response.end(JSON.stringify({ error: "unknown_client" }));
+    return;
+  }
+  const result = await context.hub.syncPlugins({
+    principal: DEMO_PRINCIPAL,
+    targetClientId: clientId,
+    revision: `inventory-${Date.now()}`,
+    plugins: [],
+    inventoryQuery: true,
+  });
+  response.writeHead(200, { "content-type": "application/json" });
+  response.end(JSON.stringify(result));
+}
+
+function handleInventoryGet(
+  context: DemoRouterContext,
+  pathname: string,
+  response: ServerResponse,
+): void {
+  const clientId = decodeURIComponent(
+    pathname.slice("/api/demo/inventory/".length),
+  );
+  void context.hub
+    .getInventory({ principal: DEMO_PRINCIPAL, clientId })
+    .then((report) => {
+      if (!report) {
+        response.writeHead(404, { "content-type": "application/json" });
+        response.end(JSON.stringify({ error: "no_report" }));
+        return;
+      }
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify(report));
+    })
+    .catch(() => {
+      response.writeHead(500, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: "internal_error" }));
+    });
+}
+
 export function createDemoRouter(
   context: DemoRouterContext,
 ): (request: IncomingMessage, response: ServerResponse) => void {
@@ -242,6 +295,14 @@ export function createDemoRouter(
         }
         if (request.method === "POST" && url.pathname === "/api/demo/plugins/sync") {
           await handlePluginSync(context, request, response);
+          return;
+        }
+        if (request.method === "POST" && url.pathname === "/api/demo/inventory/query") {
+          await handleInventoryQuery(context, request, response);
+          return;
+        }
+        if (request.method === "GET" && url.pathname.startsWith("/api/demo/inventory/")) {
+          handleInventoryGet(context, url.pathname, response);
           return;
         }
         staticHandler(request, response);

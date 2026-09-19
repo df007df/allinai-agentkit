@@ -268,6 +268,139 @@ describe("demo offers endpoint", () => {
   });
 });
 
+describe("demo inventory endpoints", () => {
+  const report = {
+    type: "inventory.report" as const,
+    reportedAt: "2026-09-19T00:00:00.000Z",
+    platforms: [],
+    plugins: [],
+  };
+
+  it("inventory/query triggers syncPlugins with inventoryQuery and reports delivery", async () => {
+    const site = await startDemoSite({ port: 0 });
+    let sync: { revision: string; inventoryQuery: boolean } | null = null;
+    const transport = new WsClientTransport({
+      hubBaseUrl: site.url,
+      token: await loginToken(site, "inventory-client"),
+      clientId: "inventory-client",
+    });
+    try {
+      await transport.connect({
+        command: async () => {},
+        connected: async () => {},
+        pluginSync: async (input) => {
+          sync = input;
+        },
+      });
+
+      const query = () =>
+        fetch(`${site.url}/api/demo/inventory/query`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ clientId: "inventory-client" }),
+        });
+      // connect() 返回时服务端注册可能尚未落地，404 短暂重试。
+      let response = await query();
+      const registerDeadline = Date.now() + 2_000;
+      while (response.status === 404 && Date.now() < registerDeadline) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        response = await query();
+      }
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), { delivered: true });
+
+      const syncDeadline = Date.now() + 2_000;
+      while (!sync && Date.now() < syncDeadline) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      assert.ok(sync);
+      assert.equal(sync.inventoryQuery, true);
+
+      // client 掉线后仍可查询：已注册但未连接 → delivered=false。
+      await transport.close();
+      let offlinePayload: { delivered: boolean } | null = null;
+      const offlineDeadline = Date.now() + 2_000;
+      while (Date.now() < offlineDeadline) {
+        const offline = await query();
+        assert.equal(offline.status, 200);
+        offlinePayload = (await offline.json()) as { delivered: boolean };
+        if (offlinePayload.delivered === false) break;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      assert.deepEqual(offlinePayload, { delivered: false });
+    } finally {
+      await transport.close();
+      await site.close();
+    }
+  });
+
+  it("inventory/:id returns the latest report or 404 no_report", async () => {
+    const site = await startDemoSite({ port: 0 });
+    try {
+      const socket = new WebSocket(
+        `${site.hubUrl}?token=${await loginToken(site, "report-client")}`,
+      );
+      await once(socket, "open");
+      socket.send(
+        JSON.stringify({
+          type: "client.hello",
+          protocolVersion: 2,
+          clientId: "report-client",
+        }),
+      );
+
+      const get = () => fetch(`${site.url}/api/demo/inventory/report-client`);
+      // 等注册落地：未注册时 store 侧所有权校验会以 500 拒绝，注册后为 404。
+      let response = await get();
+      const registerDeadline = Date.now() + 2_000;
+      while (response.status !== 404 && Date.now() < registerDeadline) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        response = await get();
+      }
+      assert.equal(response.status, 404);
+      assert.deepEqual(await response.json(), { error: "no_report" });
+
+      socket.send(JSON.stringify(report));
+      let reported = await get();
+      const reportDeadline = Date.now() + 2_000;
+      while (reported.status !== 200 && Date.now() < reportDeadline) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        reported = await get();
+      }
+      assert.equal(reported.status, 200);
+      assert.deepEqual(await reported.json(), report);
+      socket.close();
+    } finally {
+      await site.close();
+    }
+  });
+
+  it("rejects inventory query for unknown clients", async () => {
+    const site = await startDemoSite({ port: 0 });
+    try {
+      const missing = await fetch(`${site.url}/api/demo/inventory/query`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ clientId: "ghost" }),
+      });
+      assert.equal(missing.status, 404);
+      assert.deepEqual(await missing.json(), { error: "unknown_client" });
+
+      const invalid = await fetch(`${site.url}/api/demo/inventory/query`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      });
+      assert.equal(invalid.status, 400);
+      assert.deepEqual(await invalid.json(), {
+        error: "invalid_inventory_request",
+      });
+    } finally {
+      await site.close();
+    }
+  });
+});
+
 describe("custom hub store injection", () => {
   it("routes registrations through a caller-provided store", async () => {
     const registered: string[] = [];
