@@ -9,14 +9,14 @@ import {
 describe("systemd user service", () => {
   it("renders a per-user unit with a fixed daemon invocation", () => {
     const unit = buildSystemdUserUnit({
-      executable: "/usr/local/bin/allinai-agent",
+      executable: "/usr/local/bin/allinai-agentkit",
       configDir: "/home/a/.allinai/agent",
     });
 
     assert.match(unit, /^\[Unit\]/m);
     assert.match(
       unit,
-      /ExecStart=\/usr\/local\/bin\/allinai-agent daemon --config-dir \/home\/a\/\.allinai\/agent/m,
+      /ExecStart=\/usr\/local\/bin\/allinai-agentkit daemon --config-dir \/home\/a\/\.allinai\/agent/m,
     );
     assert.match(unit, /WantedBy=default\.target/m);
     assert.doesNotMatch(unit, /sudo|system\/|root/i);
@@ -25,14 +25,14 @@ describe("systemd user service", () => {
   it("uses only the current user's systemd unit directory", () => {
     assert.equal(
       systemdUserUnitPath("/home/a"),
-      "/home/a/.config/systemd/user/allinai-agent.service",
+      "/home/a/.config/systemd/user/allinai-agentkit.service",
     );
   });
 
   it("refuses a root-owned user-service installation", async () => {
     await assert.rejects(
       installSystemdUserService({
-        executable: "/usr/local/bin/allinai-agent",
+        executable: "/usr/local/bin/allinai-agentkit",
         configDir: "/root/.allinai/agent",
         homeDir: "/root",
         uid: 0,

@@ -39,7 +39,7 @@ describe("agent JSONL logger", () => {
   });
 
   it("rotates before writing a line that would exceed the configured size", async () => {
-    dir = mkdtempSync(path.join(tmpdir(), "allinai-agent-log-"));
+    dir = mkdtempSync(path.join(tmpdir(), "allinai-agentkit-log-"));
     const logger = createRotatingJsonlLogger({
       logsRoot: dir,
       maxBytes: 90,

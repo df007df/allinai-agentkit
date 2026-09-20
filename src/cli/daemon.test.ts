@@ -94,7 +94,7 @@ describe("local agent daemon composition", () => {
 
   it("acquires one local control socket and remains unpaired without a credential", async () => {
     if (process.platform === "win32") return;
-    dir = mkdtempSync(path.join(tmpdir(), "allinai-agent-daemon-"));
+    dir = mkdtempSync(path.join(tmpdir(), "allinai-agentkit-daemon-"));
     writeFileSync(
       path.join(dir, "config.json"),
       JSON.stringify({
@@ -136,7 +136,7 @@ describe("local agent daemon composition", () => {
 
   it("wires an inventoryProvider that reports installed plugins and probed platforms", async () => {
     if (process.platform === "win32") return;
-    dir = mkdtempSync(path.join(tmpdir(), "allinai-agent-daemon-inventory-"));
+    dir = mkdtempSync(path.join(tmpdir(), "allinai-agentkit-daemon-inventory-"));
     writeFileSync(
       path.join(dir, "config.json"),
       JSON.stringify({
@@ -248,7 +248,7 @@ describe("local agent daemon composition", () => {
 
   it("degrades a rejecting platform probe to installed:false and keeps the other platforms", async () => {
     if (process.platform === "win32") return;
-    dir = mkdtempSync(path.join(tmpdir(), "allinai-agent-daemon-probe-fail-"));
+    dir = mkdtempSync(path.join(tmpdir(), "allinai-agentkit-daemon-probe-fail-"));
     writeFileSync(
       path.join(dir, "config.json"),
       JSON.stringify({

@@ -3,9 +3,9 @@ import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
 test("memory Hub helpers are available only from the testkit subpath", async () => {
-  const hub = await import("@allin-ai/agent-client/hub");
-  const root = await import("@allin-ai/agent-client");
-  const testkit = await import("@allin-ai/agent-client/hub/testkit");
+  const hub = await import("@allin-ai/agentkit/hub");
+  const root = await import("@allin-ai/agentkit");
+  const testkit = await import("@allin-ai/agentkit/hub/testkit");
 
   assert.equal("createMemoryHub" in hub, false);
   assert.equal("createMemoryHub" in root, false);

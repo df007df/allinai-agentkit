@@ -21,7 +21,7 @@ describe("agent control endpoint", () => {
 
   it("serves health, status and approval through a Unix socket only", async () => {
     if (process.platform === "win32") return;
-    dir = mkdtempSync(path.join(tmpdir(), "allinai-agent-control-"));
+    dir = mkdtempSync(path.join(tmpdir(), "allinai-agentkit-control-"));
     const socketPath = path.join(dir, "control.sock");
     const approvals: string[] = [];
     const server = await startAgentControlServer({
@@ -48,7 +48,7 @@ describe("agent control endpoint", () => {
 
   it("does not unlink a non-socket path while handling a stale endpoint", async () => {
     if (process.platform === "win32") return;
-    dir = mkdtempSync(path.join(tmpdir(), "allinai-agent-control-"));
+    dir = mkdtempSync(path.join(tmpdir(), "allinai-agentkit-control-"));
     const socketPath = path.join(dir, "control.sock");
     writeFileSync(socketPath, "keep me");
 
@@ -68,7 +68,7 @@ describe("agent control endpoint", () => {
 
   it("returns the actual approval error after a parsed request", async () => {
     if (process.platform === "win32") return;
-    dir = mkdtempSync(path.join(tmpdir(), "allinai-agent-control-"));
+    dir = mkdtempSync(path.join(tmpdir(), "allinai-agentkit-control-"));
     const socketPath = path.join(dir, "control.sock");
     const server = await startAgentControlServer({
       socketPath,
@@ -90,7 +90,7 @@ describe("agent control endpoint", () => {
 
   it("allows the local CLI to request a durable sync without accepting a task", async () => {
     if (process.platform === "win32") return;
-    dir = mkdtempSync(path.join(tmpdir(), "allinai-agent-control-"));
+    dir = mkdtempSync(path.join(tmpdir(), "allinai-agentkit-control-"));
     const socketPath = path.join(dir, "control.sock");
     let syncs = 0;
     const server = await startAgentControlServer({

@@ -1,6 +1,6 @@
 # allinai-agentkit
 
-独立持久 **Agent Client**：连接 Hub，可靠执行本地平台 Agent（Codex / Claude / Pi，可选）与受策略门控的能力，并向上游回报状态。本仓库 = npm 包 `@allin-ai/agent-client` + CLI `allinai-agent` + 内置 demo web（中文官网 + memory hub + 授权接入）。
+独立持久 **Agent Client**：连接 Hub，可靠执行本地平台 Agent（Codex / Claude / Pi，可选）与受策略门控的能力，并向上游回报状态。本仓库 = npm 包 `@allin-ai/agentkit` + CLI `allinai-agentkit` + 内置 demo web（中文官网 + memory hub + 授权接入）。
 
 ## 快速开始（本地源码）
 
@@ -10,13 +10,13 @@
 pnpm install && pnpm build
 
 # 终端 A：启动官网 + demo hub（默认 http://127.0.0.1:4317）
-node bin/allinai-agent demo
+node bin/allinai-agentkit demo
 
 # 终端 B：浏览器授权接入
-node bin/allinai-agent login --hub http://127.0.0.1:4317
+node bin/allinai-agentkit login --hub http://127.0.0.1:4317
 
 # 终端 B：常驻接入
-node bin/allinai-agent daemon
+node bin/allinai-agentkit daemon
 ```
 
 打开 http://127.0.0.1:4317 ：控制台会出现你的 client，可派发任务并观察协议事件时间线。
@@ -27,31 +27,44 @@ node bin/allinai-agent daemon
 
 ```bash
 sh scripts/install.sh                 # npm 全局安装最新版
-sh scripts/install.sh 0.2.0           # 指定版本
+sh scripts/install.sh 0.3.0           # 指定版本
 sh scripts/install.sh --from-source   # 本仓库构建 + npm link（开发）
 ```
 
-脚本会检查 Node.js ≥ 22.18，安装后验证 `allinai-agent --help`。
+脚本会检查 Node.js ≥ 22.18，安装后验证 `allinai-agentkit --help`。
+
+## 从 `@allin-ai/agent-client` 升级
+
+包已更名为 `@allin-ai/agentkit`，CLI 命令由 `allinai-agent` 变为 `allinai-agentkit`：
+
+```bash
+npm uninstall -g @allin-ai/agent-client
+allinai-agent uninstall        # 用旧命令移除旧服务（launchd/systemd）
+npm install -g @allin-ai/agentkit
+allinai-agentkit install       # 以新服务名重新注册
+```
+
+`~/.allinai/agent` 数据目录与 macOS 钥匙串凭据保持不变，升级后无需重新登录配对。
 
 ## 包结构
 
 | 入口 | 内容 |
 |---|---|
-| `@allin-ai/agent-client/protocol` | 版本化 wire 协议与编解码 |
-| `@allin-ai/agent-client/hub` | Node HTTP/WebSocket Hub（`HubStore` 端口） |
-| `@allin-ai/agent-client/hub/testkit` | 测试用内存 Store/Hub（勿用于生产） |
-| `@allin-ai/agent-client/client` | 可重连执行 client 与传输层 |
-| `@allin-ai/agent-client/runtime` | Codex/Claude/Pi 运行时适配（可选 peer） |
-| `@allin-ai/agent-client/demo` | 本官网 + demo hub 服务 |
+| `@allin-ai/agentkit/protocol` | 版本化 wire 协议与编解码 |
+| `@allin-ai/agentkit/hub` | Node HTTP/WebSocket Hub（`HubStore` 端口） |
+| `@allin-ai/agentkit/hub/testkit` | 测试用内存 Store/Hub（勿用于生产） |
+| `@allin-ai/agentkit/client` | 可重连执行 client 与传输层 |
+| `@allin-ai/agentkit/runtime` | Codex/Claude/Pi 运行时适配（可选 peer） |
+| `@allin-ai/agentkit/demo` | 本官网 + demo hub 服务 |
 
 ## CLI
 
 ```
-allinai-agent <init|login|daemon|demo|install|status|logs|sync|restart|uninstall|doctor|projects|project|plugins>
-allinai-agent project --name web --path /work/web    # 注册项目工作目录
-allinai-agent project --name web --remove            # 移除
-allinai-agent projects                               # 列出已注册项目
-allinai-agent plugins [--refresh]                    # 查看已装插件；--refresh 重新上报 Hub
+allinai-agentkit <init|login|daemon|demo|install|status|logs|sync|restart|uninstall|doctor|projects|project|plugins>
+allinai-agentkit project --name web --path /work/web    # 注册项目工作目录
+allinai-agentkit project --name web --remove            # 移除
+allinai-agentkit projects                               # 列出已注册项目
+allinai-agentkit plugins [--refresh]                    # 查看已装插件；--refresh 重新上报 Hub
 ```
 
 ### 项目目录
@@ -67,11 +80,11 @@ Hub 无法自选任意路径——只能从本地注册的目录里按名字挑�
 
 - Hub 主动推送：`hub.syncPlugins({ principal, targetClientId, revision, plugins })`（demo 站点提供 `POST /api/demo/plugins/sync`）。
 - client 收到后校验清单、克隆到不可变修订目录并原子激活，随后回 `plugin.sync.ack`（含每个插件的 resolvedCommit）。
-- 本地随时查看：`allinai-agent plugins`；重新上报：`allinai-agent plugins --refresh`。
+- 本地随时查看：`allinai-agentkit plugins`；重新上报：`allinai-agentkit plugins --refresh`。
 
 ### 执行日志
 
-daemon 把每条命令的接收、策略判定、runner 终态写入 `~/.allinai/agent/logs/agent.log`（滚动 JSONL，自动脱敏）。`allinai-agent logs [-f]` 查看并再次脱敏输出。
+daemon 把每条命令的接收、策略判定、runner 终态写入 `~/.allinai/agent/logs/agent.log`（滚动 JSONL，自动脱敏）。`allinai-agentkit logs [-f]` 查看并再次脱敏输出。
 
 ## 开发
 

@@ -245,7 +245,7 @@ function agentPaths(
 }
 
 function executable(options: RunCliOptions): string {
-  return options.executable ?? process.argv[1] ?? "allinai-agent";
+  return options.executable ?? process.argv[1] ?? "allinai-agentkit";
 }
 
 function serviceInput(options: RunCliOptions): UserServiceInput {
@@ -423,7 +423,7 @@ async function defaultFollowLog(
 
 function help(): string {
   return [
-    "Usage: allinai-agent <init|login|daemon|demo|install|status|logs|sync|restart|uninstall|doctor|projects|project|plugins> [--config-dir PATH]",
+    "Usage: allinai-agentkit <init|login|daemon|demo|install|status|logs|sync|restart|uninstall|doctor|projects|project|plugins> [--config-dir PATH]",
     "  project --name NAME --path DIR   register a local project working directory",
     "  project --name NAME --remove     remove a registered project",
     "  plugins [--refresh]              list installed plugins; --refresh re-reports them to the Hub",

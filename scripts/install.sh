@@ -1,21 +1,21 @@
 #!/bin/sh
-# allinai-agent 一键安装脚本
+# allinai-agentkit 一键安装脚本
 #
 # 用法：
 #   sh install.sh                 # 安装最新已发布版本到全局
-#   sh install.sh 0.2.0           # 安装指定版本
+#   sh install.sh 0.3.0           # 安装指定版本
 #   sh install.sh --from-source   # 从当前仓库源码构建并全局链接（开发用）
 #
 # 脚本只做三件事：确认 Node.js >= 22.18、用 npm 全局安装（或源码构建）、
-# 打印 `allinai-agent --help` 验证可用。安装后的登录与常驻：
-#   allinai-agent login --hub http://127.0.0.1:4317
-#   allinai-agent install   # 可选：注册为用户级常驻服务（launchd/systemd）
-#   allinai-agent daemon
+# 打印 `allinai-agentkit --help` 验证可用。安装后的登录与常驻：
+#   allinai-agentkit login --hub http://127.0.0.1:4317
+#   allinai-agentkit install   # 可选：注册为用户级常驻服务（launchd/systemd）
+#   allinai-agentkit daemon
 
 set -eu
 
-PACKAGE_NAME="@allin-ai/agent-client"
-BIN_NAME="allinai-agent"
+PACKAGE_NAME="@allin-ai/agentkit"
+BIN_NAME="allinai-agentkit"
 REQUIRED_NODE_MAJOR=22
 REQUIRED_NODE_MINOR=18
 

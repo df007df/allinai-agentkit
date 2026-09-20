@@ -6,7 +6,7 @@ import type {
   UserServiceFileSystem,
 } from "./launchd.js";
 
-export const SYSTEMD_USER_UNIT_NAME = "allinai-agent.service";
+export const SYSTEMD_USER_UNIT_NAME = "allinai-agentkit.service";
 
 export type SystemdUserActionOptions = UserServiceDefinition & {
   homeDir: string;

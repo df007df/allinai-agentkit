@@ -62,6 +62,9 @@ const credentialFs: CredentialFileSystem = {
   stat,
 };
 
+// Deliberately the pre-rename identity: existing macOS keychain entries were
+// written under this service name, and changing it would force every paired
+// client to re-login after upgrade.
 const KEYCHAIN_SERVICE = "allinai-agent";
 
 function credentialFileName(clientId: string): string {

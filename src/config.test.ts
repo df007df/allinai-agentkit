@@ -41,7 +41,7 @@ describe("agent config", () => {
   });
 
   it("loads only config.json below agent home", () => {
-    dir = mkdtempSync(path.join(tmpdir(), "allinai-agent-config-"));
+    dir = mkdtempSync(path.join(tmpdir(), "allinai-agentkit-config-"));
     const paths = resolveAgentPaths(dir);
     mkdirSync(paths.home, { recursive: true });
     writeFileSync(
@@ -57,7 +57,7 @@ describe("agent config", () => {
   });
 
   it("writes normalized pairing config into the client-owned home", async () => {
-    dir = mkdtempSync(path.join(tmpdir(), "allinai-agent-config-"));
+    dir = mkdtempSync(path.join(tmpdir(), "allinai-agentkit-config-"));
     const paths = resolveAgentPaths(dir);
 
     await saveAgentConfig(paths, {

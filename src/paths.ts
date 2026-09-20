@@ -54,7 +54,7 @@ export function resolveAgentControlEndpoint(
 ): string {
   if (platform !== "win32") return paths.controlSocket;
   const id = createHash("sha256").update(paths.home).digest("hex").slice(0, 24);
-  return `\\\\.\\pipe\\allinai-agent-${id}`;
+  return `\\\\.\\pipe\\allinai-agentkit-${id}`;
 }
 
 export function isMemoryHookProxyPath(pathname: string): boolean {

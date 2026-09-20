@@ -1,4 +1,4 @@
-/** @deprecated Import protocol types from `@allin-ai/agent-client/protocol`. */
+/** @deprecated Import protocol types from `@allin-ai/agentkit/protocol`. */
 export * from "../protocol/types.js";
 
 /** Thrown before transport startup when a client-owned endpoint setting is unsafe. */

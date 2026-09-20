@@ -34,7 +34,7 @@ describe("ClientStateStore", () => {
   let store: ClientStateStore;
 
   beforeEach(() => {
-    dir = mkdtempSync(path.join(tmpdir(), "allinai-agent-state-"));
+    dir = mkdtempSync(path.join(tmpdir(), "allinai-agentkit-state-"));
     dbPath = path.join(dir, "state.db");
     store = new ClientStateStore(dbPath);
   });

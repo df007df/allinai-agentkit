@@ -1,7 +1,7 @@
 import { mkdir, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-export const AGENT_SERVICE_LABEL = "ai.allin.allinai-agent";
+export const AGENT_SERVICE_LABEL = "ai.allin.allinai-agentkit";
 
 export type UserServiceFileSystem = {
   mkdir(dir: string, options: { recursive: true }): Promise<string | undefined>;

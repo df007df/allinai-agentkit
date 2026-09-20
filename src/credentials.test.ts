@@ -40,7 +40,7 @@ describe("agent credential store", () => {
   });
 
   it("falls back atomically to a mode-0600 file only when Keychain is unavailable", async () => {
-    dir = mkdtempSync(path.join(os.tmpdir(), "allinai-agent-creds-"));
+    dir = mkdtempSync(path.join(os.tmpdir(), "allinai-agentkit-creds-"));
     let unavailable = true;
     const store = createCredentialStore({
       homeDir: dir,

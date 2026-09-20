@@ -38,14 +38,14 @@
             <button class="copy-btn" type="button" data-copy>复制全部</button>
           </div>
           <pre class="term-body"><code><span class="c"># 终端 A：启动官网与 demo hub</span>
-node bin/allinai-agent demo
+node bin/allinai-agentkit demo
 
 <span class="c"># 终端 B：浏览器授权（会打开本站授权页）</span>
-node bin/allinai-agent login \
+node bin/allinai-agentkit login \
   --hub http://127.0.0.1:4317
 
 <span class="c"># 终端 B：常驻接入，然后回到本页控制台</span>
-node bin/allinai-agent daemon</code></pre>
+node bin/allinai-agentkit daemon</code></pre>
         </div>
       </section>
 
@@ -101,7 +101,7 @@ node bin/allinai-agent daemon</code></pre>
             </div>
           </div>
           <pre class="code-block"><code><span class="c">// 宿主侧：node:http + 你自己的 HubStore</span>
-import { createAgentHub } from "@allin-ai/agent-client/hub";
+import { createAgentHub } from "@allin-ai/agentkit/hub";
 
 const hub = createAgentHub&lt;MyUser&gt;({
   authorize: (token) =&gt; loadUserByToken(token), <span class="c">// 你的鉴权</span>
@@ -139,8 +139,8 @@ await hub.offer({
           <pre class="code-block"><code><span class="c">// client 侧：持久执行器</span>
 import {
   ClientStateStore, ClientSupervisor, WsClientTransport,
-} from "@allin-ai/agent-client/client";
-import { createRunnerManager } from "@allin-ai/agent-client/runtime";
+} from "@allin-ai/agentkit/client";
+import { createRunnerManager } from "@allin-ai/agentkit/runtime";
 
 const supervisor = new ClientSupervisor({
   store: new ClientStateStore(stateDbPath),
@@ -167,7 +167,7 @@ await supervisor.start();              <span class="c">// 连接、注册、收�
             </div>
           </div>
           <pre class="code-block"><code><span class="c">// 测试侧：易失内存实现，重启即清空</span>
-import { createMemoryHub } from "@allin-ai/agent-client/hub/testkit";
+import { createMemoryHub } from "@allin-ai/agentkit/hub/testkit";
 
 const hub = createMemoryHub({ token: "test-token" });
 const server = http.createServer();
@@ -189,8 +189,8 @@ assert.equal(hub.listClients().length, 0);</code></pre>
               </p>
             </div>
           </div>
-          <pre class="code-block"><code><span class="c">// 程序化启动本站（等价于 allinai-agent demo）</span>
-import { startDemoSite } from "@allin-ai/agent-client/demo";
+          <pre class="code-block"><code><span class="c">// 程序化启动本站（等价于 allinai-agentkit demo）</span>
+import { startDemoSite } from "@allin-ai/agentkit/demo";
 
 const site = await startDemoSite({ port: 4317 });
 console.log(site.url, site.hubUrl);
@@ -210,7 +210,7 @@ await site.close();</code></pre>
             </div>
           </div>
           <pre class="code-block"><code><span class="c">// 1) src/server/hub.ts —— 单例；dev 热更新下也保持同一实例</span>
-import { createMemoryHub } from "@allin-ai/agent-client/hub/testkit";
+import { createMemoryHub } from "@allin-ai/agentkit/hub/testkit";
 
 const g = globalThis as unknown as {
   hub?: ReturnType&lt;typeof createMemoryHub&gt;;
@@ -264,7 +264,7 @@ export default function AgentsPage() {
           <pre class="code-block"><code><span class="c">// src/server/store.ts —— HubStore 的数据库实现（六个方法）</span>
 import {
   createAgentHub, type HubStore, type StoredOffer,
-} from "@allin-ai/agent-client/hub";
+} from "@allin-ai/agentkit/hub";
 
 export class MyDbHubStore implements HubStore&lt;MyUser&gt; {
   async registerClient(input) {
@@ -413,7 +413,7 @@ export const hub = createAgentHub({
 
     <footer class="footer">
       <span>MIT License</span>
-      <span>@allin-ai/agent-client</span>
+      <span>@allin-ai/agentkit</span>
     </footer>
 
     <script type="module" src="/app.js"></script>

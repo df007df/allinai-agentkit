@@ -33,7 +33,7 @@ describe("agent CLI", () => {
     const result = await runCli(["install"], {
       homeDir: "/tmp/allinai-cli-test",
       platform: "linux",
-      executable: "/opt/bin/allinai-agent",
+      executable: "/opt/bin/allinai-agentkit",
       write: () => undefined,
       installService: async (input) => {
         installed.push(input);
@@ -84,7 +84,7 @@ describe("agent CLI", () => {
   });
 
   it("rejects an invalid Hub URL before creating a config file", async () => {
-    const dir = mkdtempSync(path.join(tmpdir(), "allinai-agent-init-"));
+    const dir = mkdtempSync(path.join(tmpdir(), "allinai-agentkit-init-"));
     try {
       const result = await runCli(
         ["init", "--config-dir", dir, "--hub", "not-a-hub-url"],
