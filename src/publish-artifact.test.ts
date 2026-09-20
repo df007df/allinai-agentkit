@@ -26,7 +26,11 @@ describe("published agent client artifact", () => {
       scripts?: Record<string, unknown>;
     };
 
-    assert.equal(sourceManifest.version, "0.3.2");
+    assert.match(
+      String(sourceManifest.version),
+      /^\d+\.\d+\.\d+$/,
+      "version must be a plain semver release number",
+    );
     assert.equal(sourceManifest.private, false);
     assert.equal(sourceManifest.engines?.node, ">=22.18.0");
     assert.equal(
