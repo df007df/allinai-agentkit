@@ -14,6 +14,7 @@
         <a href="#how">运作方式</a>
         <a href="#scenarios">使用场景</a>
         <a href="#exports">模块与架构</a>
+        <a href="docs.html">文档</a>
         <a href="https://github.com/df007df/allinai-agentkit">GitHub</a>
       </div>
     </nav>
@@ -88,212 +89,51 @@ npx @allin-ai/agentkit daemon</code></pre>
 
       <section id="scenarios" class="section">
         <h2>使用场景</h2>
-
-        <div class="scenario">
-          <div class="scenario-head">
+        <div class="scenario-grid">
+          <a class="scenario-card" href="docs.html#integration-hub">
             <span class="step-no">A</span>
             <div>
               <h3>宿主服务：挂一个 Hub</h3>
-              <p>
-                把协议 Hub 挂进你现有的 HTTP 服务，鉴权与持久化全部由你实现，
-                包只负责协议编排。
-              </p>
+              <p>鉴权与持久化全部由你实现，包只负责协议编排，一条 offer 派发执行。</p>
             </div>
-          </div>
-          <pre class="code-block"><code><span class="c">// 宿主侧：node:http + 你自己的 HubStore</span>
-import { createAgentHub } from "@allin-ai/agentkit/hub";
-
-const hub = createAgentHub&lt;MyUser&gt;({
-  authorize: (token) =&gt; loadUserByToken(token), <span class="c">// 你的鉴权</span>
-  store: myDurableStore(),                    <span class="c">// 你的持久化</span>
-});
-hub.attach(httpServer);                       <span class="c">// WS 挂到 /api/agent-hub/v2/ws</span>
-
-<span class="c">// 向某个 client 派发一次执行</span>
-await hub.offer({
-  principal: user,
-  targetClientId: "agent-01",
-  command: {
-    kind: "agent.run",
-    commandId: randomUUID(),
-    executionId: randomUUID(),
-    taskId: "task-1",
-    attempt: 1,
-    runtime: "codex",
-    payload: { prompt: "修复登录页的空指针" },
-  },
-});</code></pre>
-        </div>
-
-        <div class="scenario">
-          <div class="scenario-head">
+          </a>
+          <a class="scenario-card" href="docs.html#integration-client">
             <span class="step-no">B</span>
             <div>
               <h3>Agent 端：接入并执行任务</h3>
-              <p>
-                supervisor 负责连接、注册、断线重连与事件回报；
-                状态落 sqlite，执行交给可选的运行时适配。
-              </p>
+              <p>supervisor 负责连接、注册、重连与事件回报；状态落 sqlite，执行交给可选运行时。</p>
             </div>
-          </div>
-          <pre class="code-block"><code><span class="c">// client 侧：持久执行器</span>
-import {
-  ClientStateStore, ClientSupervisor, WsClientTransport,
-} from "@allin-ai/agentkit/client";
-import { createRunnerManager } from "@allin-ai/agentkit/runtime";
-
-const supervisor = new ClientSupervisor({
-  store: new ClientStateStore(stateDbPath),
-  transport: new WsClientTransport({
-    hubBaseUrl: "https://hub.example",
-    token: await loadToken(),          <span class="c">// login 授权后保存的 token</span>
-    clientId: "agent-01",
-  }),
-  runner: createRunnerManager(),       <span class="c">// Codex / Claude / Pi，可选</span>
-  maxConcurrentRuns: 1,
-});
-
-await supervisor.start();              <span class="c">// 连接、注册、收任务、上报事件</span></code></pre>
-        </div>
-
-        <div class="scenario">
-          <div class="scenario-head">
+          </a>
+          <a class="scenario-card" href="docs.html#integration-testkit">
             <span class="step-no">C</span>
             <div>
               <h3>测试与本地联调：内存 Hub</h3>
-              <p>
-                单测里不需要数据库：内存 Hub 一行起步，协议行为与真实 Hub 完全一致。
-              </p>
+              <p>单测不需要数据库：内存 Hub 一行起步，协议行为与真实 Hub 完全一致。</p>
             </div>
-          </div>
-          <pre class="code-block"><code><span class="c">// 测试侧：易失内存实现，重启即清空</span>
-import { createMemoryHub } from "@allin-ai/agentkit/hub/testkit";
-
-const hub = createMemoryHub({ token: "test-token" });
-const server = http.createServer();
-hub.attach(server);
-server.listen(0, "127.0.0.1");
-
-<span class="c">// 断言你的宿主逻辑：注册、offer、事件上报</span>
-assert.equal(hub.listClients().length, 0);</code></pre>
-        </div>
-
-        <div class="scenario">
-          <div class="scenario-head">
+          </a>
+          <a class="scenario-card" href="docs.html#integration-demo">
             <span class="step-no">D</span>
             <div>
               <h3>一键 demo 控制台</h3>
-              <p>
-                本地调试利器：内存 Hub、浏览器授权与控制台一条命令起，
-                仅监听本机回环地址。
-              </p>
+              <p>本地调试利器：内存 Hub、浏览器授权与控制台一条命令起，仅监听回环地址。</p>
             </div>
-          </div>
-          <pre class="code-block"><code><span class="c">// 程序化启动 demo 控制台（等价于 allinai-agentkit demo）</span>
-import { startDemoSite } from "@allin-ai/agentkit/demo";
-
-const site = await startDemoSite({ port: 4317 });
-console.log(site.url, site.hubUrl);
-
-await site.close();</code></pre>
-        </div>
-        <div class="scenario">
-          <div class="scenario-head">
+          </a>
+          <a class="scenario-card" href="docs.html#integration-nextjs">
             <span class="step-no">E</span>
             <div>
-              <h3>在 Next.js 集成默认内存 Hub</h3>
-              <p>
-                Next.js 的 Route Handler 拿不到 WebSocket 升级事件，所以走
-                custom server 挂 Hub；页面用 Server Component 直接读
-                Store，列出 client 与在线状态。
-              </p>
+              <h3>在 Next.js 集成内存 Hub</h3>
+              <p>custom server 挂 Hub，Server Component 直接读 Store 列出 client 与在线状态。</p>
             </div>
-          </div>
-          <pre class="code-block"><code><span class="c">// 1) src/server/hub.ts —— 单例；dev 热更新下也保持同一实例</span>
-import { createMemoryHub } from "@allin-ai/agentkit/hub/testkit";
-
-const g = globalThis as unknown as {
-  hub?: ReturnType&lt;typeof createMemoryHub&gt;;
-};
-export const hub =
-  g.hub ?? createMemoryHub({ authorize: myAuthorize }); <span class="c">// 你的鉴权</span>
-if (process.env.NODE_ENV !== "production") g.hub = hub;
-
-<span class="c">// 2) server.ts —— custom server，拿到底层 http.Server 才能挂 WS</span>
-import { createServer } from "node:http";
-import next from "next";
-import { hub } from "./src/server/hub";
-
-const app = next({ dev: false });
-await app.prepare();
-const server = createServer((req, res) =&gt; app.getRequestHandler()(req, res));
-hub.attach(server);            <span class="c">// WS: /api/agent-hub/v2/ws</span>
-server.listen(3000);
-
-<span class="c">// 3) src/app/agents/page.tsx —— 页面上列出 client 与状态</span>
-import { hub } from "@/server/hub";
-
-export const dynamic = "force-dynamic";
-
-export default function AgentsPage() {
-  const online = (t: number) =&gt; Date.now() - t &lt; 30_000;
-  return (
-    &lt;ul&gt;
-      {hub.listClients().map((c) =&gt; (
-        &lt;li key={c.clientId}&gt;
-          {c.clientId} · {online(c.lastSeen) ? "在线" : "心跳超时"}
-          · {c.pendingOutboxCount} 条待投递
-        &lt;/li&gt;
-      ))}
-    &lt;/ul&gt;
-  );
-}</code></pre>
-        </div>
-
-        <div class="scenario">
-          <div class="scenario-head">
+          </a>
+          <a class="scenario-card" href="docs.html#integration-nextjs">
             <span class="step-no">F</span>
             <div>
               <h3>在 Next.js 实现自己的 HubStore</h3>
-              <p>
-                生产持久化：实现六个方法换成你的数据库，挂法与内存版完全一致；
-                页面查询也换成你自己 Store 暴露的读方法。
-              </p>
+              <p>生产持久化：六个方法换成你的数据库，挂法与内存版完全一致。</p>
             </div>
-          </div>
-          <pre class="code-block"><code><span class="c">// src/server/store.ts —— HubStore 的数据库实现（六个方法）</span>
-import {
-  createAgentHub, type HubStore, type StoredOffer,
-} from "@allin-ai/agentkit/hub";
-
-export class MyDbHubStore implements HubStore&lt;MyUser&gt; {
-  async registerClient(input) {
-    <span class="c">// 幂等：同 principal+clientId 返回稳定 connectionKey；</span>
-    <span class="c">// 归属冲突（同 clientId 不同 principal）必须拒绝</span>
-  }
-  async heartbeat(input) { <span class="c">/* UPDATE clients SET last_seen = now() */</span> }
-  async listPendingOffers(input): Promise&lt;StoredOffer[]&gt; {
-    <span class="c">/* 只返回该 principal 拥有、未确认的 offer，按持久投递顺序 */</span>
-  }
-  async enqueueOffer(input): Promise&lt;StoredOffer&gt; {
-    <span class="c">// 先落库再返回；按命令身份去重，connectionKey 与注册一致</span>
-  }
-  async ingestEvents(input) {
-    <span class="c">/* (executionId, eventSeq) 去重落库；只回报已持久化的连续</span>
-<span class="c">       水位；收到即退役 run offer，done/failed 等终态取消 offer */</span>
-  }
-  async acknowledgePluginSync(input) { <span class="c">/* 记录插件确认水位 */</span> }
-
-  <span class="c">// 页面查询：内存版的 listClients() 是 testkit 专属糖，</span>
-  <span class="c">// 换库后由你的 Store 自己暴露读方法，例如 listClientsFromDb()</span>
-}
-
-<span class="c">// src/server/hub.ts —— 换个构造参数，其余（server.ts、页面）不变</span>
-export const hub = createAgentHub({
-  authorize: myAuthorize,
-  store: new MyDbHubStore(),
-});</code></pre>
+          </a>
         </div>
+        <p class="hint-center">完整代码示例、CLI 参考与集成细节见<a href="docs.html">文档</a>。</p>
       </section>
 
       <section id="exports" class="section">
@@ -360,146 +200,41 @@ export const hub = createAgentHub({
           </div>
         </div>
 
-        <div class="export-detail">
-          <div class="export-group">
-            <h3>协议与入口</h3>
-            <div class="export-row">
-              <code>.</code>
-              <p>
-                根入口，公共 API 汇总：/protocol、/hub、/client 核心类，以及
-                /config、/credentials、/control、/logger、/paths。刻意不含
-                /runtime（可选 peer）、/hub/testkit 与 /demo。
-              </p>
-            </div>
-            <div class="export-row">
-              <code>/protocol</code>
-              <p>
-                v2 wire 协议：AGENT_CLIENT_PROTOCOL_VERSION 常量与全部
-                encode*/parse* 编解码——hello、命令下行、事件批次上行、
-                确认水位、清单上报、插件同步确认。Hub 与 client 共用的唯一消息定义。
-                <code>/wire</code> 是它的兼容别名。
-              </p>
-            </div>
+        <div class="exports-grid">
+          <div class="export-cell tint">
+            <code>/protocol</code>
+            <p>版本化 wire 协议与编解码</p>
           </div>
-
-          <div class="export-group">
-            <h3>Hub 侧（宿主服务引入）</h3>
-            <div class="export-row">
-              <code>/hub</code>
-              <p>
-                createAgentHub({ authorize, store })：Node HTTP/WebSocket Hub。
-                鉴权回调返回你的 principal，持久化走 HubStore 六方法端口
-                （注册、心跳、待投递查询、入队、事件落库、插件确认），
-                包只做协议编排，不绑定任何数据库。offer() 派发命令到指定 client。
-              </p>
-            </div>
-            <div class="export-row">
-              <code>/hub/testkit</code>
-              <p>
-                MemoryHubStore 与 createMemoryHub()：六方法的易失内存实现，
-                协议行为与生产 Hub 完全一致。重启即清空，测试与本地联调用，
-                勿用于生产。
-              </p>
-            </div>
+          <div class="export-cell">
+            <code>/hub</code>
+            <p>Node HTTP/WebSocket Hub，HubStore 端口</p>
           </div>
-
-          <div class="export-group">
-            <h3>Agent 侧（本地 daemon 引入）</h3>
-            <div class="export-row">
-              <code>/client</code>
-              <p>
-                ClientSupervisor 是 daemon 的调度核心：收命令、本地策略判定、
-                启动 runner、事件批量回报。WsClientTransport 负责 WebSocket
-                注册、心跳与断线自动重连；ClientStateStore 把执行状态落
-                sqlite，重启后先补投递再继续。
-              </p>
-            </div>
-            <div class="export-row">
-              <code>/runtime</code>
-              <p>
-                createRunnerManager() 与 codex / claude / pi / zcode 四个适配器。
-                可选 peer 依赖：装了哪个 agent SDK 就用哪个，未装的自动降级，
-                /client 本身不依赖任何 SDK。agent.run 里的 project 名字由
-                /config 的注册目录解析成实际路径。
-              </p>
-            </div>
-            <div class="export-row">
-              <code>/plugins</code>
-              <p>
-                PluginManager：接收 hub 下发的 plugin.sync 期望状态，git
-                拉取插件仓库、校验 manifest 与能力清单，确认水位回报 hub；
-                也响应本地清单刷新。
-              </p>
-            </div>
-            <div class="export-row">
-              <code>/control</code>
-              <p>
-                daemon 在本机 unix socket 上暴露的控制面：health、status、
-                approve（放行待批准执行）、plugins、sync。宿主进程（桌面
-                App、服务端 supervisor）用 createAgentControlClient() 连上来
-                监管，不需要走 Hub 权限。
-              </p>
-            </div>
+          <div class="export-cell">
+            <code>/hub/testkit</code>
+            <p>内存 Store 与 Hub，demo 所用</p>
           </div>
-
-          <div class="export-group">
-            <h3>本地设施（daemon 支撑，通常不直接使用）</h3>
-            <div class="export-row">
-              <code>/config</code>
-              <p>
-                loadAgentConfig / saveAgentConfig：~/.allinai/agent/config.json，
-                含唯一 clientId、本地策略、projects 工作目录注册。
-              </p>
-            </div>
-            <div class="export-row">
-              <code>/credentials</code>
-              <p>
-                createCredentialStore：login 授权后 token 的安全存取，
-                macOS 走钥匙串（服务名 allinai-agent），其他平台降级文件。
-              </p>
-            </div>
-            <div class="export-row">
-              <code>/paths</code>
-              <p>
-                resolveAgentPaths：~/.allinai/agent 数据目录、日志、socket
-                端点等路径的统一解析。
-              </p>
-            </div>
-            <div class="export-row">
-              <code>/logger</code>
-              <p>
-                createRotatingJsonlLogger：滚动 JSONL 日志，写盘前自动脱敏
-                token 等敏感字段。
-              </p>
-            </div>
-            <div class="export-row">
-              <code>/service/launchd<br />/service/systemd</code>
-              <p>
-                用户级服务注册（install / uninstall / restart），daemon
-                开机自启；install 命令即调它们。
-              </p>
-            </div>
+          <div class="export-cell">
+            <code>/client</code>
+            <p>可重连执行 client 与传输层</p>
           </div>
-
-          <div class="export-group">
-            <h3>工具</h3>
-            <div class="export-row">
-              <code>/cli</code>
-              <p>
-                runCli：login / daemon / demo / install / status / logs /
-                sync / restart / uninstall / doctor / projects / plugins
-                全部子命令的实现，bin/allinai-agentkit 就是它的薄封装。
-              </p>
-            </div>
-            <div class="export-row">
-              <code>/demo</code>
-              <p>
-                startDemoSite()：本地调试控制台 + 内存 Hub + 浏览器授权，
-                一条命令起全套，仅监听回环地址。
-              </p>
-            </div>
+          <div class="export-cell">
+            <code>/control</code>
+            <p>daemon 本地控制面：健康、状态、清单</p>
+          </div>
+          <div class="export-cell">
+            <code>/runtime</code>
+            <p>Codex / Claude / Pi / zcode，可选 peer</p>
+          </div>
+          <div class="export-cell">
+            <code>/plugins</code>
+            <p>Git 插件仓库同步与装载</p>
+          </div>
+          <div class="export-cell">
+            <code>/demo</code>
+            <p>本地 demo 控制台，startDemoSite()</p>
           </div>
         </div>
+        <p class="hint-center">全部入口的详细描述见<a href="docs.html#architecture-modules">文档 · 模块明细</a>。</p>
       </section>
     </main>
 
