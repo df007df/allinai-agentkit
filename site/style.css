@@ -481,6 +481,23 @@ main {
 .ide-code .str { color: var(--accent); }
 .ide-code .pn { color: var(--text-dim); }
 
+/* 整块代码示例（6.x 集成章节）：满宽变体，shell 文件用中性文件色 */
+.ide-block { margin: 1rem 0 0.4rem; }
+.ide-block .ide-code {
+  max-height: 34rem;
+  font-size: 0.78rem;
+}
+.ide-shell .ide-file { color: var(--accent); }
+.ide-shell .ide-code {
+  background: none;
+  /* shell 无装订线底纹 */
+  background-image: none;
+}
+/* docs-ide.js 生成的着色类（与 .ide-code .kw/.str 同色，便于复用） */
+.ide-code .ide-kw { color: #c792ea; }
+.ide-code .ide-str { color: var(--accent); }
+.ide-code .c { color: var(--text-dim); font-style: italic; }
+
 .exports-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
