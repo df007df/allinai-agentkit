@@ -138,7 +138,7 @@ export function cliManual(): CliManual {
       },
       {
         name: "logs",
-        summary: "Print the redacted execution log (rotating JSONL).",
+        summary: "Print the execution log (rotating JSONL, verbatim).",
         options: [{ flag: "f", description: "Follow new log lines" }],
         example: "allinai-agentkit logs -f",
       },
@@ -210,9 +210,9 @@ export function cliManual(): CliManual {
     filesystem: [
       { path: "~/.allinai/agent/config.json", description: "Client config (mode 0600)" },
       { path: "~/.allinai/agent/state.db", description: "SQLite execution state, survives restarts" },
-      { path: "~/.allinai/agent/credentials/", description: "Token store (macOS Keychain backed)" },
+      { path: "~/.allinai/agent/credentials/", description: "Token store: one mode-0600 file per clientId, identical on every platform" },
       { path: "~/.allinai/agent/plugins/", description: "Plugin revisions (immutable, per commit)" },
-      { path: "~/.allinai/agent/logs/agent.log", description: "Rotating redacted JSONL log" },
+      { path: "~/.allinai/agent/logs/agent.log", description: "Rotating JSONL log, written verbatim" },
       { path: "~/.allinai/agent/control.sock", description: "Local control-plane Unix socket (also the single-instance lock)" },
     ],
     recipes: [
@@ -261,7 +261,7 @@ export function cliManual(): CliManual {
       "--help on any command prints this style of usage text and never executes side effects.",
       "daemon, demo and logs -f block the foreground until interrupted; everything else returns immediately.",
       "Commands that talk to the daemon (status, sync, logs, plugins, doctor credentials) require it to be running, except doctor which also works standalone.",
-      "login/init write mode-0600 config under the Agent home; never print or log token values.",
+      "login/init write mode-0600 config and token files under the Agent home; tokens stay on this machine — do not echo them into shared channels.",
       "agent runtimes (codex / claude / pi / zcode) are optional peer dependencies: doctor reports which are installed.",
     ],
   };

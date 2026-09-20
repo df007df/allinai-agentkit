@@ -65,7 +65,7 @@
           </p>
           <ul>
             <li><strong>clientId</strong>：每个 client 的唯一标识，首次 init/login 时生成，落在本机 config。</li>
-            <li><strong>token</strong>：浏览器授权后签发的凭据，daemon 用它向 Hub 注册；macOS 存钥匙串。</li>
+            <li><strong>token</strong>：浏览器授权后签发的凭据，daemon 用它向 Hub 注册；存本机 0600 文件。</li>
             <li><strong>HubStore</strong>：宿主实现的六个持久化方法（注册、心跳、待投递、入队、事件落库、插件确认）。</li>
             <li><strong>runtime</strong>：实际执行 agent 的适配器（codex / claude / pi / zcode），可选安装。</li>
           </ul>
@@ -187,7 +187,7 @@ node bin/allinai-agentkit --help</code></pre>
               </tr>
               <tr>
                 <td><code>logs</code></td>
-                <td>查看脱敏后的执行日志（滚动 JSONL，已再次脱敏输出）</td>
+                <td>查看执行日志（滚动 JSONL，原样输出）</td>
                 <td><code>-f</code> 跟随新增</td>
               </tr>
               <tr>
@@ -270,9 +270,9 @@ node bin/allinai-agentkit --help</code></pre>
 
           <h3 id="features-security">5.5 凭据与安全</h3>
           <ul>
-            <li>token 存 macOS 钥匙串（服务名 <code>allinai-agent</code>），其他平台降级为文件存储；</li>
+            <li>token 存本机 Agent home 下的 0600 文件（每 clientId 一个，全平台一致）；</li>
             <li>config.json 以 0600 权限写入，含本地策略（autoRuntimes、allowedGitOrigins、deniedPluginIds 等）；</li>
-            <li>日志为滚动 JSONL，写盘前自动脱敏 token 等敏感字段，<code>logs</code> 输出再次脱敏；</li>
+            <li>日志为滚动 JSONL，原文写盘不脱敏，<code>logs</code> 输出亦为原样；</li>
             <li>每条命令先过本地策略门控，Hub 不能绕过本地权限执行任意路径或任意来源插件。</li>
           </ul>
 
@@ -509,7 +509,7 @@ await site.close();</code></pre>
 
             <div class="arch-row arch-support">
               <span class="arch-chip">/config<small> 工作目录 · 本地策略</small></span>
-              <span class="arch-chip">/credentials<small> token（Keychain）</small></span>
+              <span class="arch-chip">/credentials<small> token（0600 文件）</small></span>
               <span class="arch-chip">/paths<small> 数据目录</small></span>
               <span class="arch-chip">/logger<small> 滚动日志</small></span>
               <span class="arch-chip">/service/*<small> 开机自启</small></span>
@@ -624,8 +624,8 @@ await site.close();</code></pre>
               <div class="export-row">
                 <code>/credentials</code>
                 <p>
-                  createCredentialStore：login 授权后 token 的安全存取，
-                  macOS 走钥匙串（服务名 allinai-agent），其他平台降级文件。
+                  createCredentialStore：login 授权后 token 的存取，
+                  每 clientId 一个 0600 文件，全平台一致。
                 </p>
               </div>
               <div class="export-row">
@@ -638,8 +638,7 @@ await site.close();</code></pre>
               <div class="export-row">
                 <code>/logger</code>
                 <p>
-                  createRotatingJsonlLogger：滚动 JSONL 日志，写盘前自动脱敏
-                  token 等敏感字段。
+                  createRotatingJsonlLogger：滚动 JSONL 日志，原文写盘不脱敏。
                 </p>
               </div>
               <div class="export-row">
@@ -677,7 +676,7 @@ await site.close();</code></pre>
           <ul>
             <li><strong>先跑 doctor</strong>：<code>allinai-agentkit doctor</code> 输出 git、config、配对状态与各 runtime 探测，多数环境问题一眼可见。</li>
             <li><strong>daemon 没起来</strong>：<code>status</code> 看健康与状态；前台跑一次 <code>daemon</code> 直接观察日志输出。</li>
-            <li><strong>执行没反应</strong>：<code>logs -f</code> 跟随执行日志（脱敏 JSONL），确认命令是否到达、策略是否放行、runner 是否可用。</li>
+            <li><strong>执行没反应</strong>：<code>logs -f</code> 跟随执行日志（JSONL），确认命令是否到达、策略是否放行、runner 是否可用。</li>
             <li><strong>提示未配对</strong>：Hub 重启后内存 token 清空，重新 <code>login --hub ...</code>；生产环境检查宿主 authorize 实现。</li>
             <li><strong>runtime 缺失</strong>：doctor 报告里看各 runtime 的 installed/reason，安装对应 agent SDK 后重启 daemon。</li>
             <li><strong>服务不生效</strong>：改配置后 <code>restart</code>；确认 <code>install</code> 输出的平台与 configDir 符合预期。</li>

@@ -76,7 +76,7 @@ flowchart TB
     you["宿主进程（桌面 App / 服务端）"] -.->|"AgentControlClient 监管"| ctl
 ```
 
-支撑模块（daemon 内部使用）：`/config` 工作目录与本地策略、`/credentials` token 存取（Keychain）、`/paths` 数据目录、`/logger` 滚动日志、`/service/*` 开机自启。开发与联调：`/hub/testkit` 内存 Hub，`/demo` 一键控制台。
+支撑模块（daemon 内部使用）：`/config` 工作目录与本地策略、`/credentials` token 存取（0600 文件，全平台一致）、`/paths` 数据目录、`/logger` 滚动日志、`/service/*` 开机自启。开发与联调：`/hub/testkit` 内存 Hub，`/demo` 一键控制台。
 
 | 入口 | 分组 | 内容 |
 |---|---|---|
@@ -89,9 +89,9 @@ flowchart TB
 | `@allin-ai/agentkit/plugins` | Agent 侧 | `PluginManager`：plugin.sync → git 同步 + manifest 校验 |
 | `@allin-ai/agentkit/control` | Agent 侧 | 本地控制面（unix socket）：health / status / approve / plugins |
 | `@allin-ai/agentkit/config` | 设施 | clientId、本地策略、projects 工作目录（`~/.allinai/agent/config.json`） |
-| `@allin-ai/agentkit/credentials` | 设施 | token 安全存取（macOS Keychain，服务名 allinai-agent） |
+| `@allin-ai/agentkit/credentials` | 设施 | token 存取：每 clientId 一个 0600 文件，全平台一致 |
 | `@allin-ai/agentkit/paths` | 设施 | 数据目录与 socket 端点解析 |
-| `@allin-ai/agentkit/logger` | 设施 | 滚动 JSONL 日志，自动脱敏 |
+| `@allin-ai/agentkit/logger` | 设施 | 滚动 JSONL 日志，原文写盘不脱敏 |
 | `@allin-ai/agentkit/service/launchd` | 设施 | macOS 用户级服务注册 |
 | `@allin-ai/agentkit/service/systemd` | 设施 | Linux 用户级服务注册 |
 | `@allin-ai/agentkit/cli` | 工具 | 全部 CLI 子命令实现（bin 的薄封装在其上） |
@@ -125,7 +125,7 @@ Hub 无法自选任意路径——只能从本地注册的目录里按名字挑�
 
 ### 执行日志
 
-daemon 把每条命令的接收、策略判定、runner 终态写入 `~/.allinai/agent/logs/agent.log`（滚动 JSONL，自动脱敏）。`allinai-agentkit logs [-f]` 查看并再次脱敏输出。
+daemon 把每条命令的接收、策略判定、runner 终态写入 `~/.allinai/agent/logs/agent.log`（滚动 JSONL，原文写盘不脱敏）。`allinai-agentkit logs [-f]` 原样查看与跟随。
 
 ## 开发
 

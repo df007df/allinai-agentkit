@@ -23,42 +23,10 @@ export type RotatingJsonlLoggerOptions = {
   now?: () => Date;
 };
 
-const redactKey =
-  /(?:token|secret|password|authorization|credential|api[-_]?key)$/i;
-const bearerValue = /\b(?:bearer|basic)\s+[^\s,;]+/gi;
-const inlineSecret =
-  /\b((?:(?:access|refresh|id)[_-]?token|(?:client)?[_-]?secret|api[-_]?key|token|password|authorization|credential))\s*([:=])\s*[^\s,;]+/gi;
-
-function redactString(value: string): string {
-  return value
-    .replace(bearerValue, (match) => `${match.split(/\s+/, 1)[0]} [REDACTED]`)
-    .replace(
-      inlineSecret,
-      (_match, key: string, separator: string) =>
-        `${key}${separator}[REDACTED]`,
-    );
-}
-
-function redactValue(value: unknown, seen = new WeakSet<object>()): unknown {
-  if (typeof value === "string") return redactString(value);
-  if (value === null || typeof value !== "object") return value;
-  if (seen.has(value)) return "[Circular]";
-  seen.add(value);
-  if (Array.isArray(value)) return value.map((item) => redactValue(item, seen));
-  const result: Record<string, unknown> = {};
-  for (const [key, nested] of Object.entries(value)) {
-    result[key] = redactKey.test(key)
-      ? "[REDACTED]"
-      : redactValue(nested, seen);
-  }
-  return result;
-}
-
-/** Serialize one JSONL record after removing credential-shaped values. */
+/** Serialize one JSONL record verbatim. Logs are local files: no redaction. */
 export function serializeLog(entry: AgentLogEntry): string {
-  const redacted = redactValue(entry);
   try {
-    return `${JSON.stringify(redacted)}\n`;
+    return `${JSON.stringify(entry)}\n`;
   } catch {
     return `${JSON.stringify({ message: "[Unserializable log entry]" })}\n`;
   }
@@ -95,7 +63,7 @@ async function removeIfPresent(
   }
 }
 
-/** JSONL file logger with bounded rotation and no unredacted writes. */
+/** JSONL file logger with bounded rotation. */
 export function createRotatingJsonlLogger(
   options: RotatingJsonlLoggerOptions,
 ): RotatingJsonlLogger {

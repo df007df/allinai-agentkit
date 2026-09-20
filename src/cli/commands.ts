@@ -20,7 +20,6 @@ import {
   createRotatingJsonlLogger,
   bridgeLog,
   setBridgeLogger,
-  serializeLog,
 } from "../logger.js";
 import { resolveAgentPaths, type AgentPaths } from "../paths.js";
 import { renderManualMarkdown, cliManual } from "./docs.js";
@@ -348,21 +347,6 @@ function emit(output: string[], write: Writable, value: unknown): void {
   write(`${line}\n`);
 }
 
-function redactLogDocument(document: string): string {
-  return document
-    .split(/\r?\n/)
-    .filter(Boolean)
-    .map((line) => {
-      try {
-        const parsed = JSON.parse(line) as Record<string, unknown>;
-        return serializeLog(parsed).trimEnd();
-      } catch {
-        return JSON.stringify({ message: "[unparseable log line]" });
-      }
-    })
-    .join("\n");
-}
-
 async function defaultWhich(name: string): Promise<string | null> {
   const { execFile } = await import("node:child_process");
   return await new Promise<string | null>((resolve) => {
@@ -400,7 +384,7 @@ async function defaultProbeRuntimes(): Promise<RuntimeProbeResult[]> {
   return await Promise.all(registry.list().map(probeOrUnavailable));
 }
 
-/** Follow only the client-owned JSONL file and reapply redaction before output. */
+/** Follow only the client-owned JSONL file and stream appended lines as-is. */
 async function defaultFollowLog(
   file: string,
   write: Writable,
@@ -419,8 +403,7 @@ async function defaultFollowLog(
       ? next.slice(current.length)
       : next;
     current = next;
-    const safe = redactLogDocument(appended);
-    if (safe) write(`${safe}\n`);
+    if (appended) write(appended);
   }
 }
 
@@ -655,8 +638,7 @@ export async function runCli(
       const read =
         scopedOptions.readLog ?? ((file: string) => readFile(file, "utf8"));
       const content = await read(logFile);
-      const safe = redactLogDocument(content);
-      if (safe) emit(output, write, safe);
+      if (content) emit(output, write, content.trimEnd());
       if (follow) {
         await (scopedOptions.followLog ?? defaultFollowLog)(
           logFile,

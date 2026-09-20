@@ -17,18 +17,6 @@ export type CredentialStore = {
   clear(clientId: string): Promise<void>;
 };
 
-export type SecurityCommandResult = {
-  code: number;
-  stdout: string;
-  stderr: string;
-};
-
-/** Process port: tests can verify the exact security invocation without spawning a process. */
-export type SecurityExecutor = (
-  file: string,
-  args: string[],
-) => Promise<SecurityCommandResult>;
-
 export type CredentialFileSystem = {
   mkdir(dir: string, options: { recursive: true }): Promise<string | undefined>;
   readFile(file: string, encoding: "utf8"): Promise<string>;
@@ -46,10 +34,7 @@ export type CredentialFileSystem = {
 export type CredentialStoreOptions = {
   homeDir?: string;
   paths?: Pick<AgentPaths, "credentialsRoot">;
-  platform?: NodeJS.Platform;
-  executor?: SecurityExecutor;
   fs?: CredentialFileSystem;
-  serviceName?: string;
 };
 
 const credentialFs: CredentialFileSystem = {
@@ -61,11 +46,6 @@ const credentialFs: CredentialFileSystem = {
   chmod,
   stat,
 };
-
-// Deliberately the pre-rename identity: existing macOS keychain entries were
-// written under this service name, and changing it would force every paired
-// client to re-login after upgrade.
-const KEYCHAIN_SERVICE = "allinai-agent";
 
 function credentialFileName(clientId: string): string {
   if (!clientId.trim())
@@ -86,60 +66,6 @@ function missingFile(error: unknown): boolean {
   );
 }
 
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function keychainUnavailable(
-  error: unknown,
-  platform: NodeJS.Platform,
-): boolean {
-  if (platform !== "darwin") return true;
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    (error as { code?: unknown }).code === "ENOENT"
-  ) {
-    return true;
-  }
-  const message =
-    typeof error === "object" && error !== null && "stderr" in error
-      ? `${String((error as { stdout?: unknown }).stdout ?? "")} ${String((error as { stderr?: unknown }).stderr ?? "")}`.toLowerCase()
-      : messageOf(error).toLowerCase();
-  return (
-    message.includes("keychain is not available") ||
-    message.includes("no keychain")
-  );
-}
-
-function keychainItemMissing(result: SecurityCommandResult): boolean {
-  const text = `${result.stdout}\n${result.stderr}`.toLowerCase();
-  return text.includes("could not be found") || text.includes("item not found");
-}
-
-function defaultSecurityExecutor(): SecurityExecutor {
-  return async (file, args) => {
-    const { execFile } = await import("node:child_process");
-    return await new Promise<SecurityCommandResult>((resolve, reject) => {
-      execFile(file, args, { shell: false }, (error, stdout, stderr) => {
-        if (error && typeof (error as { code?: unknown }).code !== "number") {
-          reject(error);
-          return;
-        }
-        resolve({
-          code:
-            typeof (error as { code?: unknown } | null)?.code === "number"
-              ? (error as { code: number }).code
-              : 0,
-          stdout,
-          stderr,
-        });
-      });
-    });
-  };
-}
-
 async function deleteIfPresent(
   fs: CredentialFileSystem,
   file: string,
@@ -151,6 +77,10 @@ async function deleteIfPresent(
   }
 }
 
+/**
+ * The only credential store, identical on every platform: one mode-0600 file
+ * per clientId under the Agent home, written atomically (temp file + rename).
+ */
 class FileCredentialStore implements CredentialStore {
   constructor(
     private readonly root: string,
@@ -162,7 +92,7 @@ class FileCredentialStore implements CredentialStore {
     try {
       const info = await this.fs.stat(file);
       if ((info.mode & 0o077) !== 0) {
-        throw new Error(`Credential fallback file ${file} must have mode 0600`);
+        throw new Error(`Credential file ${file} must have mode 0600`);
       }
       const token = (await this.fs.readFile(file, "utf8")).trim();
       return token || null;
@@ -197,113 +127,9 @@ class FileCredentialStore implements CredentialStore {
   }
 }
 
-class KeychainCredentialStore implements CredentialStore {
-  private readonly fallback: FileCredentialStore;
-
-  constructor(
-    private readonly platform: NodeJS.Platform,
-    private readonly executor: SecurityExecutor,
-    paths: Pick<AgentPaths, "credentialsRoot">,
-    fs: CredentialFileSystem,
-    private readonly serviceName: string,
-  ) {
-    this.fallback = new FileCredentialStore(paths.credentialsRoot, fs);
-  }
-
-  async load(clientId: string): Promise<string | null> {
-    if (this.platform !== "darwin") return this.fallback.load(clientId);
-    try {
-      const result = await this.executor("security", [
-        "find-generic-password",
-        "-a",
-        clientId,
-        "-s",
-        this.serviceName,
-        "-w",
-      ]);
-      if (result.code === 0) return result.stdout.trim() || null;
-      // A functioning Keychain is authoritative. Do not silently prefer an
-      // old fallback file merely because this account has no Keychain item.
-      if (keychainItemMissing(result)) return null;
-      if (keychainUnavailable(result, this.platform))
-        return this.fallback.load(clientId);
-      throw new Error(
-        `Keychain load failed: ${result.stderr || result.stdout || result.code}`,
-      );
-    } catch (error) {
-      if (keychainUnavailable(error, this.platform))
-        return this.fallback.load(clientId);
-      throw error;
-    }
-  }
-
-  async save(clientId: string, token: string): Promise<void> {
-    if (!token.trim()) throw new TypeError("token must be a nonempty string");
-    if (this.platform !== "darwin") return this.fallback.save(clientId, token);
-    try {
-      const result = await this.executor("security", [
-        "add-generic-password",
-        "-U",
-        "-a",
-        clientId,
-        "-s",
-        this.serviceName,
-        "-w",
-        token,
-      ]);
-      if (result.code === 0) return;
-      if (keychainUnavailable(result, this.platform))
-        return this.fallback.save(clientId, token);
-      throw new Error(
-        `Keychain save failed: ${result.stderr || result.stdout || result.code}`,
-      );
-    } catch (error) {
-      if (keychainUnavailable(error, this.platform))
-        return this.fallback.save(clientId, token);
-      throw error;
-    }
-  }
-
-  async clear(clientId: string): Promise<void> {
-    if (this.platform !== "darwin") return this.fallback.clear(clientId);
-    try {
-      const result = await this.executor("security", [
-        "delete-generic-password",
-        "-a",
-        clientId,
-        "-s",
-        this.serviceName,
-      ]);
-      if (result.code === 0 || keychainItemMissing(result)) {
-        await this.fallback.clear(clientId);
-        return;
-      }
-      if (keychainUnavailable(result, this.platform))
-        return this.fallback.clear(clientId);
-      throw new Error(
-        `Keychain clear failed: ${result.stderr || result.stdout || result.code}`,
-      );
-    } catch (error) {
-      if (keychainUnavailable(error, this.platform))
-        return this.fallback.clear(clientId);
-      throw error;
-    }
-  }
-}
-
-/**
- * Keychain is preferred on macOS. A mode-0600, atomic local file is used only
- * when Keychain itself is unavailable (or on a platform without Keychain).
- */
 export function createCredentialStore(
   options: CredentialStoreOptions = {},
 ): CredentialStore {
   const paths = options.paths ?? resolveAgentPaths(options.homeDir);
-  return new KeychainCredentialStore(
-    options.platform ?? process.platform,
-    options.executor ?? defaultSecurityExecutor(),
-    paths,
-    options.fs ?? credentialFs,
-    options.serviceName ?? KEYCHAIN_SERVICE,
-  );
+  return new FileCredentialStore(paths.credentialsRoot, options.fs ?? credentialFs);
 }

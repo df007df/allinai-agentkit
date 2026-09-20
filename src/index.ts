@@ -80,8 +80,6 @@ export {
   type CredentialStore,
   type CredentialStoreOptions,
   type CredentialFileSystem,
-  type SecurityCommandResult,
-  type SecurityExecutor,
 } from "./credentials.js";
 export {
   createAgentControlClient,

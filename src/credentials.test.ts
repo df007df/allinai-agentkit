@@ -12,79 +12,56 @@ describe("agent credential store", () => {
     dir = "";
   });
 
-  it("uses the injected macOS security command when Keychain is available", async () => {
-    const calls: Array<{ file: string; args: string[] }> = [];
-    const store = createCredentialStore({
-      homeDir: "/tmp/home",
-      platform: "darwin",
-      executor: async (file, args) => {
-        calls.push({ file, args });
-        if (args[0] === "find-generic-password")
-          return { code: 0, stdout: "secret-token\n", stderr: "" };
-        return { code: 0, stdout: "", stderr: "" };
-      },
-    });
-
-    await store.save("client-1", "secret-token");
-    assert.equal(await store.load("client-1"), "secret-token");
-    await store.clear("client-1");
-
-    assert.deepEqual(
-      calls.map((call) => call.file),
-      ["security", "security", "security"],
-    );
-    assert.equal(
-      calls.some((call) => call.args.includes("secret-token")),
-      true,
-    );
-  });
-
-  it("falls back atomically to a mode-0600 file only when Keychain is unavailable", async () => {
+  it("saves and loads tokens as mode-0600 files under the Agent home", async () => {
     dir = mkdtempSync(path.join(os.tmpdir(), "allinai-agentkit-creds-"));
-    let unavailable = true;
-    const store = createCredentialStore({
-      homeDir: dir,
-      platform: "darwin",
-      executor: async () => {
-        if (!unavailable) {
-          return { code: 44, stdout: "", stderr: "could not be found" };
-        }
-        const error = new Error(
-          "security: Keychain is not available",
-        ) as Error & { code?: string };
-        error.code = "ENOENT";
-        throw error;
-      },
-    });
+    const store = createCredentialStore({ homeDir: dir });
 
     await store.save("client-1", "secret-token");
     assert.equal(await store.load("client-1"), "secret-token");
-    const fallback = path.join(
+
+    const file = path.join(
       dir,
       ".allinai",
       "agent",
       "credentials",
       "client-1.token",
     );
-    assert.equal(statSync(fallback).mode & 0o077, 0);
-    unavailable = false;
+    assert.equal(statSync(file).mode & 0o077, 0);
+
+    await store.clear("client-1");
     assert.equal(await store.load("client-1"), null);
   });
 
-  it("does not fall back when a working Keychain rejects a save", async () => {
-    const store = createCredentialStore({
-      homeDir: "/tmp/home",
-      platform: "darwin",
-      executor: async () => ({
-        code: 1,
-        stdout: "",
-        stderr: "security: access denied",
-      }),
-    });
+  it("replaces an existing token atomically on re-save", async () => {
+    dir = mkdtempSync(path.join(os.tmpdir(), "allinai-agentkit-creds-"));
+    const store = createCredentialStore({ homeDir: dir });
+
+    await store.save("client-1", "first-token");
+    await store.save("client-1", "second-token");
+    assert.equal(await store.load("client-1"), "second-token");
+  });
+
+  it("rejects empty tokens and empty clientIds", async () => {
+    dir = mkdtempSync(path.join(os.tmpdir(), "allinai-agentkit-creds-"));
+    const store = createCredentialStore({ homeDir: dir });
 
     await assert.rejects(
-      store.save("client-1", "secret-token"),
-      /Keychain save failed/,
+      store.save("client-1", "  "),
+      /token must be a nonempty string/,
     );
+    await assert.rejects(store.load(""), /clientId must be a nonempty string/);
+  });
+
+  it("fails closed when a credential file has loose permissions", async () => {
+    dir = mkdtempSync(path.join(os.tmpdir(), "allinai-agentkit-creds-"));
+    const file = path.join(dir, "client-1.token");
+    const { writeFileSync, chmodSync } = await import("node:fs");
+    writeFileSync(file, "secret-token");
+    chmodSync(file, 0o644);
+    const store = createCredentialStore({
+      paths: { credentialsRoot: dir },
+    });
+
+    await assert.rejects(store.load("client-1"), /must have mode 0600/);
   });
 });
