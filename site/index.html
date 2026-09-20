@@ -306,7 +306,8 @@ export const hub = createAgentHub({
               <span class="arch-chip you">你的鉴权<br /><small>authorize(token) → principal</small></span>
               <span class="arch-chip you">你的持久化<br /><small>HubStore（六方法端口）</small></span>
             </div>
-            <div class="arch-arrow">▼ 注入</div>
+            <div class="arch-wire down" aria-hidden="true"></div>
+            <span class="arch-wire-text">注入</span>
             <div class="arch-row">
               <span class="arch-chip mod">/hub · createAgentHub()</span>
             </div>
@@ -316,11 +317,13 @@ export const hub = createAgentHub({
           </div>
 
           <div class="arch-link">
-            <span class="arch-link-arrow">⇅</span>
-            <div class="arch-link-label">
-              WebSocket <code>/api/agent-hub/v2/ws</code><br />
-              <code>/protocol</code> · v2 wire：hello · 命令下行 · 事件上行 · 心跳 · 确认
+            <div class="arch-wire down tall" aria-hidden="true"></div>
+            <div class="arch-link-badge">
+              <div class="arch-link-dir">命令下行 ↓ · 事件上行 ↑</div>
+              <div class="arch-link-main">WebSocket <code>/api/agent-hub/v2/ws</code></div>
+              <div class="arch-link-sub"><code>/protocol</code> · v2 wire：hello · 命令 · 事件 · 心跳 · 确认</div>
             </div>
+            <div class="arch-wire up tall" aria-hidden="true"></div>
           </div>
 
           <div class="arch-card">
