@@ -1,0 +1,38 @@
+name: Release to npm
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      # Required for npm trusted publishing (OIDC); no registry token needed.
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Node 24 ships npm 11+, which auto-detects OIDC trusted publishing.
+          node-version: "24"
+
+      - name: Install pnpm
+        run: npm install -g pnpm@11
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test
+        run: pnpm test
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      # prepack (build + publish manifest prepare) runs automatically.
+      - name: Publish
+        run: npm publish --provenance
