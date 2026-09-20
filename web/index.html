@@ -24,7 +24,8 @@
           <h1>独立持久的<br />Agent Client</h1>
           <p class="subtext">
             连接 Hub，可靠执行本地 Agent 与受控能力，向上游回报状态。
-            本页就是内置 demo：授权你的 client 接入，实时看协议流动。
+            npm 包 @allin-ai/agentkit 已发布，npx 一条命令拉起本站：
+            授权你的 client 接入，实时看协议流动。
           </p>
           <div class="cta-row">
             <a class="btn primary" href="#console">接入你的 Agent</a>
@@ -37,15 +38,15 @@
             <span class="term-title">quickstart.sh</span>
             <button class="copy-btn" type="button" data-copy>复制全部</button>
           </div>
-          <pre class="term-body"><code><span class="c"># 终端 A：启动官网与 demo hub</span>
-node bin/allinai-agentkit demo
+          <pre class="term-body"><code><span class="c"># 终端 A：npx 拉起官网与 demo hub（Node.js ≥ 22.18）</span>
+npx @allin-ai/agentkit demo
 
 <span class="c"># 终端 B：浏览器授权（会打开本站授权页）</span>
-node bin/allinai-agentkit login \
+npx @allin-ai/agentkit login \
   --hub http://127.0.0.1:4317
 
 <span class="c"># 终端 B：常驻接入，然后回到本页控制台</span>
-node bin/allinai-agentkit daemon</code></pre>
+npx @allin-ai/agentkit daemon</code></pre>
         </div>
       </section>
 
@@ -316,8 +317,16 @@ export const hub = createAgentHub({
             <p>可重连执行 client 与传输层</p>
           </div>
           <div class="export-cell">
+            <code>/control</code>
+            <p>daemon 本地控制面：健康、状态、清单</p>
+          </div>
+          <div class="export-cell">
             <code>/runtime</code>
             <p>Codex / Claude / Pi 适配，可选 peer</p>
+          </div>
+          <div class="export-cell">
+            <code>/plugins</code>
+            <p>Git 插件仓库同步与装载</p>
           </div>
           <div class="export-cell">
             <code>/demo</code>
@@ -412,8 +421,12 @@ export const hub = createAgentHub({
     </main>
 
     <footer class="footer">
-      <span>MIT License</span>
-      <span>@allin-ai/agentkit</span>
+      <span>MIT License · Node.js ≥ 22.18</span>
+      <span class="footer-links">
+        <a href="https://www.npmjs.com/package/@allin-ai/agentkit" target="_blank" rel="noreferrer">npm</a>
+        <a href="https://github.com/df007df/allinai-agentkit" target="_blank" rel="noreferrer">GitHub</a>
+        <span>@allin-ai/agentkit</span>
+      </span>
     </footer>
 
     <script type="module" src="/app.js"></script>
