@@ -75,7 +75,7 @@ offerSend.onclick = async () => {
     return;
   }
   try {
-    const response = await fetch("/api/demo/offers", {
+    const response = await fetch("offers", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -105,7 +105,7 @@ pluginSyncBtn.onclick = async () => {
     return;
   }
   try {
-    const response = await fetch("/api/demo/plugins/sync", {
+    const response = await fetch("plugins/sync", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -133,7 +133,7 @@ inventoryQueryBtn.onclick = async () => {
     return;
   }
   try {
-    const response = await fetch("/api/demo/inventory/query", {
+    const response = await fetch("inventory/query", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ clientId }),
@@ -150,7 +150,7 @@ inventoryQueryBtn.onclick = async () => {
 };
 
 async function loadInventory(clientId) {
-  const response = await fetch(`/api/demo/inventory/${encodeURIComponent(clientId)}`);
+  const response = await fetch(`inventory/${encodeURIComponent(clientId)}`);
   if (!response.ok) return null;
   return response.json();
 }
@@ -204,7 +204,7 @@ function setSseState(state, label) {
   sseStatus.textContent = label;
 }
 
-const source = new EventSource("/api/demo/observe");
+const source = new EventSource("observe");
 source.onopen = () => setSseState("online", "观测流已连接");
 source.onerror = () => setSseState("offline", "观测流已断开，自动重连中");
 

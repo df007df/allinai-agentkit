@@ -97,7 +97,7 @@ export interface HubStore<Principal> {
 export interface AgentHubOptions<Principal> {
   authorize: HubAuthorizer<Principal>;
   store: HubStore<Principal>;
-  /** Default /api/agent-hub/v2; absolute path without trailing slash. */
+  /** Default /_agentkit/hub/v2; absolute path without trailing slash. */
   pathPrefix?: string;
   maxPayloadBytes?: number;
 }

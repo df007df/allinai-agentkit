@@ -13,6 +13,7 @@ import {
   type PluginConfig,
 } from "../protocol/index.js";
 import { bridgeLog } from "../logger.js";
+import { HUB_PATH_PREFIX } from "../routes.js";
 import type {
   AgentHub,
   AgentHubOptions,
@@ -31,7 +32,7 @@ type ConnectedSocket<Principal> = HubClientRecord & {
 export function createAgentHub<Principal>(
   options: AgentHubOptions<Principal>,
 ): AgentHub<Principal> {
-  const pathPrefix = options.pathPrefix ?? "/api/agent-hub/v2";
+  const pathPrefix = options.pathPrefix ?? HUB_PATH_PREFIX;
   if (
     !pathPrefix.startsWith("/") ||
     pathPrefix.endsWith("/") ||

@@ -85,7 +85,7 @@ describe("WsClientTransport", () => {
     await nextTurn();
 
     assert.equal(sockets.length, 1);
-    assert.match(sockets[0]!.url, /\/api\/agent-hub\/v2\/ws/);
+    assert.match(sockets[0]!.url, /\/_agentkit\/hub\/v2\/ws/);
     assert.match(sockets[0]!.url, /token=test-token/);
     assert.deepEqual(
       sockets[0]!.sent.map((text) => JSON.parse(text)),
@@ -211,11 +211,11 @@ describe("WsClientTransport", () => {
     for (const [hubBaseUrl, expected] of [
       [
         "http://hub.example",
-        "ws://hub.example/api/agent-hub/v2/ws?token=test-token",
+        "ws://hub.example/_agentkit/hub/v2/ws?token=test-token",
       ],
       [
         "https://hub.example",
-        "wss://hub.example/api/agent-hub/v2/ws?token=test-token",
+        "wss://hub.example/_agentkit/hub/v2/ws?token=test-token",
       ],
     ] as const) {
       const transport = new WsClientTransport({
@@ -255,7 +255,7 @@ describe("WsClientTransport", () => {
 
     assert.equal(
       fakeSockets[0]?.url,
-      "wss://hub.example/api/agent-hub/v2/ws?token=test-token",
+      "wss://hub.example/_agentkit/hub/v2/ws?token=test-token",
     );
     await transport.close();
   });

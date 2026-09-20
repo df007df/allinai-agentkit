@@ -22,6 +22,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./protocol": "./src/protocol/index.ts",
+    "./routes": "./src/routes.ts",
+    "./agent-api": "./src/agent-api.ts",
     "./wire": "./src/wire.ts",
     "./hub": "./src/hub/index.ts",
     "./hub/testkit": "./src/hub/testkit/index.ts",
@@ -49,6 +51,16 @@
         "types": "./dist/protocol/index.d.ts",
         "import": "./dist/protocol/index.js",
         "default": "./dist/protocol/index.js"
+      },
+      "./routes": {
+        "types": "./dist/routes.d.ts",
+        "import": "./dist/routes.js",
+        "default": "./dist/routes.js"
+      },
+      "./agent-api": {
+        "types": "./dist/agent-api.d.ts",
+        "import": "./dist/agent-api.js",
+        "default": "./dist/agent-api.js"
       },
       "./wire": {
         "types": "./dist/wire.d.ts",

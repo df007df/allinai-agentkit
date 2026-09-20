@@ -33,7 +33,7 @@ describe("test-only memory hub", () => {
     await once(server, "listening");
     const address = server.address();
     assert.ok(address && typeof address === "object");
-    const endpoint = `ws://127.0.0.1:${address.port}/api/agent-hub/v2/ws?token=test-token`;
+    const endpoint = `ws://127.0.0.1:${address.port}/_agentkit/hub/v2/ws?token=test-token`;
 
     try {
       const first = new WebSocket(endpoint);

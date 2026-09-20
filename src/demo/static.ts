@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { STATIC_PATH_PREFIX } from "../routes.js";
 
 const CONTENT_TYPES: Readonly<Record<string, string>> = {
   ".html": "text/html; charset=utf-8",
@@ -20,6 +21,11 @@ export function resolveWebRoot(): string {
   );
 }
 
+/**
+ * Serves the demo pages under the reserved agentkit prefix only. The site
+ * root belongs to the embedding host: a bare visit is redirected to the
+ * console, while every other host-owned path stays untouched (404 here).
+ */
 export function createStaticHandler(
   webRoot: string,
 ): (request: IncomingMessage, response: ServerResponse) => void {
@@ -31,12 +37,25 @@ export function createStaticHandler(
       return;
     }
     const url = new URL(request.url ?? "/", "http://demo.invalid");
-    const relative =
-      url.pathname === "/"
-        ? "index.html"
-        : url.pathname === "/login"
-          ? "login.html"
-          : url.pathname.slice(1);
+    if (url.pathname === "/" || url.pathname === "/index.html") {
+      response.writeHead(302, { location: `${STATIC_PATH_PREFIX}/` });
+      response.end();
+      return;
+    }
+    if (!url.pathname.startsWith(`${STATIC_PATH_PREFIX}/`)) {
+      // Not ours: the host site owns this namespace.
+      response.writeHead(404, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: "not_found" }));
+      return;
+    }
+    const stripped = url.pathname.slice(`${STATIC_PATH_PREFIX}/`.length);
+    // Directory-style visits ("`/_agentkit/`" or "`/_agentkit/sub/`") map to
+    // the directory's index document, matching conventional static hosting.
+    const relative = url.pathname === `${STATIC_PATH_PREFIX}/login`
+      ? "login.html"
+      : stripped === "" || stripped.endsWith("/")
+        ? `${stripped}index.html`
+        : stripped;
     const resolved = path.resolve(root, `./${relative}`);
     if (resolved !== root && !resolved.startsWith(`${root}${path.sep}`)) {
       response.writeHead(404, { "content-type": "application/json" });

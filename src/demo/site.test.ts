@@ -17,7 +17,7 @@ async function loginToken(
   site: DemoSiteHandle,
   clientId: string,
 ): Promise<string> {
-  const response = await fetch(`${site.url}/login/approve`, {
+  const response = await fetch(`${site.url}/_agentkit/login/approve`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
@@ -38,7 +38,7 @@ describe("demo site", () => {
     const site = await startDemoSite({ port: 0 });
     try {
       assert.ok(site.url.startsWith("http://127.0.0.1:"));
-      assert.ok(site.hubUrl.endsWith("/api/agent-hub/v2/ws"));
+      assert.ok(site.hubUrl.endsWith("/_agentkit/hub/v2/ws"));
 
       const page = await fetch(`${site.url}/`);
       assert.equal(page.status, 200);
@@ -83,7 +83,7 @@ describe("demo observe endpoint", () => {
   it("streams a snapshot then incremental observations", async () => {
     const site = await startDemoSite({ port: 0 });
     try {
-      const response = await fetch(`${site.url}/api/demo/observe`);
+      const response = await fetch(`${site.url}/_agentkit/demo/observe`);
       assert.equal(response.status, 200);
       assert.match(
         response.headers.get("content-type") ?? "",
@@ -133,7 +133,7 @@ describe("demo login routes", () => {
   it("approves loopback logins with a registered token", async () => {
     const site = await startDemoSite({ port: 0 });
     try {
-      const response = await fetch(`${site.url}/login/approve`, {
+      const response = await fetch(`${site.url}/_agentkit/login/approve`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -158,7 +158,7 @@ describe("demo login routes", () => {
   it("denies and rejects non-loopback redirect targets", async () => {
     const site = await startDemoSite({ port: 0 });
     try {
-      const denied = await fetch(`${site.url}/login/deny`, {
+      const denied = await fetch(`${site.url}/_agentkit/login/deny`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -170,7 +170,7 @@ describe("demo login routes", () => {
       const payload = (await denied.json()) as { redirectUrl: string };
       assert.match(payload.redirectUrl, /error=access_denied/);
 
-      const evil = await fetch(`${site.url}/login/approve`, {
+      const evil = await fetch(`${site.url}/_agentkit/login/approve`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -185,11 +185,11 @@ describe("demo login routes", () => {
     }
   });
 
-  it("serves the authorization page at /login", async () => {
+  it("serves the authorization page under the agentkit prefix", async () => {
     const site = await startDemoSite({ port: 0 });
     try {
       const page = await fetch(
-        `${site.url}/login?client_id=c&state=s&redirect_uri=${encodeURIComponent("http://127.0.0.1:1/callback")}`,
+        `${site.url}/_agentkit/login?client_id=c&state=s&redirect_uri=${encodeURIComponent("http://127.0.0.1:1/callback")}`,
       );
       assert.equal(page.status, 200);
       assert.match(await page.text(), /授权接入请求/);
@@ -216,7 +216,7 @@ describe("demo offers endpoint", () => {
         connected: async () => {},
       });
 
-      let response = await fetch(`${site.url}/api/demo/offers`, {
+      let response = await fetch(`${site.url}/_agentkit/demo/offers`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -228,7 +228,7 @@ describe("demo offers endpoint", () => {
       const registerDeadline = Date.now() + 2_000;
       while (response.status === 404 && Date.now() < registerDeadline) {
         await new Promise((resolve) => setTimeout(resolve, 10));
-        response = await fetch(`${site.url}/api/demo/offers`, {
+        response = await fetch(`${site.url}/_agentkit/demo/offers`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
@@ -255,7 +255,7 @@ describe("demo offers endpoint", () => {
         "写一首关于秋天的诗",
       );
 
-      const missing = await fetch(`${site.url}/api/demo/offers`, {
+      const missing = await fetch(`${site.url}/_agentkit/demo/offers`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ clientId: "ghost", prompt: "x" }),
@@ -294,7 +294,7 @@ describe("demo inventory endpoints", () => {
       });
 
       const query = () =>
-        fetch(`${site.url}/api/demo/inventory/query`, {
+        fetch(`${site.url}/_agentkit/demo/inventory/query`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ clientId: "inventory-client" }),
@@ -349,7 +349,7 @@ describe("demo inventory endpoints", () => {
         }),
       );
 
-      const get = () => fetch(`${site.url}/api/demo/inventory/report-client`);
+      const get = () => fetch(`${site.url}/_agentkit/demo/inventory/report-client`);
       // 等注册落地：未注册时 store 侧所有权校验会以 500 拒绝，注册后为 404。
       let response = await get();
       const registerDeadline = Date.now() + 2_000;
@@ -378,7 +378,7 @@ describe("demo inventory endpoints", () => {
   it("rejects inventory query for unknown clients", async () => {
     const site = await startDemoSite({ port: 0 });
     try {
-      const missing = await fetch(`${site.url}/api/demo/inventory/query`, {
+      const missing = await fetch(`${site.url}/_agentkit/demo/inventory/query`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ clientId: "ghost" }),
@@ -386,7 +386,7 @@ describe("demo inventory endpoints", () => {
       assert.equal(missing.status, 404);
       assert.deepEqual(await missing.json(), { error: "unknown_client" });
 
-      const invalid = await fetch(`${site.url}/api/demo/inventory/query`, {
+      const invalid = await fetch(`${site.url}/_agentkit/demo/inventory/query`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: "{}",

@@ -25,7 +25,7 @@ describe("login flow", () => {
       },
       open: async (url) => {
         const authorize = new URL(url);
-        assert.equal(authorize.pathname, "/login");
+        assert.equal(authorize.pathname, "/_agentkit/login");
         assert.equal(authorize.searchParams.get("client_id"), "login-flow-client");
         const state = authorize.searchParams.get("state") ?? "";
         const redirectUri = authorize.searchParams.get("redirect_uri") ?? "";

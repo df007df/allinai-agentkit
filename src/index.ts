@@ -29,6 +29,20 @@ export {
   CLIENT_EVENT_TYPES,
   CLIENT_RUNTIME_IDS,
 } from "./protocol/index.js";
+export {
+  AGENTKIT_ROOT_PREFIX,
+  HUB_PATH_PREFIX,
+  LOGIN_PATH,
+  LOGIN_APPROVE_PATH,
+  LOGIN_DENY_PATH,
+  DEMO_PATH_PREFIX,
+  DEMO_OBSERVE_PATH,
+  DEMO_OFFERS_PATH,
+  DEMO_PLUGIN_SYNC_PATH,
+  DEMO_INVENTORY_PATH,
+  DEMO_INVENTORY_QUERY_PATH,
+  RESERVED_AGENTKIT_SEGMENTS,
+} from "./routes.js";
 // Production Hub port only. Volatile memory helpers remain on /hub/testkit.
 export * from "./hub/index.js";
 export {

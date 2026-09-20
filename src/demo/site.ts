@@ -7,11 +7,22 @@ import { MemoryHubStore } from "../hub/testkit/index.js";
 import { ObservableStore } from "./observable-store.js";
 import { DemoProjection } from "./projection.js";
 import { createStaticHandler, resolveWebRoot } from "./static.js";
+import { createAgentApiRouter } from "../agent-api.js";
 import {
   createRegistryAuthorizer,
   DEMO_PRINCIPAL,
   TokenRegistry,
 } from "./token-registry.js";
+import {
+  DEFAULT_HUB_WS_PATH,
+  DEMO_INVENTORY_PATH,
+  DEMO_INVENTORY_QUERY_PATH,
+  DEMO_OBSERVE_PATH,
+  DEMO_OFFERS_PATH,
+  DEMO_PLUGIN_SYNC_PATH,
+  LOGIN_APPROVE_PATH,
+  LOGIN_DENY_PATH,
+} from "../routes.js";
 
 export type DemoRouterContext = {
   hub: AgentHub<string>;
@@ -246,7 +257,7 @@ function handleInventoryGet(
   response: ServerResponse,
 ): void {
   const clientId = decodeURIComponent(
-    pathname.slice("/api/demo/inventory/".length),
+    pathname.slice(`${DEMO_INVENTORY_PATH}/`.length),
   );
   void context.hub
     .getInventory({ principal: DEMO_PRINCIPAL, clientId })
@@ -269,42 +280,108 @@ export function createDemoRouter(
   context: DemoRouterContext,
 ): (request: IncomingMessage, response: ServerResponse) => void {
   const staticHandler = createStaticHandler(resolveWebRoot());
-  // offers 路由在后续任务中在此分派（见 Task 8）。
+  // 示例业务挂载面：站点声明路由，鉴权由组件自动装配（身份从 token 派生）。
+  const agentApi = createAgentApiRouter({
+    authenticate: (token) => {
+      const record = context.registry.verify(token);
+      if (!record) return null;
+      return { principal: DEMO_PRINCIPAL, clientId: record.clientId };
+    },
+    routes: [
+      {
+        method: "GET",
+        path: "/whoami",
+        handler: ({ identity, response }) => {
+          response.writeHead(200, { "content-type": "application/json" });
+          response.end(
+            JSON.stringify({
+              clientId: identity.clientId,
+              principal: identity.principal,
+            }),
+          );
+        },
+      },
+      {
+        method: "POST",
+        path: "/tasks",
+        handler: async ({ identity, body, response }) => {
+          const prompt = typeof body.prompt === "string" ? body.prompt : "";
+          if (!prompt) {
+            response.writeHead(400, { "content-type": "application/json" });
+            response.end(JSON.stringify({ error: "prompt_required" }));
+            return;
+          }
+          try {
+            const offer = await context.hub.offer({
+              principal: identity.principal,
+              targetClientId: identity.clientId,
+              command: {
+                kind: "agent.run",
+                commandId: randomUUID(),
+                executionId: randomUUID(),
+                taskId: `api-${randomUUID()}`,
+                attempt: 1,
+                runtime: parseDemoRuntime(
+                  typeof body.runtime === "string" ? body.runtime : "",
+                ),
+                payload: {
+                  prompt,
+                  ...(typeof body.project === "string" && body.project.trim()
+                    ? { project: body.project.trim() }
+                    : {}),
+                },
+              },
+            });
+            response.writeHead(200, { "content-type": "application/json" });
+            response.end(JSON.stringify({ offerId: offer.offerId }));
+          } catch (error) {
+            response.writeHead(400, { "content-type": "application/json" });
+            response.end(
+              JSON.stringify({
+                error: error instanceof Error ? error.message : "invalid_task",
+              }),
+            );
+          }
+        },
+      },
+    ],
+  });
   return (request, response) => {
     void (async () => {
       try {
         const url = new URL(request.url ?? "/", "http://demo.invalid");
         if (
           request.method === "GET" &&
-          url.pathname === "/api/demo/observe"
+          url.pathname === DEMO_OBSERVE_PATH
         ) {
           handleObserve(context, request, response);
           return;
         }
-        if (request.method === "POST" && url.pathname === "/login/approve") {
+        if (request.method === "POST" && url.pathname === LOGIN_APPROVE_PATH) {
           await handleLoginApprove(context, request, response);
           return;
         }
-        if (request.method === "POST" && url.pathname === "/login/deny") {
+        if (request.method === "POST" && url.pathname === LOGIN_DENY_PATH) {
           await handleLoginDeny(request, response);
           return;
         }
-        if (request.method === "POST" && url.pathname === "/api/demo/offers") {
+        if (request.method === "POST" && url.pathname === DEMO_OFFERS_PATH) {
           await handleOffers(context, request, response);
           return;
         }
-        if (request.method === "POST" && url.pathname === "/api/demo/plugins/sync") {
+        if (request.method === "POST" && url.pathname === DEMO_PLUGIN_SYNC_PATH) {
           await handlePluginSync(context, request, response);
           return;
         }
-        if (request.method === "POST" && url.pathname === "/api/demo/inventory/query") {
+        if (request.method === "POST" && url.pathname === DEMO_INVENTORY_QUERY_PATH) {
           await handleInventoryQuery(context, request, response);
           return;
         }
-        if (request.method === "GET" && url.pathname.startsWith("/api/demo/inventory/")) {
+        if (request.method === "GET" && url.pathname.startsWith(`${DEMO_INVENTORY_PATH}/`)) {
           handleInventoryGet(context, url.pathname, response);
           return;
         }
+        if (await agentApi(request, response)) return;
         staticHandler(request, response);
       } catch {
         if (!response.headersSent) {
@@ -387,7 +464,7 @@ export async function startDemoSiteCore(options: {
   const url = `http://${host}:${address.port}`;
   return {
     url,
-    hubUrl: `${url.replace("http", "ws")}/api/agent-hub/v2/ws`,
+    hubUrl: `${url.replace("http", "ws")}${DEFAULT_HUB_WS_PATH}`,
     registry,
     async close() {
       for (const response of subscribers) response.destroy();

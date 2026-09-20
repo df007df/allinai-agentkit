@@ -3,6 +3,7 @@ import http from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { once } from "node:events";
 import type { CredentialStore } from "./credentials.js";
+import { LOGIN_PATH } from "./routes.js";
 
 export type LoginFlowOptions = {
   hubBaseUrl: string;
@@ -87,7 +88,7 @@ export async function runLoginFlow(
     throw new Error("login callback server failed to listen");
   }
   const redirectUri = `http://127.0.0.1:${address.port}/callback`;
-  const authorizeUrl = `${options.hubBaseUrl}/login?client_id=${encodeURIComponent(
+  const authorizeUrl = `${options.hubBaseUrl}${LOGIN_PATH}?client_id=${encodeURIComponent(
     options.clientId,
   )}&state=${encodeURIComponent(state)}&redirect_uri=${encodeURIComponent(redirectUri)}`;
 

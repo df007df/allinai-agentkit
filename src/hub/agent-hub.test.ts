@@ -8,6 +8,7 @@ import { test, type TestContext } from "node:test";
 import { promisify } from "node:util";
 import { WebSocket } from "ws";
 import * as publicHub from "../hub.js";
+import { HUB_PATH_PREFIX } from "../routes.js";
 import type {
   ClientCommand,
   ClientEvent,
@@ -176,7 +177,7 @@ async function setup(
   });
   async function connect(
     token = "valid",
-    path = `${options.pathPrefix ?? "/api/agent-hub/v2"}/ws`,
+    path = `${options.pathPrefix ?? HUB_PATH_PREFIX}/ws`,
   ) {
     const socket = new WebSocket(
       `${base.replace("http", "ws")}${path}?token=${token}`,
@@ -193,15 +194,15 @@ async function setup(
 test("awaits asynchronous authorization before HTTP/WS access", async (t) => {
   const { base, connect, store } = await setup(t);
   const denied = new WebSocket(
-    `${base.replace("http", "ws")}/api/agent-hub/v2/ws?token=bad`,
+    `${base.replace("http", "ws")}${HUB_PATH_PREFIX}/ws?token=bad`,
   );
   denied.on("error", () => {});
   const [error] = await once(denied, "error");
   assert.match(String(error), /401/);
   assert.equal(store.calls.length, 0);
-  const response = await fetch(`${base}/api/agent-hub/v2/ws?token=bad`);
+  const response = await fetch(`${base}${HUB_PATH_PREFIX}/ws?token=bad`);
   assert.equal(response.status, 401);
-  const allowedResponse = await fetch(`${base}/api/agent-hub/v2/ws`, {
+  const allowedResponse = await fetch(`${base}${HUB_PATH_PREFIX}/ws`, {
     headers: { authorization: "Bearer valid" },
   });
   assert.equal(allowedResponse.status, 426);
@@ -359,7 +360,7 @@ test("leaves non-Hub HTTP and upgrades, including legacy daemon routes, to the a
   for (const path of [
     "/page",
     "/api/daemon/register",
-    "/api/agent-hub/v2/ws",
+    `${HUB_PATH_PREFIX}/ws`,
   ]) {
     assert.equal(await (await fetch(`${base}${path}`)).text(), "application");
   }
@@ -367,7 +368,7 @@ test("leaves non-Hub HTTP and upgrades, including legacy daemon routes, to the a
   assert.deepEqual(fallbacks, [
     "/page",
     "/api/daemon/register",
-    "/api/agent-hub/v2/ws",
+    `${HUB_PATH_PREFIX}/ws`,
     "/application-ws?token=valid",
   ]);
   const { socket } = await connect();
@@ -580,7 +581,7 @@ for (const upgradeRequest of [false, true]) {
       ${upgradeRequest ? "assert.equal(response, '');" : "assert.ok(response.startsWith('HTTP/1.1 400 '));"}
       assert.equal(authorized, 0);
       assert.equal(await (await fetch('http://127.0.0.1:' + port + '/page')).text(), 'application');
-      const valid = new WebSocket('ws://127.0.0.1:' + port + '/api/agent-hub/v2/ws');
+      const valid = new WebSocket('ws://127.0.0.1:' + port + '/_agentkit/hub/v2/ws');
       await once(valid, 'open');
       assert.equal(authorized, 1);
       const disconnected = once(valid, 'close');
@@ -621,7 +622,7 @@ test("close aborts pending upgrade authorization and late authorization cannot r
   });
   await once(socket, "connect");
   socket.write(
-    "GET /api/agent-hub/v2/ws HTTP/1.1\r\nHost: localhost\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n",
+    `GET ${HUB_PATH_PREFIX}/ws HTTP/1.1\r\nHost: localhost\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n`,
   );
   await authorizationStarted;
   const disconnected = once(socket, "close");

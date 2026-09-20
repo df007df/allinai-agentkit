@@ -48,7 +48,7 @@ const fullReport: InventoryReport = {
 
 /** 走 demo 授权端点换一个 registry 已登记的 token（与浏览器授权同一路径）。 */
 async function demoToken(site: { url: string }, clientId: string): Promise<string> {
-  const approve = await fetch(`${site.url}/login/approve`, {
+  const approve = await fetch(`${site.url}/_agentkit/login/approve`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
@@ -80,7 +80,7 @@ describe("demo site end-to-end", () => {
       saveConfig: async () => {},
       open: async (url) => {
         const authorize = new URL(url);
-        const approve = await fetch(`${site.url}/login/approve`, {
+        const approve = await fetch(`${site.url}/_agentkit/login/approve`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
@@ -97,7 +97,7 @@ describe("demo site end-to-end", () => {
     assert.equal(await credentials.load("e2e-client"), login.token);
 
     // 先开 SSE 再接入 client：观测只广播给在线订阅者。
-    const sse = await fetch(`${site.url}/api/demo/observe`);
+    const sse = await fetch(`${site.url}/_agentkit/demo/observe`);
     const reader = sse.body!.getReader();
     const decoder = new TextDecoder();
     let seen = "";
@@ -122,7 +122,7 @@ describe("demo site end-to-end", () => {
         connected: async () => {},
       });
 
-      let offered = await fetch(`${site.url}/api/demo/offers`, {
+      let offered = await fetch(`${site.url}/_agentkit/demo/offers`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -133,7 +133,7 @@ describe("demo site end-to-end", () => {
       const registerDeadline = Date.now() + 2_000;
       while (offered.status === 404 && Date.now() < registerDeadline) {
         await new Promise((resolve) => setTimeout(resolve, 10));
-        offered = await fetch(`${site.url}/api/demo/offers`, {
+        offered = await fetch(`${site.url}/_agentkit/demo/offers`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
@@ -151,7 +151,7 @@ describe("demo site end-to-end", () => {
       assert.equal((received as { kind: string } | null)?.kind, "agent.run");
 
       // 触发一次 inventory.query；client 回报后观测流应出现 inventory 记录。
-      const queried = await fetch(`${site.url}/api/demo/inventory/query`, {
+      const queried = await fetch(`${site.url}/_agentkit/demo/inventory/query`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ clientId: "e2e-client" }),
@@ -196,7 +196,7 @@ describe("demo site end-to-end", () => {
       });
 
       // 注册落地前 query 可能 404，短暂重试。
-      let queried = await fetch(`${site.url}/api/demo/inventory/query`, {
+      let queried = await fetch(`${site.url}/_agentkit/demo/inventory/query`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ clientId: "e2e-inventory" }),
@@ -204,7 +204,7 @@ describe("demo site end-to-end", () => {
       const registerDeadline = Date.now() + 2_000;
       while (queried.status === 404 && Date.now() < registerDeadline) {
         await new Promise((resolve) => setTimeout(resolve, 10));
-        queried = await fetch(`${site.url}/api/demo/inventory/query`, {
+        queried = await fetch(`${site.url}/_agentkit/demo/inventory/query`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ clientId: "e2e-inventory" }),
@@ -224,7 +224,7 @@ describe("demo site end-to-end", () => {
       // client 经真实上行回报清单 → hub 落库 → GET 读回完整字段。
       await transport.reportInventory(fullReport);
 
-      const get = () => fetch(`${site.url}/api/demo/inventory/e2e-inventory`);
+      const get = () => fetch(`${site.url}/_agentkit/demo/inventory/e2e-inventory`);
       let got = await get();
       const reportDeadline = Date.now() + 2_000;
       while (got.status !== 200 && Date.now() < reportDeadline) {

@@ -72,7 +72,7 @@ flowchart TB
         sup --> ctl
     end
 
-    hub <-->|"WebSocket /api/agent-hub/v2/ws<br/>/protocol · v2 wire"| ws
+    hub <-->|"WebSocket /_agentkit/hub/v2/ws<br/>/protocol · v2 wire"| ws
     you["宿主进程（桌面 App / 服务端）"] -.->|"AgentControlClient 监管"| ctl
 ```
 
@@ -118,7 +118,7 @@ Hub 无法自选任意路径——只能从本地注册的目录里按名字挑�
 
 ### 插件
 
-- Hub 主动推送：`hub.syncPlugins({ principal, targetClientId, revision, plugins })`（demo 站点提供 `POST /api/demo/plugins/sync`）。
+- Hub 主动推送：`hub.syncPlugins({ principal, targetClientId, revision, plugins })`（demo 站点提供 `POST /_agentkit/demo/plugins/sync`）。
 - client 收到后校验清单、克隆到不可变修订目录并原子激活，随后回 `plugin.sync.ack`（含每个插件的 resolvedCommit）。
 - 本地随时查看：`allinai-agentkit plugins`；重新上报：`allinai-agentkit plugins --refresh`。
 

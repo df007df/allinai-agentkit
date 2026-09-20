@@ -10,12 +10,13 @@ import {
   type InventoryReport,
   type PluginSyncAcknowledgement,
 } from "../protocol/index.js";
+import { HUB_PATH_PREFIX } from "../routes.js";
 import type { ClientTransport, ClientTransportHandlers } from "./transport.js";
 import { AgentClientConfigurationError } from "./types.js";
 
 const DEFAULT_RECONNECT_BASE_MS = 1_000;
 const DEFAULT_RECONNECT_MAX_MS = 30_000;
-const DEFAULT_PATH_PREFIX = "/api/agent-hub/v2";
+const DEFAULT_PATH_PREFIX = HUB_PATH_PREFIX;
 const WS_OPEN = 1;
 
 export type ClientWebSocketLike = {
