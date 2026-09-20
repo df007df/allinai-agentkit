@@ -109,6 +109,12 @@ pnpm typecheck && pnpm test && pnpm build && pnpm verify:artifact
 
 ## 发布
 
-见 `docs/publish.md`（`npm publish --access public`，发布前必跑 `verify:artifact`）。
+推送 `v*` 标签触发 `.github/workflows/release.yml`：测试 → 类型检查 → `verify:artifact` → 经 trusted publishing 发布到 npm（附 SLSA provenance，无需本地凭据）。
+
+```bash
+# 本例：发布 0.3.3
+npm version patch          # 或手改 package.json 的 version
+git push --follow-tags
+```
 
 MIT License.

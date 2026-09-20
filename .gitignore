@@ -5,3 +5,4 @@ out/
 *.tsbuildinfo
 coverage/
 .publish-stage/
+docs/
