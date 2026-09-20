@@ -256,6 +256,109 @@ main {
 
 /* ---------- exports ---------- */
 
+/* 架构总览图：纯 CSS，零外部资源 */
+.arch {
+  display: grid;
+  gap: 0.9rem;
+  margin-bottom: 2.5rem;
+}
+.arch-card {
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  padding: 1.2rem 1.4rem 1.4rem;
+}
+.arch-title {
+  font-size: 0.78rem;
+  letter-spacing: 0.14em;
+  color: var(--text-dim);
+  margin-bottom: 0.9rem;
+}
+.arch-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  justify-content: center;
+  margin: 0.55rem 0;
+}
+.arch-chip {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.85rem;
+  text-align: center;
+  line-height: 1.5;
+}
+.arch-chip small { color: var(--text-dim); font-size: 0.75rem; }
+.arch-chip.mod {
+  border-color: rgba(52, 211, 153, 0.45);
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 0.82rem;
+}
+.arch-chip.mod small { font-family: var(--sans); }
+.arch-chip.you { border-style: dashed; }
+.arch-arrow {
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  margin: 0.15rem 0;
+}
+.arch-note {
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  margin: 0.7rem 0 0;
+}
+.arch-note code { font-family: var(--mono); color: var(--accent); }
+.arch-link {
+  display: grid;
+  justify-items: center;
+  gap: 0.15rem;
+  padding: 0.2rem 0;
+}
+.arch-link-arrow { color: var(--accent); font-size: 1.35rem; line-height: 1; }
+.arch-link-label {
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  line-height: 1.6;
+}
+.arch-link-label code { font-family: var(--mono); color: var(--accent); }
+.arch-support { margin-top: 0.2rem; }
+.arch-support .arch-chip,
+.arch-dev .arch-chip {
+  font-size: 0.78rem;
+  padding: 0.35rem 0.7rem;
+  color: var(--text-dim);
+}
+.arch-dev .arch-chip { color: var(--text); }
+
+/* 模块明细：分组 + 两栏行 */
+.export-group { margin-top: 2.2rem; }
+.export-group:first-child { margin-top: 0; }
+.export-group h3 {
+  font-size: 0.95rem;
+  margin: 0 0 0.4rem;
+  color: var(--text);
+}
+.export-row {
+  display: grid;
+  grid-template-columns: 10.5rem 1fr;
+  gap: 1.1rem;
+  padding: 0.85rem 0;
+  border-top: 1px solid var(--border);
+  align-items: baseline;
+}
+.export-row code {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  color: var(--accent);
+  line-height: 1.6;
+}
+.export-row code code { color: var(--text-dim); }
+.export-row p { margin: 0; font-size: 0.9rem; line-height: 1.75; }
+
 .exports-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -486,6 +589,7 @@ textarea::placeholder { color: var(--text-dim); }
     gap: 2.25rem;
   }
   .exports-grid { grid-template-columns: 1fr; }
+  .export-row { grid-template-columns: 1fr; gap: 0.25rem; }
   .console-grid { grid-template-columns: 1fr; }
   .steps li { grid-template-columns: 2.5rem 1fr; }
 }

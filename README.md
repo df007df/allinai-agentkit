@@ -59,18 +59,56 @@ allinai-agentkit install       # 以新服务名重新注册
 
 `~/.allinai/agent` 数据目录与 macOS 钥匙串凭据保持不变，升级后无需重新登录配对。
 
-## 包结构
+## 架构与包结构
 
-| 入口 | 内容 |
-|---|---|
-| `@allin-ai/agentkit/protocol` | 版本化 wire 协议与编解码 |
-| `@allin-ai/agentkit/hub` | Node HTTP/WebSocket Hub（`HubStore` 端口） |
-| `@allin-ai/agentkit/hub/testkit` | 测试用内存 Store/Hub（勿用于生产） |
-| `@allin-ai/agentkit/client` | 可重连执行 client 与传输层 |
-| `@allin-ai/agentkit/control` | daemon 本地控制面（Unix socket：健康 / 状态 / 清单） |
-| `@allin-ai/agentkit/runtime` | Codex/Claude/Pi 运行时适配（可选 peer） |
-| `@allin-ai/agentkit/plugins` | Git 插件仓库同步与装载 |
-| `@allin-ai/agentkit/demo` | 本地 demo 控制台 + hub 服务 |
+```mermaid
+flowchart TB
+    subgraph host["宿主侧 · 你的服务"]
+        auth["你的鉴权 authorize()"]
+        db[("你的 HubStore")]
+        hub["/hub · createAgentHub"]
+        auth --> hub
+        db --> hub
+    end
+
+    subgraph agent["Agent 侧 · 本地 daemon"]
+        sup["/client · ClientSupervisor"]
+        ws["WsClientTransport<br/>注册 · 心跳 · 断线重连"]
+        state[("ClientStateStore · sqlite")]
+        rt["/runtime<br/>codex · claude · pi · zcode"]
+        pl["/plugins<br/>git 同步 · manifest 校验"]
+        ctl["/control<br/>本地控制面 unix socket"]
+        sup --> ws
+        sup --> state
+        sup --> rt
+        sup --> pl
+        sup --> ctl
+    end
+
+    hub <-->|"WebSocket /api/agent-hub/v2/ws<br/>/protocol · v2 wire"| ws
+    you["宿主进程（桌面 App / 服务端）"] -.->|"AgentControlClient 监管"| ctl
+```
+
+支撑模块（daemon 内部使用）：`/config` 工作目录与本地策略、`/credentials` token 存取（Keychain）、`/paths` 数据目录、`/logger` 滚动日志、`/service/*` 开机自启。开发与联调：`/hub/testkit` 内存 Hub，`/demo` 一键控制台。
+
+| 入口 | 分组 | 内容 |
+|---|---|---|
+| `@allin-ai/agentkit` | 入口 | 公共 API 汇总（protocol / hub / client 核心、config、credentials、control、logger、paths；不含 runtime、testkit、demo） |
+| `@allin-ai/agentkit/protocol` | 协议 | v2 wire 协议与全部编解码；`/wire` 为兼容别名 |
+| `@allin-ai/agentkit/hub` | Hub 侧 | `createAgentHub({ authorize, store })`，HubStore 六方法端口，`offer()` 派发 |
+| `@allin-ai/agentkit/hub/testkit` | Hub 侧 | `MemoryHubStore` / `createMemoryHub`，易失实现（勿用于生产） |
+| `@allin-ai/agentkit/client` | Agent 侧 | `ClientSupervisor` + `WsClientTransport` + `ClientStateStore`（sqlite 落盘） |
+| `@allin-ai/agentkit/runtime` | Agent 侧 | `createRunnerManager` 与 codex / claude / pi / zcode 适配（可选 peer） |
+| `@allin-ai/agentkit/plugins` | Agent 侧 | `PluginManager`：plugin.sync → git 同步 + manifest 校验 |
+| `@allin-ai/agentkit/control` | Agent 侧 | 本地控制面（unix socket）：health / status / approve / plugins |
+| `@allin-ai/agentkit/config` | 设施 | clientId、本地策略、projects 工作目录（`~/.allinai/agent/config.json`） |
+| `@allin-ai/agentkit/credentials` | 设施 | token 安全存取（macOS Keychain，服务名 allinai-agent） |
+| `@allin-ai/agentkit/paths` | 设施 | 数据目录与 socket 端点解析 |
+| `@allin-ai/agentkit/logger` | 设施 | 滚动 JSONL 日志，自动脱敏 |
+| `@allin-ai/agentkit/service/launchd` | 设施 | macOS 用户级服务注册 |
+| `@allin-ai/agentkit/service/systemd` | 设施 | Linux 用户级服务注册 |
+| `@allin-ai/agentkit/cli` | 工具 | 全部 CLI 子命令实现（bin 的薄封装在其上） |
+| `@allin-ai/agentkit/demo` | 工具 | `startDemoSite()`：本地控制台 + 内存 Hub + 浏览器授权 |
 
 ## CLI
 

@@ -13,7 +13,7 @@
       <div class="nav-links">
         <a href="#how">运作方式</a>
         <a href="#scenarios">使用场景</a>
-        <a href="#exports">模块导出</a>
+        <a href="#exports">模块与架构</a>
         <a href="https://github.com/df007df/allinai-agentkit">GitHub</a>
       </div>
     </nav>
@@ -29,7 +29,7 @@
           </p>
           <div class="cta-row">
             <a class="btn primary" href="https://github.com/df007df/allinai-agentkit">GitHub 仓库</a>
-            <a class="btn ghost" href="#exports">查看模块导出</a>
+            <a class="btn ghost" href="#exports">模块与架构</a>
           </div>
         </div>
         <div class="hero-terminal" aria-label="快速开始命令">
@@ -297,39 +297,204 @@ export const hub = createAgentHub({
       </section>
 
       <section id="exports" class="section">
-        <h2>模块导出</h2>
-        <div class="exports-grid">
-          <div class="export-cell tint">
-            <code>/protocol</code>
-            <p>版本化 wire 协议与编解码</p>
+        <h2>模块与架构</h2>
+
+        <div class="arch" aria-label="模块关系架构图">
+          <div class="arch-card">
+            <div class="arch-title">宿主侧 · 你的服务</div>
+            <div class="arch-row">
+              <span class="arch-chip you">你的鉴权<br /><small>authorize(token) → principal</small></span>
+              <span class="arch-chip you">你的持久化<br /><small>HubStore（六方法端口）</small></span>
+            </div>
+            <div class="arch-arrow">▼ 注入</div>
+            <div class="arch-row">
+              <span class="arch-chip mod">/hub · createAgentHub()</span>
+            </div>
+            <p class="arch-note">
+              hub.attach(httpServer) 挂 WS 路由；hub.offer() 向指定 client 派发 agent.run / plugin.sync
+            </p>
           </div>
-          <div class="export-cell">
-            <code>/hub</code>
-            <p>Node HTTP/WebSocket Hub，HubStore 端口</p>
+
+          <div class="arch-link">
+            <span class="arch-link-arrow">⇅</span>
+            <div class="arch-link-label">
+              WebSocket <code>/api/agent-hub/v2/ws</code><br />
+              <code>/protocol</code> · v2 wire：hello · 命令下行 · 事件上行 · 心跳 · 确认
+            </div>
           </div>
-          <div class="export-cell">
-            <code>/hub/testkit</code>
-            <p>内存 Store 与 Hub，demo 所用</p>
+
+          <div class="arch-card">
+            <div class="arch-title">Agent 侧 · 本地 daemon</div>
+            <div class="arch-row">
+              <span class="arch-chip mod">/client · ClientSupervisor（调度核心）</span>
+            </div>
+            <div class="arch-row">
+              <span class="arch-chip">WsClientTransport<br /><small>注册 · 心跳 · 断线重连</small></span>
+              <span class="arch-chip">ClientStateStore<br /><small>执行状态落 sqlite</small></span>
+            </div>
+            <div class="arch-row">
+              <span class="arch-chip mod">/runtime<br /><small>codex · claude · pi · zcode</small></span>
+              <span class="arch-chip mod">/plugins<br /><small>git 同步 · manifest 校验</small></span>
+              <span class="arch-chip mod">/control<br /><small>本地控制面（unix socket）</small></span>
+            </div>
+            <p class="arch-note">
+              宿主进程（桌面 App / 服务端）可经 <code>/control</code> 的 AgentControlClient
+              监管 daemon：health · status · approve · plugins
+            </p>
           </div>
-          <div class="export-cell">
-            <code>/client</code>
-            <p>可重连执行 client 与传输层</p>
+
+          <div class="arch-row arch-support">
+            <span class="arch-chip">/config<small> 工作目录 · 本地策略</small></span>
+            <span class="arch-chip">/credentials<small> token（Keychain）</small></span>
+            <span class="arch-chip">/paths<small> 数据目录</small></span>
+            <span class="arch-chip">/logger<small> 滚动日志</small></span>
+            <span class="arch-chip">/service/*<small> 开机自启</small></span>
           </div>
-          <div class="export-cell">
-            <code>/control</code>
-            <p>daemon 本地控制面：健康、状态、清单</p>
+
+          <div class="arch-row arch-dev">
+            <span class="arch-chip">/hub/testkit — HubStore 内存实现，测试与本地联调</span>
+            <span class="arch-chip">/demo — startDemoSite() 一键本地控制台</span>
           </div>
-          <div class="export-cell">
-            <code>/runtime</code>
-            <p>Codex / Claude / Pi 适配，可选 peer</p>
+        </div>
+
+        <div class="export-detail">
+          <div class="export-group">
+            <h3>协议与入口</h3>
+            <div class="export-row">
+              <code>.</code>
+              <p>
+                根入口，公共 API 汇总：/protocol、/hub、/client 核心类，以及
+                /config、/credentials、/control、/logger、/paths。刻意不含
+                /runtime（可选 peer）、/hub/testkit 与 /demo。
+              </p>
+            </div>
+            <div class="export-row">
+              <code>/protocol</code>
+              <p>
+                v2 wire 协议：AGENT_CLIENT_PROTOCOL_VERSION 常量与全部
+                encode*/parse* 编解码——hello、命令下行、事件批次上行、
+                确认水位、清单上报、插件同步确认。Hub 与 client 共用的唯一消息定义。
+                <code>/wire</code> 是它的兼容别名。
+              </p>
+            </div>
           </div>
-          <div class="export-cell">
-            <code>/plugins</code>
-            <p>Git 插件仓库同步与装载</p>
+
+          <div class="export-group">
+            <h3>Hub 侧（宿主服务引入）</h3>
+            <div class="export-row">
+              <code>/hub</code>
+              <p>
+                createAgentHub({ authorize, store })：Node HTTP/WebSocket Hub。
+                鉴权回调返回你的 principal，持久化走 HubStore 六方法端口
+                （注册、心跳、待投递查询、入队、事件落库、插件确认），
+                包只做协议编排，不绑定任何数据库。offer() 派发命令到指定 client。
+              </p>
+            </div>
+            <div class="export-row">
+              <code>/hub/testkit</code>
+              <p>
+                MemoryHubStore 与 createMemoryHub()：六方法的易失内存实现，
+                协议行为与生产 Hub 完全一致。重启即清空，测试与本地联调用，
+                勿用于生产。
+              </p>
+            </div>
           </div>
-          <div class="export-cell">
-            <code>/demo</code>
-            <p>本地 demo 控制台，startDemoSite()</p>
+
+          <div class="export-group">
+            <h3>Agent 侧（本地 daemon 引入）</h3>
+            <div class="export-row">
+              <code>/client</code>
+              <p>
+                ClientSupervisor 是 daemon 的调度核心：收命令、本地策略判定、
+                启动 runner、事件批量回报。WsClientTransport 负责 WebSocket
+                注册、心跳与断线自动重连；ClientStateStore 把执行状态落
+                sqlite，重启后先补投递再继续。
+              </p>
+            </div>
+            <div class="export-row">
+              <code>/runtime</code>
+              <p>
+                createRunnerManager() 与 codex / claude / pi / zcode 四个适配器。
+                可选 peer 依赖：装了哪个 agent SDK 就用哪个，未装的自动降级，
+                /client 本身不依赖任何 SDK。agent.run 里的 project 名字由
+                /config 的注册目录解析成实际路径。
+              </p>
+            </div>
+            <div class="export-row">
+              <code>/plugins</code>
+              <p>
+                PluginManager：接收 hub 下发的 plugin.sync 期望状态，git
+                拉取插件仓库、校验 manifest 与能力清单，确认水位回报 hub；
+                也响应本地清单刷新。
+              </p>
+            </div>
+            <div class="export-row">
+              <code>/control</code>
+              <p>
+                daemon 在本机 unix socket 上暴露的控制面：health、status、
+                approve（放行待批准执行）、plugins、sync。宿主进程（桌面
+                App、服务端 supervisor）用 createAgentControlClient() 连上来
+                监管，不需要走 Hub 权限。
+              </p>
+            </div>
+          </div>
+
+          <div class="export-group">
+            <h3>本地设施（daemon 支撑，通常不直接使用）</h3>
+            <div class="export-row">
+              <code>/config</code>
+              <p>
+                loadAgentConfig / saveAgentConfig：~/.allinai/agent/config.json，
+                含唯一 clientId、本地策略、projects 工作目录注册。
+              </p>
+            </div>
+            <div class="export-row">
+              <code>/credentials</code>
+              <p>
+                createCredentialStore：login 授权后 token 的安全存取，
+                macOS 走钥匙串（服务名 allinai-agent），其他平台降级文件。
+              </p>
+            </div>
+            <div class="export-row">
+              <code>/paths</code>
+              <p>
+                resolveAgentPaths：~/.allinai/agent 数据目录、日志、socket
+                端点等路径的统一解析。
+              </p>
+            </div>
+            <div class="export-row">
+              <code>/logger</code>
+              <p>
+                createRotatingJsonlLogger：滚动 JSONL 日志，写盘前自动脱敏
+                token 等敏感字段。
+              </p>
+            </div>
+            <div class="export-row">
+              <code>/service/launchd<br />/service/systemd</code>
+              <p>
+                用户级服务注册（install / uninstall / restart），daemon
+                开机自启；install 命令即调它们。
+              </p>
+            </div>
+          </div>
+
+          <div class="export-group">
+            <h3>工具</h3>
+            <div class="export-row">
+              <code>/cli</code>
+              <p>
+                runCli：login / daemon / demo / install / status / logs /
+                sync / restart / uninstall / doctor / projects / plugins
+                全部子命令的实现，bin/allinai-agentkit 就是它的薄封装。
+              </p>
+            </div>
+            <div class="export-row">
+              <code>/demo</code>
+              <p>
+                startDemoSite()：本地调试控制台 + 内存 Hub + 浏览器授权，
+                一条命令起全套，仅监听回环地址。
+              </p>
+            </div>
           </div>
         </div>
       </section>
