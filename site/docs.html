@@ -144,8 +144,7 @@ node bin/allinai-agentkit --help</code></pre>
         <section id="cli" class="doc-section">
           <h2>4 CLI 参考</h2>
           <p>
-            全部子命令：<code>allinai-agentkit
-            &lt;init|login|daemon|demo|install|status|logs|sync|restart|uninstall|doctor|projects|project|plugins|docs&gt;</code>
+            全部子命令：<code>allinai-agentkit &lt;init|login|daemon|demo|install|status|logs|sync|restart|uninstall|doctor|projects|project|plugins|docs&gt;</code>
           </p>
           <table class="doc-table">
             <thead>
@@ -537,11 +536,17 @@ await site.close();</code></pre>
           </p>
 
           <h3 id="architecture-modules">7.2 模块明细</h3>
+          <p class="export-hint">
+            每个模块一张 IDE 风格卡片：标签栏是 import 路径，正文是模块说明。
+          </p>
           <div class="export-detail">
             <div class="export-group">
               <h3>协议与入口</h3>
               <div class="export-row">
-                <code>.</code>
+                <div class="ide">
+                  <div class="ide-titlebar"><span class="ide-dot r"></span><span class="ide-dot y"></span><span class="ide-dot g"></span><span class="ide-file">entry.ts</span></div>
+                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> agentkit <span class="kw">from</span> <span class="str">"@allin-ai/agentkit"</span><span class="pn">;</span></code></pre>
+                </div>
                 <p>
                   根入口，公共 API 汇总：/protocol、/hub、/client 核心类，以及
                   /config、/credentials、/control、/logger、/paths。刻意不含
@@ -549,7 +554,10 @@ await site.close();</code></pre>
                 </p>
               </div>
               <div class="export-row">
-                <code>/protocol</code>
+                <div class="ide">
+                  <div class="ide-titlebar"><span class="ide-dot r"></span><span class="ide-dot y"></span><span class="ide-dot g"></span><span class="ide-file">protocol.ts</span></div>
+                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { parseClientHello } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit/protocol"</span><span class="pn">;</span></code></pre>
+                </div>
                 <p>
                   v2 wire 协议：AGENT_CLIENT_PROTOCOL_VERSION 常量与全部
                   encode*/parse* 编解码——hello、命令下行、事件批次上行、
@@ -562,7 +570,10 @@ await site.close();</code></pre>
             <div class="export-group">
               <h3>Hub 侧（宿主服务引入）</h3>
               <div class="export-row">
-                <code>/hub</code>
+                <div class="ide">
+                  <div class="ide-titlebar"><span class="ide-dot r"></span><span class="ide-dot y"></span><span class="ide-dot g"></span><span class="ide-file">hub.ts</span></div>
+                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { createAgentHub } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit/hub"</span><span class="pn">;</span></code></pre>
+                </div>
                 <p>
                   createAgentHub({ authorize, store })：Node HTTP/WebSocket Hub。
                   鉴权回调返回你的 principal，持久化走 HubStore 六方法端口
@@ -571,7 +582,10 @@ await site.close();</code></pre>
                 </p>
               </div>
               <div class="export-row">
-                <code>/hub/testkit</code>
+                <div class="ide">
+                  <div class="ide-titlebar"><span class="ide-dot r"></span><span class="ide-dot y"></span><span class="ide-dot g"></span><span class="ide-file">memory-hub.ts</span></div>
+                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { createMemoryHub } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit/hub/testkit"</span><span class="pn">;</span></code></pre>
+                </div>
                 <p>
                   MemoryHubStore 与 createMemoryHub()：六方法的易失内存实现，
                   协议行为与生产 Hub 完全一致。重启即清空，测试与本地联调用，
@@ -583,7 +597,10 @@ await site.close();</code></pre>
             <div class="export-group">
               <h3>Agent 侧（本地 daemon 引入）</h3>
               <div class="export-row">
-                <code>/client</code>
+                <div class="ide">
+                  <div class="ide-titlebar"><span class="ide-dot r"></span><span class="ide-dot y"></span><span class="ide-dot g"></span><span class="ide-file">supervisor.ts</span></div>
+                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { ClientSupervisor } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit/client"</span><span class="pn">;</span></code></pre>
+                </div>
                 <p>
                   ClientSupervisor 是 daemon 的调度核心：收命令、本地策略判定、
                   启动 runner、事件批量回报。WsClientTransport 负责 WebSocket
@@ -592,7 +609,10 @@ await site.close();</code></pre>
                 </p>
               </div>
               <div class="export-row">
-                <code>/runtime</code>
+                <div class="ide">
+                  <div class="ide-titlebar"><span class="ide-dot r"></span><span class="ide-dot y"></span><span class="ide-dot g"></span><span class="ide-file">runtime.ts</span></div>
+                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { createRunnerManager } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit/runtime"</span><span class="pn">;</span></code></pre>
+                </div>
                 <p>
                   createRunnerManager() 与 codex / claude / pi / zcode 四个适配器。
                   可选 peer 依赖：装了哪个 agent SDK 就用哪个，未装的自动降级，
@@ -601,7 +621,10 @@ await site.close();</code></pre>
                 </p>
               </div>
               <div class="export-row">
-                <code>/plugins</code>
+                <div class="ide">
+                  <div class="ide-titlebar"><span class="ide-dot r"></span><span class="ide-dot y"></span><span class="ide-dot g"></span><span class="ide-file">manager.ts</span></div>
+                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { PluginManager } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit/plugins"</span><span class="pn">;</span></code></pre>
+                </div>
                 <p>
                   PluginManager：接收 hub 下发的 plugin.sync 期望状态，git
                   拉取插件仓库、校验 manifest 与能力清单，确认水位回报 hub；
@@ -609,7 +632,10 @@ await site.close();</code></pre>
                 </p>
               </div>
               <div class="export-row">
-                <code>/control</code>
+                <div class="ide">
+                  <div class="ide-titlebar"><span class="ide-dot r"></span><span class="ide-dot y"></span><span class="ide-dot g"></span><span class="ide-file">control.ts</span></div>
+                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { createAgentControlClient } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit/control"</span><span class="pn">;</span></code></pre>
+                </div>
                 <p>
                   daemon 在本机 unix socket 上暴露的控制面：health、status、
                   approve（放行待批准执行）、plugins、sync。宿主进程（桌面
@@ -622,34 +648,49 @@ await site.close();</code></pre>
             <div class="export-group">
               <h3>本地设施（daemon 支撑，通常不直接使用）</h3>
               <div class="export-row">
-                <code>/config</code>
+                <div class="ide">
+                  <div class="ide-titlebar"><span class="ide-dot r"></span><span class="ide-dot y"></span><span class="ide-dot g"></span><span class="ide-file">config.ts</span></div>
+                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { loadAgentConfig } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit/config"</span><span class="pn">;</span></code></pre>
+                </div>
                 <p>
                   loadAgentConfig / saveAgentConfig：~/.allinai/agent/config.json，
                   含唯一 clientId、本地策略、projects 工作目录注册。
                 </p>
               </div>
               <div class="export-row">
-                <code>/credentials</code>
+                <div class="ide">
+                  <div class="ide-titlebar"><span class="ide-dot r"></span><span class="ide-dot y"></span><span class="ide-dot g"></span><span class="ide-file">credentials.ts</span></div>
+                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { createCredentialStore } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit/credentials"</span><span class="pn">;</span></code></pre>
+                </div>
                 <p>
                   createCredentialStore：login 授权后 token 的存取，
                   每 clientId 一个 0600 文件，全平台一致。
                 </p>
               </div>
               <div class="export-row">
-                <code>/paths</code>
+                <div class="ide">
+                  <div class="ide-titlebar"><span class="ide-dot r"></span><span class="ide-dot y"></span><span class="ide-dot g"></span><span class="ide-file">paths.ts</span></div>
+                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { resolveAgentPaths } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit/paths"</span><span class="pn">;</span></code></pre>
+                </div>
                 <p>
                   resolveAgentPaths：~/.allinai/agent 数据目录、日志、socket
                   端点等路径的统一解析。
                 </p>
               </div>
               <div class="export-row">
-                <code>/logger</code>
+                <div class="ide">
+                  <div class="ide-titlebar"><span class="ide-dot r"></span><span class="ide-dot y"></span><span class="ide-dot g"></span><span class="ide-file">logger.ts</span></div>
+                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { createRotatingJsonlLogger } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit/logger"</span><span class="pn">;</span></code></pre>
+                </div>
                 <p>
                   createRotatingJsonlLogger：滚动 JSONL 日志，原文写盘不脱敏。
                 </p>
               </div>
               <div class="export-row">
-                <code>/service/launchd<br />/service/systemd</code>
+                <div class="ide">
+                  <div class="ide-titlebar"><span class="ide-dot r"></span><span class="ide-dot y"></span><span class="ide-dot g"></span><span class="ide-file">launchd.ts / systemd.ts</span></div>
+                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { installLaunchAgent } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit/service/launchd"</span><span class="pn">;</span></code></pre>
+                </div>
                 <p>
                   用户级服务注册（install / uninstall / restart），daemon
                   开机自启；install 命令即调它们。
@@ -660,7 +701,10 @@ await site.close();</code></pre>
             <div class="export-group">
               <h3>工具</h3>
               <div class="export-row">
-                <code>/cli</code>
+                <div class="ide">
+                  <div class="ide-titlebar"><span class="ide-dot r"></span><span class="ide-dot y"></span><span class="ide-dot g"></span><span class="ide-file">commands.ts</span></div>
+                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { runCli } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit/cli"</span><span class="pn">;</span></code></pre>
+                </div>
                 <p>
                   runCli：init / login / daemon / demo / install / status / logs /
                   sync / restart / uninstall / doctor / projects / plugins
@@ -668,7 +712,10 @@ await site.close();</code></pre>
                 </p>
               </div>
               <div class="export-row">
-                <code>/demo</code>
+                <div class="ide">
+                  <div class="ide-titlebar"><span class="ide-dot r"></span><span class="ide-dot y"></span><span class="ide-dot g"></span><span class="ide-file">demo.ts</span></div>
+                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { startDemoSite } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit/demo"</span><span class="pn">;</span></code></pre>
+                </div>
                 <p>
                   startDemoSite()：本地调试控制台 + 内存 Hub + 浏览器授权，
                   一条命令起全套，仅监听回环地址。

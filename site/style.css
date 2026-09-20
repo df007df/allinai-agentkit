@@ -393,7 +393,8 @@ main {
 }
 .arch-dev .arch-chip { color: var(--text); }
 
-/* 模块明细：分组 + 两栏行 */
+/* 模块明细：分组 + IDE 风格卡片 */
+.export-hint { color: var(--text-dim); font-size: 0.9rem; margin: 0 0 1.2rem; }
 .export-group { margin-top: 2.2rem; }
 .export-group:first-child { margin-top: 0; }
 .export-group h3 {
@@ -416,20 +417,69 @@ main {
 }
 .export-row {
   display: grid;
-  grid-template-columns: 10.5rem 1fr;
+  grid-template-columns: minmax(0, 24rem) 1fr;
   gap: 1.1rem;
   padding: 0.85rem 0;
   border-top: 1px solid var(--border);
-  align-items: baseline;
+  align-items: start;
 }
-.export-row code {
+.export-row p { margin: 0.15rem 0 0; font-size: 0.9rem; line-height: 1.75; }
+
+/* IDE 代码卡片：标题栏（红绿灯 + 文件名）+ 带行号的代码面板 */
+.ide {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  overflow: hidden;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.25);
+  /* grid item: allow shrinking below the code's intrinsic width so
+     overflow-x actually scrolls instead of stretching the column */
+  min-width: 0;
+}
+.ide-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 0.38rem;
+  padding: 0.5rem 0.8rem;
+  background: rgba(154, 168, 161, 0.07);
+  border-bottom: 1px solid var(--border);
+}
+.ide-dot { width: 0.6rem; height: 0.6rem; border-radius: 50%; flex: none; }
+.ide-dot.r { background: #ff5f57; }
+.ide-dot.y { background: #febc2e; }
+.ide-dot.g { background: #28c840; }
+.ide-file {
+  margin-left: 0.45rem;
   font-family: var(--mono);
-  font-size: 0.85rem;
-  color: var(--accent);
-  line-height: 1.6;
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.export-row code code { color: var(--text-dim); }
-.export-row p { margin: 0; font-size: 0.9rem; line-height: 1.75; }
+.ide-code {
+  margin: 0;
+  padding: 0.7rem 0.9rem;
+  font-family: var(--mono);
+  font-size: 0.76rem;
+  line-height: 1.7;
+  overflow-x: auto;
+  background:
+    linear-gradient(90deg, rgba(154, 168, 161, 0.06) 0 2.1rem, transparent 2.1rem);
+}
+.ide-code code { display: block; white-space: pre; }
+.ide-code .ln {
+  display: inline-block;
+  width: 1.6rem;
+  margin-right: 0.5rem;
+  text-align: right;
+  color: rgba(147, 163, 155, 0.45);
+  user-select: none;
+}
+.ide-code .kw { color: #c792ea; }
+.ide-code .str { color: var(--accent); }
+.ide-code .pn { color: var(--text-dim); }
 
 .exports-grid {
   display: grid;
@@ -527,7 +577,13 @@ main {
 }
 .docs-toc a:hover { color: var(--text); }
 .docs-toc a.sub { padding-left: 1.35rem; font-size: 0.8rem; }
-.docs-content { min-width: 0; }
+.docs-content {
+  min-width: 0;
+  /* Decouple from the grid track's min-content computation: descendants with
+     white-space:pre inflate the track floor on narrow viewports; an explicit
+     width pins the item to its area (identical to auto on desktop 1fr). */
+  width: 100%;
+}
 .docs-content h1 {
   font-size: 1.9rem;
   letter-spacing: -0.01em;
@@ -552,6 +608,9 @@ main {
   font-family: var(--mono);
   font-size: 0.87em;
   color: var(--accent);
+  /* long inline tokens (command lists, import paths) must never raise the
+     grid track's min-content floor — they wrap instead of overflowing */
+  overflow-wrap: anywhere;
 }
 .doc-note {
   border-left: 3px solid rgba(52, 211, 153, 0.45);
@@ -583,7 +642,12 @@ main {
   vertical-align: top;
   line-height: 1.6;
 }
+/* first column stays compact but may wrap on narrow viewports — nowrap here
+   would raise the table's min-content above the mobile track width */
 .doc-table td:first-child { white-space: nowrap; }
+@media (max-width: 880px) {
+  .doc-table td:first-child { white-space: normal; }
+}
 .doc-table td code { font-size: 0.84rem; }
 
 @media (max-width: 880px) {
@@ -809,7 +873,7 @@ textarea::placeholder { color: var(--text-dim); }
     gap: 2.25rem;
   }
   .exports-grid { grid-template-columns: 1fr; }
-  .export-row { grid-template-columns: 1fr; gap: 0.25rem; }
+  .export-row { grid-template-columns: 1fr; gap: 0.5rem; }
   .console-grid { grid-template-columns: 1fr; }
   .steps li { grid-template-columns: 2.5rem 1fr; }
 }
