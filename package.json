@@ -4,6 +4,10 @@
   "description": "Standalone persistent Agent Client: connect to a Hub, durably execute local platform agents and policy-gated capabilities, and report state upstream.",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/df007df/allinai-agentkit.git"
+  },
   "private": false,
   "keywords": [
     "agent",
