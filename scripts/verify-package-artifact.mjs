@@ -14,6 +14,9 @@ const packageRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
+// npm publish ships the staging directory, so verification must pack the same
+// directory or it will inspect a different artifact than the registry receives.
+const stageDir = path.join(packageRoot, ".publish-stage");
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 const tar = process.platform === "win32" ? "tar.exe" : "tar";
 const sourceManifest = JSON.parse(
@@ -175,10 +178,14 @@ function assertHubOnlyConsumer(manifest) {
 }
 
 try {
+  assert(
+    existsSync(stageDir),
+    "missing .publish-stage; run `node scripts/publish-stage.mjs stage` first",
+  );
   packDir = mkdtempSync(path.join(tmpdir(), "agent-client-artifact-pack-"));
   const packed = parseNpmPackOutput(
     execFileSync(npm, ["pack", "--json", "--pack-destination", packDir], {
-      cwd: packageRoot,
+      cwd: stageDir,
       encoding: "utf8",
     }),
   );

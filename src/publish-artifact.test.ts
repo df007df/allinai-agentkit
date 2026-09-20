@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
+import { transformManifest } from "../scripts/publish-stage.mjs";
 
 const PACKAGE_ROOT = path.resolve(import.meta.dirname, "..");
 
@@ -25,7 +26,7 @@ describe("published agent client artifact", () => {
       scripts?: Record<string, unknown>;
     };
 
-    assert.equal(sourceManifest.version, "0.3.0");
+    assert.equal(sourceManifest.version, "0.3.1");
     assert.equal(sourceManifest.private, false);
     assert.equal(sourceManifest.engines?.node, ">=22.18.0");
     assert.equal(
@@ -57,7 +58,7 @@ describe("published agent client artifact", () => {
       "test",
       "typecheck",
       "build",
-      "prepack",
+      "publish:stage",
       "verify:artifact",
     ]) {
       const script = sourceManifest.scripts?.[scriptName];
@@ -96,6 +97,73 @@ describe("published agent client artifact", () => {
         target?.import,
         target?.default,
         `${exportPath} must keep one ESM target`,
+      );
+    }
+  });
+
+  it("must not rewrite the manifest from prepack hooks", () => {
+    const sourceManifest = JSON.parse(
+      readFileSync(path.join(PACKAGE_ROOT, "package.json"), "utf8"),
+    ) as { scripts?: Record<string, unknown> };
+
+    // npm publish packs the manifest it loaded before lifecycle hooks run, so
+    // a prepack rewrite ships the development manifest to the registry. The
+    // staging-directory publish is the only supported layout.
+    assert.equal(sourceManifest.scripts?.prepack, undefined);
+    assert.equal(sourceManifest.scripts?.postpack, undefined);
+  });
+
+  it("stages the publish manifest from publishConfig", () => {
+    const sourceManifest = JSON.parse(
+      readFileSync(path.join(PACKAGE_ROOT, "package.json"), "utf8"),
+    ) as {
+      bin?: unknown;
+      dependencies?: unknown;
+      exports?: Record<string, unknown>;
+      publishConfig?: {
+        access?: unknown;
+        exports?: Record<
+          string,
+          { import?: unknown; types?: unknown; default?: unknown }
+        >;
+        main?: unknown;
+        types?: unknown;
+      };
+    };
+    const staged = transformManifest(sourceManifest) as {
+      main?: unknown;
+      types?: unknown;
+      exports?: Record<
+        string,
+        { import?: unknown; types?: unknown; default?: unknown }
+      >;
+      scripts?: unknown;
+      files?: unknown;
+      bin?: unknown;
+      dependencies?: unknown;
+      publishConfig?: { access?: unknown };
+    };
+
+    assert.equal(staged.main, sourceManifest.publishConfig?.main);
+    assert.equal(staged.types, sourceManifest.publishConfig?.types);
+    assert.equal(staged.exports, sourceManifest.publishConfig?.exports);
+    assert.equal(staged.scripts, undefined);
+    assert.equal(staged.files, undefined);
+    assert.deepEqual(staged.bin, sourceManifest.bin);
+    assert.deepEqual(staged.dependencies, sourceManifest.dependencies);
+    assert.equal(staged.publishConfig?.access, "public");
+
+    for (const [exportPath, target] of Object.entries(staged.exports ?? {})) {
+      assert.match(
+        String(target.import),
+        /^\.\/dist\/.+\.js$/,
+        `${exportPath} must import compiled ESM`,
+      );
+      assert.equal(target.default, target.import);
+      assert.match(
+        String(target.types),
+        /^\.\/dist\/.+\.d\.ts$/,
+        `${exportPath} must expose compiled declarations`,
       );
     }
   });

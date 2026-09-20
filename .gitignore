@@ -4,3 +4,4 @@ out/
 .turbo/
 *.tsbuildinfo
 coverage/
+.publish-stage/

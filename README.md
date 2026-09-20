@@ -27,7 +27,7 @@ node bin/allinai-agentkit daemon
 
 ```bash
 sh scripts/install.sh                 # npm 全局安装最新版
-sh scripts/install.sh 0.3.0           # 指定版本
+sh scripts/install.sh 0.3.1           # 指定版本
 sh scripts/install.sh --from-source   # 本仓库构建 + npm link（开发）
 ```
 

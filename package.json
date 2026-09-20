@@ -1,6 +1,6 @@
 {
   "name": "@allin-ai/agentkit",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Standalone persistent Agent Client: connect to a Hub, durably execute local platform agents and policy-gated capabilities, and report state upstream.",
   "type": "module",
   "license": "MIT",
@@ -143,9 +143,8 @@
     "demo": "node bin/allinai-agentkit demo",
     "test": "tsx --tsconfig ./tsconfig.json --test 'src/**/*.test.ts'",
     "typecheck": "tsc --noEmit",
-    "prepack": "node scripts/build.mjs && node scripts/publish-manifest.mjs prepare",
-    "postpack": "node scripts/publish-manifest.mjs restore",
-    "verify:artifact": "node scripts/verify-package-artifact.mjs"
+    "publish:stage": "node scripts/publish-stage.mjs publish",
+    "verify:artifact": "node scripts/publish-stage.mjs stage && node scripts/verify-package-artifact.mjs"
   },
   "dependencies": {
     "ws": "^8.18.0"

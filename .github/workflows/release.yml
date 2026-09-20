@@ -33,6 +33,10 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-      # prepack (build + publish manifest prepare) runs automatically.
+      - name: Verify staged artifact
+        run: pnpm verify:artifact
+
+      # npm publish packs the manifest it loaded before lifecycle hooks, so we
+      # publish the staging directory whose on-disk manifest is already public.
       - name: Publish
-        run: npm publish --provenance
+        run: npm publish --provenance .publish-stage
