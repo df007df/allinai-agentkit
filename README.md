@@ -46,19 +46,6 @@ sh scripts/install.sh --from-source   # 本仓库构建 + npm link（开发）
 
 脚本会检查 Node.js ≥ 22.18，安装后验证 `allinai-agentkit --help`。
 
-## 从 `@allin-ai/agent-client` 升级
-
-包已更名为 `@allin-ai/agentkit`，CLI 命令由 `allinai-agent` 变为 `allinai-agentkit`：
-
-```bash
-npm uninstall -g @allin-ai/agent-client
-allinai-agent uninstall        # 用旧命令移除旧服务（launchd/systemd）
-npm install -g @allin-ai/agentkit
-allinai-agentkit install       # 以新服务名重新注册
-```
-
-`~/.allinai/agent` 数据目录与 macOS 钥匙串凭据保持不变，升级后无需重新登录配对。
-
 ## 架构与包结构
 
 ```mermaid

@@ -25,7 +25,6 @@
         <a href="#install-npx" class="sub">npx 免安装</a>
         <a href="#install-global" class="sub">npm 全局安装</a>
         <a href="#install-source" class="sub">源码构建</a>
-        <a href="#install-upgrade" class="sub">从 agent-client 升级</a>
         <a href="#quickstart">快速开始</a>
         <a href="#quickstart-auth" class="sub">授权模型</a>
         <a href="#cli">CLI 参考</a>
@@ -94,17 +93,6 @@ cd allinai-agentkit
 pnpm install && pnpm build
 
 node bin/allinai-agentkit --help</code></pre>
-
-          <h3 id="install-upgrade">2.4 从 @allin-ai/agent-client 升级</h3>
-          <p>
-            包已更名为 <code>@allin-ai/agentkit</code>，CLI 由 <code>allinai-agent</code>
-            变为 <code>allinai-agentkit</code>。<code>~/.allinai/agent</code> 数据目录与
-            macOS 钥匙串凭据保持不变，升级后无需重新登录配对：
-          </p>
-          <pre class="code-block"><code>npm uninstall -g @allin-ai/agent-client
-allinai-agent uninstall        # 用旧命令移除旧服务（launchd/systemd）
-npm install -g @allin-ai/agentkit
-allinai-agentkit install       # 以新服务名重新注册</code></pre>
 
           <p class="doc-note">
             数据目录：<code>~/.allinai/agent</code>（config.json、sqlite 状态库、日志、插件目录、
