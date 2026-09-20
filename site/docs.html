@@ -428,7 +428,7 @@ export const hub = createAgentHub({
           <p>
             daemon 在本机 unix socket 上暴露控制面（health、status、approve、plugins、sync）。
             桌面 App 或服务端 supervisor 用 <code>createAgentControlClient</code>
-            直连监管，不需要走 Hub 权限——AllInAI 桌面端与 mofaxue-web 均使用这条路径。
+            直连监管，不需要走 Hub 权限。
           </p>
           <pre class="code-block"><code><span class="c">// 宿主进程侧：本地监管 daemon</span>
 import { createAgentControlClient } from "@allin-ai/agentkit/control";
