@@ -1,6 +1,6 @@
 {
   "name": "@allin-ai/agentkit",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Standalone persistent Agent Client: connect to a Hub, durably execute local platform agents and policy-gated capabilities, and report state upstream.",
   "type": "module",
   "license": "MIT",

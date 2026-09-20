@@ -26,7 +26,7 @@ describe("published agent client artifact", () => {
       scripts?: Record<string, unknown>;
     };
 
-    assert.equal(sourceManifest.version, "0.3.1");
+    assert.equal(sourceManifest.version, "0.3.2");
     assert.equal(sourceManifest.private, false);
     assert.equal(sourceManifest.engines?.node, ">=22.18.0");
     assert.equal(
