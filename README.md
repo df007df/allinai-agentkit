@@ -100,11 +100,12 @@ flowchart TB
 ## CLI
 
 ```
-allinai-agentkit <init|login|daemon|demo|install|status|logs|sync|restart|uninstall|doctor|projects|project|plugins>
+allinai-agentkit <init|login|daemon|demo|install|status|logs|sync|restart|uninstall|doctor|projects|project|plugins|docs>
 allinai-agentkit project --name web --path /work/web    # 注册项目工作目录
 allinai-agentkit project --name web --remove            # 移除
 allinai-agentkit projects                               # 列出已注册项目
 allinai-agentkit plugins [--refresh]                    # 查看已装插件；--refresh 重新上报 Hub
+allinai-agentkit docs [--json]                          # 输出完整 CLI 使用手册（Markdown；--json 为结构化输出，适合 AI agent 读取）
 ```
 
 ### 项目目录

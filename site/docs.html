@@ -138,7 +138,7 @@ node bin/allinai-agentkit --help</code></pre>
           <h2>4 CLI 参考</h2>
           <p>
             全部子命令：<code>allinai-agentkit
-            &lt;init|login|daemon|demo|install|status|logs|sync|restart|uninstall|doctor|projects|project|plugins&gt;</code>
+            &lt;init|login|daemon|demo|install|status|logs|sync|restart|uninstall|doctor|projects|project|plugins|docs&gt;</code>
           </p>
           <table class="doc-table">
             <thead>
@@ -214,6 +214,11 @@ node bin/allinai-agentkit --help</code></pre>
                 <td><code>plugins</code></td>
                 <td>列出已安装插件；<code>--refresh</code> 向 Hub 重新上报插件清单</td>
                 <td><code>--refresh</code></td>
+              </tr>
+              <tr>
+                <td><code>docs</code></td>
+                <td>输出完整 CLI 使用手册索引：默认 Markdown（人与 AI 均可读），<code>--json</code> 为同一份内容的结构化输出，AI agent 读完即可自行配置与执行</td>
+                <td><code>--json</code></td>
               </tr>
             </tbody>
           </table>

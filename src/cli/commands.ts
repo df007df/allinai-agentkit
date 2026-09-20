@@ -23,6 +23,7 @@ import {
   serializeLog,
 } from "../logger.js";
 import { resolveAgentPaths, type AgentPaths } from "../paths.js";
+import { renderManualMarkdown, cliManual } from "./docs.js";
 import { PluginManager } from "../plugins/manager.js";
 import { parsePluginManifest } from "../plugins/manifest.js";
 import { ShellCapabilityHost } from "../capabilities/shell-host.js";
@@ -141,9 +142,10 @@ type CommandOptionSpec = {
  * Keep each command's accepted surface deliberately small. In particular,
  * service commands must never reinterpret a malformed --config-dir as the
  * default Agent home: that could install or remove a user service for the
- * wrong client instance.
+ * wrong client instance. Exported so docs.test.ts can hold the manual in
+ * lockstep with what runCli actually accepts.
  */
-const COMMAND_OPTIONS: Readonly<Record<string, CommandOptionSpec>> = {
+export const COMMAND_OPTIONS: Readonly<Record<string, CommandOptionSpec>> = {
   init: { values: ["hub", "client", "token", "config-dir"] },
   login: { values: ["hub", "client", "config-dir"], booleans: ["no-browser"] },
   demo: { values: ["port", "host", "config-dir"] },
@@ -161,6 +163,7 @@ const COMMAND_OPTIONS: Readonly<Record<string, CommandOptionSpec>> = {
     booleans: ["remove"],
   },
   plugins: { values: ["config-dir"], booleans: ["refresh"] },
+  docs: { booleans: ["json"] },
 };
 
 function parseArgs(args: readonly string[]): ParsedArgs {
@@ -423,10 +426,11 @@ async function defaultFollowLog(
 
 function help(): string {
   return [
-    "Usage: allinai-agentkit <init|login|daemon|demo|install|status|logs|sync|restart|uninstall|doctor|projects|project|plugins> [--config-dir PATH]",
+    "Usage: allinai-agentkit <init|login|daemon|demo|install|status|logs|sync|restart|uninstall|doctor|projects|project|plugins|docs> [--config-dir PATH]",
     "  project --name NAME --path DIR   register a local project working directory",
     "  project --name NAME --remove     remove a registered project",
     "  plugins [--refresh]              list installed plugins; --refresh re-reports them to the Hub",
+    "  docs [--json]                    print the full CLI manual (Markdown; --json for structured output)",
   ].join("\n");
 }
 
@@ -462,6 +466,18 @@ export async function runCli(
     const scopedOptions = configDir ? { ...options, configDir } : options;
     const paths = agentPaths(scopedOptions);
     const command = parsed.command;
+
+    if (command === "docs") {
+      const manual = cliManual();
+      emit(
+        output,
+        write,
+        parsed.flags.get("json") === true
+          ? JSON.stringify(manual)
+          : renderManualMarkdown(manual),
+      );
+      return { exitCode: 0, output };
+    }
 
     if (command === "login") {
       const hubBaseUrl = flagValue(parsed.flags, "hub");
