@@ -1,13 +1,15 @@
 # allinai-agentkit
 
-独立持久 **Agent Client**：连接 Hub，可靠执行本地平台 Agent（Codex / Claude / Pi，可选）与受策略门控的能力，并向上游回报状态。本仓库 = npm 包 `@allin-ai/agentkit` + CLI `allinai-agentkit` + 内置 demo web（中文官网 + memory hub + 授权接入）。
+独立持久 **Agent Client**：连接 Hub，可靠执行本地平台 Agent（Codex / Claude / Pi，可选）与受策略门控的能力，并向上游回报状态。本仓库 = npm 包 `@allin-ai/agentkit` + CLI `allinai-agentkit` + 内置本地 demo 控制台（memory hub + 授权接入）。
+
+官网（介绍与使用场景）：https://df007df.github.io/allinai-agentkit/ ，由 `site/` 目录经 GitHub Actions 自动发布。
 
 ## 快速开始（npm）
 
 要求 Node.js ≥ 22.18。包已发布到 npm，无需克隆仓库：
 
 ```bash
-# 终端 A：启动官网 + demo hub（默认 http://127.0.0.1:4317）
+# 终端 A：启动 demo 控制台 + hub（默认 http://127.0.0.1:4317）
 npx @allin-ai/agentkit demo
 
 # 终端 B：浏览器授权接入，然后常驻接入
@@ -20,7 +22,7 @@ npx @allin-ai/agentkit daemon
 ```bash
 pnpm install && pnpm build
 
-# 终端 A：启动官网 + demo hub（默认 http://127.0.0.1:4317）
+# 终端 A：启动 demo 控制台 + hub（默认 http://127.0.0.1:4317）
 node bin/allinai-agentkit demo
 
 # 终端 B：浏览器授权接入
@@ -68,7 +70,7 @@ allinai-agentkit install       # 以新服务名重新注册
 | `@allin-ai/agentkit/control` | daemon 本地控制面（Unix socket：健康 / 状态 / 清单） |
 | `@allin-ai/agentkit/runtime` | Codex/Claude/Pi 运行时适配（可选 peer） |
 | `@allin-ai/agentkit/plugins` | Git 插件仓库同步与装载 |
-| `@allin-ai/agentkit/demo` | 本官网 + demo hub 服务 |
+| `@allin-ai/agentkit/demo` | 本地 demo 控制台 + hub 服务 |
 
 ## CLI
 

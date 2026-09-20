@@ -49,13 +49,16 @@ describe("static handler", () => {
   });
 });
 
-describe("landing page content", () => {
-  it("serves the full landing page and console script", async () => {
+describe("demo console page content", () => {
+  it("serves the console-only demo page and its script", async () => {
     const handler = createStaticHandler(resolveWebRoot());
     const page = await request(handler, "/");
     const body = await page.text();
-    assert.match(body, /独立持久 Agent Client/);
     assert.match(body, /Demo 控制台/);
+    assert.match(body, /协议事件时间线/);
+    assert.match(body, /df007df\.github\.io\/allinai-agentkit/);
+    // 介绍内容只保留在 GitHub Pages 官网，本地 demo 页不再携带。
+    assert.doesNotMatch(body, /独立持久/);
     const script = await request(handler, "/app.js");
     assert.match(await script.text(), /EventSource/);
   });

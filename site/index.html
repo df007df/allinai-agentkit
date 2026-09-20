@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>allinai-agentkit · 独立持久 Agent Client</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <nav class="nav">
+      <a class="brand" href="#top">allinai-agentkit</a>
+      <div class="nav-links">
+        <a href="#how">运作方式</a>
+        <a href="#scenarios">使用场景</a>
+        <a href="#exports">模块导出</a>
+        <a href="https://github.com/df007df/allinai-agentkit">GitHub</a>
+      </div>
+    </nav>
+
+    <main id="top">
+      <section class="hero">
+        <div class="hero-copy">
+          <h1>独立持久的<br />Agent Client</h1>
+          <p class="subtext">
+            连接 Hub，可靠执行本地 Agent 与受控能力，向上游回报状态。
+            npm 包 @allin-ai/agentkit 已发布，npx 一条命令在本地拉起
+            demo 控制台：授权你的 client 接入，实时看协议流动。
+          </p>
+          <div class="cta-row">
+            <a class="btn primary" href="https://github.com/df007df/allinai-agentkit">GitHub 仓库</a>
+            <a class="btn ghost" href="#exports">查看模块导出</a>
+          </div>
+        </div>
+        <div class="hero-terminal" aria-label="快速开始命令">
+          <div class="term-bar">
+            <span class="term-dot"></span>
+            <span class="term-title">quickstart.sh</span>
+          </div>
+          <pre class="term-body"><code><span class="c"># 终端 A：npx 拉起本地 demo 控制台与 hub（Node.js ≥ 22.18）</span>
+npx @allin-ai/agentkit demo
+
+<span class="c"># 终端 B：浏览器授权（会打开授权页）</span>
+npx @allin-ai/agentkit login \
+  --hub http://127.0.0.1:4317
+
+<span class="c"># 终端 B：常驻接入，然后回到控制台页面</span>
+npx @allin-ai/agentkit daemon</code></pre>
+        </div>
+      </section>
+
+      <section id="how" class="section">
+        <h2>运作方式</h2>
+        <ol class="steps">
+          <li>
+            <span class="step-no">01</span>
+            <div>
+              <h3>浏览器授权</h3>
+              <p>
+                client 持有唯一 clientId，执行 login 后在授权页确认。
+                web 只在内存登记 token 到 clientId 的映射，重启即清空，
+                不发放任何全局令牌。
+              </p>
+            </div>
+          </li>
+          <li>
+            <span class="step-no">02</span>
+            <div>
+              <h3>连接与注册</h3>
+              <p>
+                daemon 通过 WebSocket 长连 Hub，凭已授权 token 注册，
+                断线自动重连，注册与心跳在本地 demo 控制台实时可见。
+              </p>
+            </div>
+          </li>
+          <li>
+            <span class="step-no">03</span>
+            <div>
+              <h3>派发与回报</h3>
+              <p>
+                从控制台派发 agent.run，client 在本地执行并持续上报事件，
+                全程走版本化的 v2 wire 协议。
+              </p>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="scenarios" class="section">
+        <h2>使用场景</h2>
+
+        <div class="scenario">
+          <div class="scenario-head">
+            <span class="step-no">A</span>
+            <div>
+              <h3>宿主服务：挂一个 Hub</h3>
+              <p>
+                把协议 Hub 挂进你现有的 HTTP 服务，鉴权与持久化全部由你实现，
+                包只负责协议编排。
+              </p>
+            </div>
+          </div>
+          <pre class="code-block"><code><span class="c">// 宿主侧：node:http + 你自己的 HubStore</span>
+import { createAgentHub } from "@allin-ai/agentkit/hub";
+
+const hub = createAgentHub&lt;MyUser&gt;({
+  authorize: (token) =&gt; loadUserByToken(token), <span class="c">// 你的鉴权</span>
+  store: myDurableStore(),                    <span class="c">// 你的持久化</span>
+});
+hub.attach(httpServer);                       <span class="c">// WS 挂到 /api/agent-hub/v2/ws</span>
+
+<span class="c">// 向某个 client 派发一次执行</span>
+await hub.offer({
+  principal: user,
+  targetClientId: "agent-01",
+  command: {
+    kind: "agent.run",
+    commandId: randomUUID(),
+    executionId: randomUUID(),
+    taskId: "task-1",
+    attempt: 1,
+    runtime: "codex",
+    payload: { prompt: "修复登录页的空指针" },
+  },
+});</code></pre>
+        </div>
+
+        <div class="scenario">
+          <div class="scenario-head">
+            <span class="step-no">B</span>
+            <div>
+              <h3>Agent 端：接入并执行任务</h3>
+              <p>
+                supervisor 负责连接、注册、断线重连与事件回报；
+                状态落 sqlite，执行交给可选的运行时适配。
+              </p>
+            </div>
+          </div>
+          <pre class="code-block"><code><span class="c">// client 侧：持久执行器</span>
+import {
+  ClientStateStore, ClientSupervisor, WsClientTransport,
+} from "@allin-ai/agentkit/client";
+import { createRunnerManager } from "@allin-ai/agentkit/runtime";
+
+const supervisor = new ClientSupervisor({
+  store: new ClientStateStore(stateDbPath),
+  transport: new WsClientTransport({
+    hubBaseUrl: "https://hub.example",
+    token: await loadToken(),          <span class="c">// login 授权后保存的 token</span>
+    clientId: "agent-01",
+  }),
+  runner: createRunnerManager(),       <span class="c">// Codex / Claude / Pi，可选</span>
+  maxConcurrentRuns: 1,
+});
+
+await supervisor.start();              <span class="c">// 连接、注册、收任务、上报事件</span></code></pre>
+        </div>
+
+        <div class="scenario">
+          <div class="scenario-head">
+            <span class="step-no">C</span>
+            <div>
+              <h3>测试与本地联调：内存 Hub</h3>
+              <p>
+                单测里不需要数据库：内存 Hub 一行起步，协议行为与真实 Hub 完全一致。
+              </p>
+            </div>
+          </div>
+          <pre class="code-block"><code><span class="c">// 测试侧：易失内存实现，重启即清空</span>
+import { createMemoryHub } from "@allin-ai/agentkit/hub/testkit";
+
+const hub = createMemoryHub({ token: "test-token" });
+const server = http.createServer();
+hub.attach(server);
+server.listen(0, "127.0.0.1");
+
+<span class="c">// 断言你的宿主逻辑：注册、offer、事件上报</span>
+assert.equal(hub.listClients().length, 0);</code></pre>
+        </div>
+
+        <div class="scenario">
+          <div class="scenario-head">
+            <span class="step-no">D</span>
+            <div>
+              <h3>一键 demo 控制台</h3>
+              <p>
+                本地调试利器：内存 Hub、浏览器授权与控制台一条命令起，
+                仅监听本机回环地址。
+              </p>
+            </div>
+          </div>
+          <pre class="code-block"><code><span class="c">// 程序化启动 demo 控制台（等价于 allinai-agentkit demo）</span>
+import { startDemoSite } from "@allin-ai/agentkit/demo";
+
+const site = await startDemoSite({ port: 4317 });
+console.log(site.url, site.hubUrl);
+
+await site.close();</code></pre>
+        </div>
+        <div class="scenario">
+          <div class="scenario-head">
+            <span class="step-no">E</span>
+            <div>
+              <h3>在 Next.js 集成默认内存 Hub</h3>
+              <p>
+                Next.js 的 Route Handler 拿不到 WebSocket 升级事件，所以走
+                custom server 挂 Hub；页面用 Server Component 直接读
+                Store，列出 client 与在线状态。
+              </p>
+            </div>
+          </div>
+          <pre class="code-block"><code><span class="c">// 1) src/server/hub.ts —— 单例；dev 热更新下也保持同一实例</span>
+import { createMemoryHub } from "@allin-ai/agentkit/hub/testkit";
+
+const g = globalThis as unknown as {
+  hub?: ReturnType&lt;typeof createMemoryHub&gt;;
+};
+export const hub =
+  g.hub ?? createMemoryHub({ authorize: myAuthorize }); <span class="c">// 你的鉴权</span>
+if (process.env.NODE_ENV !== "production") g.hub = hub;
+
+<span class="c">// 2) server.ts —— custom server，拿到底层 http.Server 才能挂 WS</span>
+import { createServer } from "node:http";
+import next from "next";
+import { hub } from "./src/server/hub";
+
+const app = next({ dev: false });
+await app.prepare();
+const server = createServer((req, res) =&gt; app.getRequestHandler()(req, res));
+hub.attach(server);            <span class="c">// WS: /api/agent-hub/v2/ws</span>
+server.listen(3000);
+
+<span class="c">// 3) src/app/agents/page.tsx —— 页面上列出 client 与状态</span>
+import { hub } from "@/server/hub";
+
+export const dynamic = "force-dynamic";
+
+export default function AgentsPage() {
+  const online = (t: number) =&gt; Date.now() - t &lt; 30_000;
+  return (
+    &lt;ul&gt;
+      {hub.listClients().map((c) =&gt; (
+        &lt;li key={c.clientId}&gt;
+          {c.clientId} · {online(c.lastSeen) ? "在线" : "心跳超时"}
+          · {c.pendingOutboxCount} 条待投递
+        &lt;/li&gt;
+      ))}
+    &lt;/ul&gt;
+  );
+}</code></pre>
+        </div>
+
+        <div class="scenario">
+          <div class="scenario-head">
+            <span class="step-no">F</span>
+            <div>
+              <h3>在 Next.js 实现自己的 HubStore</h3>
+              <p>
+                生产持久化：实现六个方法换成你的数据库，挂法与内存版完全一致；
+                页面查询也换成你自己 Store 暴露的读方法。
+              </p>
+            </div>
+          </div>
+          <pre class="code-block"><code><span class="c">// src/server/store.ts —— HubStore 的数据库实现（六个方法）</span>
+import {
+  createAgentHub, type HubStore, type StoredOffer,
+} from "@allin-ai/agentkit/hub";
+
+export class MyDbHubStore implements HubStore&lt;MyUser&gt; {
+  async registerClient(input) {
+    <span class="c">// 幂等：同 principal+clientId 返回稳定 connectionKey；</span>
+    <span class="c">// 归属冲突（同 clientId 不同 principal）必须拒绝</span>
+  }
+  async heartbeat(input) { <span class="c">/* UPDATE clients SET last_seen = now() */</span> }
+  async listPendingOffers(input): Promise&lt;StoredOffer[]&gt; {
+    <span class="c">/* 只返回该 principal 拥有、未确认的 offer，按持久投递顺序 */</span>
+  }
+  async enqueueOffer(input): Promise&lt;StoredOffer&gt; {
+    <span class="c">// 先落库再返回；按命令身份去重，connectionKey 与注册一致</span>
+  }
+  async ingestEvents(input) {
+    <span class="c">/* (executionId, eventSeq) 去重落库；只回报已持久化的连续</span>
+<span class="c">       水位；收到即退役 run offer，done/failed 等终态取消 offer */</span>
+  }
+  async acknowledgePluginSync(input) { <span class="c">/* 记录插件确认水位 */</span> }
+
+  <span class="c">// 页面查询：内存版的 listClients() 是 testkit 专属糖，</span>
+  <span class="c">// 换库后由你的 Store 自己暴露读方法，例如 listClientsFromDb()</span>
+}
+
+<span class="c">// src/server/hub.ts —— 换个构造参数，其余（server.ts、页面）不变</span>
+export const hub = createAgentHub({
+  authorize: myAuthorize,
+  store: new MyDbHubStore(),
+});</code></pre>
+        </div>
+      </section>
+
+      <section id="exports" class="section">
+        <h2>模块导出</h2>
+        <div class="exports-grid">
+          <div class="export-cell tint">
+            <code>/protocol</code>
+            <p>版本化 wire 协议与编解码</p>
+          </div>
+          <div class="export-cell">
+            <code>/hub</code>
+            <p>Node HTTP/WebSocket Hub，HubStore 端口</p>
+          </div>
+          <div class="export-cell">
+            <code>/hub/testkit</code>
+            <p>内存 Store 与 Hub，demo 所用</p>
+          </div>
+          <div class="export-cell">
+            <code>/client</code>
+            <p>可重连执行 client 与传输层</p>
+          </div>
+          <div class="export-cell">
+            <code>/control</code>
+            <p>daemon 本地控制面：健康、状态、清单</p>
+          </div>
+          <div class="export-cell">
+            <code>/runtime</code>
+            <p>Codex / Claude / Pi 适配，可选 peer</p>
+          </div>
+          <div class="export-cell">
+            <code>/plugins</code>
+            <p>Git 插件仓库同步与装载</p>
+          </div>
+          <div class="export-cell">
+            <code>/demo</code>
+            <p>本地 demo 控制台，startDemoSite()</p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span>MIT License · Node.js ≥ 22.18</span>
+      <span class="footer-links">
+        <a href="https://www.npmjs.com/package/@allin-ai/agentkit" target="_blank" rel="noreferrer">npm</a>
+        <a href="https://github.com/df007df/allinai-agentkit" target="_blank" rel="noreferrer">GitHub</a>
+        <span>@allin-ai/agentkit</span>
+      </span>
+    </footer>
+  </body>
+</html>
