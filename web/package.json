@@ -1,0 +1,28 @@
+{
+  "name": "@allin-ai/agentkit-web",
+  "version": "0.4.0",
+  "private": false,
+  "type": "module",
+  "exports": {
+    "./server": "./server.ts",
+    "./server.ts": "./server.ts",
+    "./console.css": "./console.css"
+  },
+  "scripts": {
+    "dev": "tsx server.ts --dev",
+    "start": "tsx server.ts",
+    "test": "tsx --tsconfig ./tsconfig.json --test \"server.test.ts\""
+  },
+  "dependencies": {
+    "@allin-ai/agentkit": "workspace:*",
+    "next": "^15.5.4",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "tsx": "^4"
+  }
+}

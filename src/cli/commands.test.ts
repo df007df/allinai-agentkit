@@ -201,12 +201,22 @@ describe("web command", () => {
     assert.equal(started, 0);
   });
 
-  it("explains how to install the missing web package when no starter is injected", async () => {
-    // Injects nothing: @allin-ai/agentkit-web is not a dependency here, so the
-    // default dynamic import fails and the CLI must surface the install hint.
-    const result = await runCli(["web"], { write: () => undefined });
+  it("explains how to install the web package when its module is missing", async () => {
+    // The web package IS a devDependency now, so the default dynamic import
+    // would succeed; simulate the absent-package path by injecting a starter
+    // that throws the same module-missing error the real default starter
+    // surfaces when @allinai/agentkit-web is not installed.
+    const result = await runCli(["web"], {
+      write: () => undefined,
+      startConsoleSite: async () => {
+        throw new Error(
+          "Console UI not installed. Run: npm i @allinai/agentkit-web",
+        );
+      },
+      webWaiter: async () => {},
+    });
     assert.equal(result.exitCode, 1);
-    assert.match(result.output.join(""), /npm i @allin-ai\/agentkit-web/);
+    assert.match(result.output.join(""), /npm i @allinai\/agentkit-web/);
   });
 });
 

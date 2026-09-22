@@ -87,6 +87,16 @@ describe("published agent client artifact", () => {
             default?: unknown;
           }
         | undefined = sourceManifest.publishConfig?.exports?.[exportPath];
+      // Static asset exports (e.g. ./console-ui/styles.css) point straight at
+      // a copied file and carry no import/types/default trio.
+      if (!target || typeof target !== "object" || !("import" in target)) {
+        assert.match(
+          String(target),
+          /^\.\/dist\/.+\.(?:css|svg|json)$/,
+          `${exportPath} must be a packaged static asset when it has no ESM target`,
+        );
+        continue;
+      }
       assert.equal(
         typeof target?.types,
         "string",
@@ -158,6 +168,14 @@ describe("published agent client artifact", () => {
     assert.equal(staged.publishConfig?.access, "public");
 
     for (const [exportPath, target] of Object.entries(staged.exports ?? {})) {
+      if (typeof target !== "object" || target === null || !("import" in target)) {
+        assert.match(
+          String(target),
+          /^\.\/dist\/.+\.(?:css|svg|json)$/,
+          `${exportPath} must be a packaged static asset when it has no ESM target`,
+        );
+        continue;
+      }
       assert.match(
         String(target.import),
         /^\.\/dist\/.+\.js$/,

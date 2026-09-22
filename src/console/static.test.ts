@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { describe, it, test } from "node:test";
-import { createStaticHandler, resolveWebRoot } from "./static.js";
+import { createStaticHandler } from "./static.js";
 
 interface GetResult {
   res: http.ServerResponse;
@@ -54,9 +54,27 @@ async function request(
   return new Response(body, { status: res.statusCode, headers });
 }
 
+/** Fixture webRoot mirroring the shipped console demo layout. */
+async function fixtureWebRoot(): Promise<string> {
+  const root = await mkdtemp(path.join(tmpdir(), "console-static-fixture-"));
+  await writeFile(
+    path.join(root, "index.html"),
+    "<!doctype html><html><head><title>allinai-agentkit Demo 控制台</title></head><body><h1>Demo 控制台</h1><section>协议事件时间线</section><a href=\"https://df007df.github.io/allinai-agentkit\">官网</a><script>new EventSource('/_agentkit/console/observe');</script></body></html>",
+  );
+  await writeFile(
+    path.join(root, "login.html"),
+    "<!doctype html><html><body><h1>授权接入请求</h1></body></html>",
+  );
+  await writeFile(
+    path.join(root, "app.js"),
+    "const source = new EventSource('/_agentkit/console/observe');",
+  );
+  return root;
+}
+
 describe("static handler", () => {
   it("redirects the host-owned root to the agentkit console", async () => {
-    const handler = createStaticHandler(resolveWebRoot());
+    const handler = createStaticHandler(await fixtureWebRoot());
     const response = await request(handler, "/");
     assert.equal(response.status, 302);
     assert.equal(response.headers.get("location"), "/_agentkit/");
@@ -66,7 +84,7 @@ describe("static handler", () => {
   });
 
   it("serves the console page under the agentkit prefix", async () => {
-    const handler = createStaticHandler(resolveWebRoot());
+    const handler = createStaticHandler(await fixtureWebRoot());
     const response = await request(handler, "/_agentkit/");
     assert.equal(response.status, 200);
     assert.match(
@@ -78,7 +96,7 @@ describe("static handler", () => {
   });
 
   it("serves the login page at the reserved login path", async () => {
-    const handler = createStaticHandler(resolveWebRoot());
+    const handler = createStaticHandler(await fixtureWebRoot());
     const response = await request(
       handler,
       "/_agentkit/login?client_id=c&state=s",
@@ -88,7 +106,7 @@ describe("static handler", () => {
   });
 
   it("serves nested assets with mapped content types under the prefix", async () => {
-    const handler = createStaticHandler(resolveWebRoot());
+    const handler = createStaticHandler(await fixtureWebRoot());
     const response = await request(handler, "/_agentkit/app.js");
     assert.equal(response.status, 200);
     assert.match(
@@ -98,13 +116,13 @@ describe("static handler", () => {
   });
 
   it("leaves non-agentkit paths to the host site with 404", async () => {
-    const handler = createStaticHandler(resolveWebRoot());
+    const handler = createStaticHandler(await fixtureWebRoot());
     assert.equal((await request(handler, "/about")).status, 404);
     assert.equal((await request(handler, "/api/site/things")).status, 404);
   });
 
   it("rejects path traversal and unknown agentkit paths with 404", async () => {
-    const handler = createStaticHandler(resolveWebRoot());
+    const handler = createStaticHandler(await fixtureWebRoot());
     assert.equal(
       (await request(handler, "/_agentkit/../package.json")).status,
       404,
@@ -115,7 +133,7 @@ describe("static handler", () => {
 
 describe("demo console page content", () => {
   it("serves the console-only demo page and its script", async () => {
-    const handler = createStaticHandler(resolveWebRoot());
+    const handler = createStaticHandler(await fixtureWebRoot());
     const page = await request(handler, "/_agentkit/");
     const body = await page.text();
     assert.match(body, /Demo 控制台/);

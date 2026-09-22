@@ -58,6 +58,15 @@ function getProductionTargets(manifest) {
     "packed manifest must declare exports",
   );
   return Object.entries(exports).flatMap(([entrypoint, target]) => {
+    // Static asset exports (css and friends) have no import/types trio.
+    if (target && typeof target === "string") {
+      assert(
+        target.endsWith(".js") ||
+          /\.(?:css|svg|json)$/.test(target),
+        `${entrypoint} must target a packaged file type`,
+      );
+      return [target];
+    }
     assert(
       target && typeof target === "object",
       `packed export ${entrypoint} must be an object`,
@@ -93,10 +102,15 @@ function assertTarballContents(filename, manifest) {
     requireEntry(`package/${target.slice(2)}`);
   }
   for (const webAsset of [
-    "web/index.html",
-    "web/login.html",
-    "web/app.js",
-    "web/style.css",
+    "web/server.ts",
+    "web/package.json",
+    "web/next.config.mjs",
+    "web/app/layout.tsx",
+    "web/app/page.tsx",
+    "web/app/authorize/page.tsx",
+    "web/public/manifest.webmanifest",
+    "web/public/sw.js",
+    "web/public/icon.svg",
   ]) {
     requireEntry(`package/${webAsset}`);
   }
