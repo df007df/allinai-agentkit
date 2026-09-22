@@ -75,6 +75,17 @@ export type UserServiceInput = {
   executable: string;
 };
 
+/**
+ * Minimal shape the `web` command needs from a running console site. The
+ * in-repo startConsoleServer also returns `runtime`; the extra field is
+ * structurally compatible, so that implementation satisfies this contract.
+ */
+export type ConsoleSiteHandle = {
+  url: string;
+  hubUrl: string;
+  close(): Promise<void>;
+};
+
 export type CliResult = { exitCode: 0 | 1; output: string[] };
 
 export type RunCliOptions = {
@@ -102,6 +113,12 @@ export type RunCliOptions = {
   signal?: AbortSignal;
   credentials?: CredentialStore;
   openBrowser?: (url: string) => Promise<void>;
+  startConsoleSite?: (options: {
+    port?: number;
+    host?: string;
+  }) => Promise<ConsoleSiteHandle>;
+  /** Resolves when the web command should shut down; injectable so tests never hang. */
+  webWaiter?: () => Promise<void>;
 };
 
 export type LocalAgentDaemonOptions = {
@@ -144,6 +161,7 @@ type CommandOptionSpec = {
 export const COMMAND_OPTIONS: Readonly<Record<string, CommandOptionSpec>> = {
   init: { values: ["hub", "client", "token", "config-dir"] },
   login: { values: ["hub", "client", "config-dir"], booleans: ["no-browser"] },
+  web: { values: ["port", "host", "config-dir"] },
   daemon: { values: ["config-dir"] },
   install: { values: ["config-dir"] },
   status: { values: ["config-dir"] },
@@ -405,7 +423,7 @@ async function defaultFollowLog(
 
 function help(): string {
   return [
-    "Usage: allinai-agentkit <init|login|daemon|install|status|logs|sync|restart|uninstall|doctor|projects|project|plugins|docs> [--config-dir PATH]",
+    "Usage: allinai-agentkit <init|login|web|daemon|install|status|logs|sync|restart|uninstall|doctor|projects|project|plugins|docs> [--config-dir PATH]",
     "  project --name NAME --path DIR   register a local project working directory",
     "  project --name NAME --remove     remove a registered project",
     "  plugins [--refresh]              list installed plugins; --refresh re-reports them to the Hub",
@@ -497,6 +515,34 @@ export async function runCli(
         clientId: result.clientId,
         hubBaseUrl: result.hubBaseUrl,
       });
+      return { exitCode: 0, output };
+    }
+
+    if (command === "web") {
+      const portFlag = flagValue(parsed.flags, "port");
+      const port = portFlag === undefined ? undefined : Number(portFlag);
+      if (
+        port !== undefined &&
+        (!Number.isInteger(port) || port < 0 || port > 65535)
+      ) {
+        throw new Error("--port must be an integer between 0 and 65535");
+      }
+      const host = flagValue(parsed.flags, "host");
+      const site = await (
+        scopedOptions.startConsoleSite ?? startConsoleWebSite
+      )({ port, host });
+      emit(output, write, {
+        consoleUrl: site.url,
+        // startWebHost may report only the console URL; derive the Hub
+        // WebSocket endpoint from it when the package does not provide one.
+        hubWsUrl: site.hubUrl ?? site.url.replace(/^http/, "ws"),
+      });
+      const wait = scopedOptions.webWaiter ?? waitForShutdownSignal;
+      try {
+        await wait();
+      } finally {
+        await site.close();
+      }
       return { exitCode: 0, output };
     }
 
@@ -723,6 +769,45 @@ export async function runCli(
     });
     return { exitCode: 1, output };
   }
+}
+
+/**
+ * Default `web` starter: @allin-ai/agentkit-web is an optional peer package
+ * (Task 12 provides it inside this repo's devDependencies). When it is absent,
+ * the dynamic import fails and the operator gets an actionable install hint
+ * instead of a stack trace.
+ */
+async function startConsoleWebSite(options: {
+  port?: number;
+  host?: string;
+}): Promise<ConsoleSiteHandle> {
+  // Widened on purpose: the package is an optional peer (Task 12), so the
+  // specifier must stay a runtime string or tsc would reject its absence.
+  const specifier = "@allin-ai/agentkit-web/server";
+  const mod = (await import(specifier).catch(() => null)) as {
+    startWebHost?: (options: {
+      port?: number;
+      host?: string;
+    }) => Promise<ConsoleSiteHandle>;
+  } | null;
+  if (!mod?.startWebHost) {
+    throw new Error(
+      "Console UI not installed. Run: npm i @allin-ai/agentkit-web",
+    );
+  }
+  return await mod.startWebHost({ port: options.port, host: options.host });
+}
+
+function waitForShutdownSignal(): Promise<void> {
+  return new Promise((resolve) => {
+    const onSignal = () => {
+      process.off("SIGINT", onSignal);
+      process.off("SIGTERM", onSignal);
+      resolve();
+    };
+    process.once("SIGINT", onSignal);
+    process.once("SIGTERM", onSignal);
+  });
 }
 
 function isInside(root: string, candidate: string): boolean {

@@ -155,6 +155,61 @@ describe("login command", () => {
   });
 });
 
+describe("web command", () => {
+  it("starts the console site, reports endpoints and waits for shutdown", async () => {
+    let closed = false;
+    const output: string[] = [];
+    const result = await runCli(["web", "--port", "0"], {
+      write: (line) => output.push(line),
+      startConsoleSite: async () => ({
+        url: "http://127.0.0.1:4317",
+        hubUrl: "ws://127.0.0.1:4317/_agentkit/hub/v2/ws",
+        close: async () => {
+          closed = true;
+        },
+      }),
+      webWaiter: async () => {},
+    });
+    assert.equal(result.exitCode, 0);
+    assert.ok(output.some((line) => line.includes('"consoleUrl"')));
+    assert.ok(output.some((line) => line.includes('"hubWsUrl"')));
+    assert.equal(closed, true);
+  });
+
+  it("rejects a non-integer or out-of-range --port before starting the site", async () => {
+    let started = 0;
+    const run = (port: string) =>
+      runCli(["web", "--port", port], {
+        write: () => undefined,
+        startConsoleSite: async () => {
+          started += 1;
+          throw new Error("site must not start");
+        },
+        webWaiter: async () => {},
+      });
+    const fractional = await run("4317.5");
+    const tooLarge = await run("65536");
+    const notANumber = await run("not-a-port");
+
+    for (const result of [fractional, tooLarge, notANumber]) {
+      assert.equal(result.exitCode, 1);
+      assert.match(
+        result.output.join(""),
+        /--port must be an integer between 0 and 65535/,
+      );
+    }
+    assert.equal(started, 0);
+  });
+
+  it("explains how to install the missing web package when no starter is injected", async () => {
+    // Injects nothing: @allin-ai/agentkit-web is not a dependency here, so the
+    // default dynamic import fails and the CLI must surface the install hint.
+    const result = await runCli(["web"], { write: () => undefined });
+    assert.equal(result.exitCode, 1);
+    assert.match(result.output.join(""), /npm i @allin-ai\/agentkit-web/);
+  });
+});
+
 describe("project commands", () => {
   it("registers and removes a project in the client-owned config", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "allinai-cli-project-"));

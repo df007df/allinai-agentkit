@@ -165,13 +165,13 @@ function assertHubOnlyConsumer(manifest) {
     { cwd: consumerDir, stdio: "inherit" },
   );
 
-  const demoSpecifier = `${manifest.name}/demo`;
+  const consoleSpecifier = `${manifest.name}/console`;
   execFileSync(
     process.execPath,
     [
       "--input-type=module",
       "--eval",
-      `import { startDemoSite } from ${JSON.stringify(demoSpecifier)};\nif (typeof startDemoSite !== \"function\") throw new Error(\"demo export missing startDemoSite\");`,
+      `import { createConsoleRuntime } from ${JSON.stringify(consoleSpecifier)};\nif (typeof createConsoleRuntime !== \"function\") throw new Error(\"console export missing createConsoleRuntime\");`,
     ],
     { cwd: consumerDir, stdio: "inherit" },
   );
