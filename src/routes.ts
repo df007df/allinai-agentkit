@@ -31,7 +31,7 @@ export const RESERVED_AGENTKIT_SEGMENTS = [
   "console",
 ] as const;
 
-/** Static demo assets (pages, styles, scripts) served under the prefix. */
+/** Static console assets (pages, styles, scripts) served under the prefix. */
 export const STATIC_PATH_PREFIX = AGENTKIT_ROOT_PREFIX;
 
 /** Client-side default: hub protocol endpoint used when `pathPrefix` is omitted. */

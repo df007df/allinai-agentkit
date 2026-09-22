@@ -40,16 +40,15 @@ export class TokenRegistry {
 }
 
 /**
- * Principal every registry-issued token authorizes as. The demo site enqueues
- * its offers under the same constant (its local `DEMO_PRINCIPAL`), so hub
- * offer delivery keeps matching; it is demo-scoped and intentionally not part
- * of this module's public API.
+ * Principal every registry-issued token authorizes as. Kept stable so hub
+ * offer delivery keeps matching; it is console-scoped and intentionally not
+ * part of this module's public API.
  */
-const DEMO_PRINCIPAL = "demo-user";
+const CONSOLE_PRINCIPAL = "demo-user";
 
 export function createRegistryAuthorizer(
   registry: TokenRegistry,
 ): HubAuthorizer<string> {
   return async (token: string, _request: IncomingMessage) =>
-    registry.verify(token) ? DEMO_PRINCIPAL : null;
+    registry.verify(token) ? CONSOLE_PRINCIPAL : null;
 }

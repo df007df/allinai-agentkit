@@ -40,9 +40,7 @@ async function get(
   }
 }
 
-// Same shape as the request helper in src/demo/static.test.ts so ported
-// assertions read identically; built on `get` so every test goes through
-// one transport.
+// Request helper built on `get` so every test goes through one transport.
 async function request(
   handler: http.RequestListener,
   target: string,

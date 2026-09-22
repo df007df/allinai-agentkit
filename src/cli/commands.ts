@@ -15,7 +15,6 @@ import {
   type AgentConfig,
 } from "../config.js";
 import { defaultOpenBrowser, runLoginFlow } from "../login.js";
-import { startDemoSite, type DemoSite } from "../demo/index.js";
 import {
   createRotatingJsonlLogger,
   bridgeLog,
@@ -103,8 +102,6 @@ export type RunCliOptions = {
   signal?: AbortSignal;
   credentials?: CredentialStore;
   openBrowser?: (url: string) => Promise<void>;
-  startDemoSite?: (options: { port?: number; host?: string }) => Promise<DemoSite>;
-  demoWaiter?: () => Promise<void>;
 };
 
 export type LocalAgentDaemonOptions = {
@@ -147,7 +144,6 @@ type CommandOptionSpec = {
 export const COMMAND_OPTIONS: Readonly<Record<string, CommandOptionSpec>> = {
   init: { values: ["hub", "client", "token", "config-dir"] },
   login: { values: ["hub", "client", "config-dir"], booleans: ["no-browser"] },
-  demo: { values: ["port", "host", "config-dir"] },
   daemon: { values: ["config-dir"] },
   install: { values: ["config-dir"] },
   status: { values: ["config-dir"] },
@@ -409,7 +405,7 @@ async function defaultFollowLog(
 
 function help(): string {
   return [
-    "Usage: allinai-agentkit <init|login|daemon|demo|install|status|logs|sync|restart|uninstall|doctor|projects|project|plugins|docs> [--config-dir PATH]",
+    "Usage: allinai-agentkit <init|login|daemon|install|status|logs|sync|restart|uninstall|doctor|projects|project|plugins|docs> [--config-dir PATH]",
     "  project --name NAME --path DIR   register a local project working directory",
     "  project --name NAME --remove     remove a registered project",
     "  plugins [--refresh]              list installed plugins; --refresh re-reports them to the Hub",
@@ -501,30 +497,6 @@ export async function runCli(
         clientId: result.clientId,
         hubBaseUrl: result.hubBaseUrl,
       });
-      return { exitCode: 0, output };
-    }
-
-    if (command === "demo") {
-      const portFlag = flagValue(parsed.flags, "port");
-      const port = portFlag === undefined ? undefined : Number(portFlag);
-      if (
-        port !== undefined &&
-        (!Number.isInteger(port) || port < 0 || port > 65535)
-      ) {
-        throw new Error("--port must be an integer between 0 and 65535");
-      }
-      const host = flagValue(parsed.flags, "host");
-      const site = await (scopedOptions.startDemoSite ?? startDemoSite)({
-        port,
-        host,
-      });
-      emit(output, write, {
-        demoUrl: site.url,
-        hubWsUrl: site.hubUrl,
-      });
-      const wait = scopedOptions.demoWaiter ?? waitForShutdownSignal;
-      await wait();
-      await site.close();
       return { exitCode: 0, output };
     }
 
@@ -1114,16 +1086,4 @@ async function readConfigIfExists(file: string): Promise<AgentConfig | null> {
   } catch {
     return null;
   }
-}
-
-function waitForShutdownSignal(): Promise<void> {
-  return new Promise((resolve) => {
-    const onSignal = () => {
-      process.off("SIGINT", onSignal);
-      process.off("SIGTERM", onSignal);
-      resolve();
-    };
-    process.once("SIGINT", onSignal);
-    process.once("SIGTERM", onSignal);
-  });
 }

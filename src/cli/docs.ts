@@ -59,8 +59,7 @@ export function cliManual(): CliManual {
       "covers every allinai-agentkit subcommand so an agent can configure, " +
       "run and diagnose the client without reading the source.",
     quickstart: [
-      "allinai-agentkit demo    # terminal A: local demo console + in-memory Hub on http://127.0.0.1:4317",
-      "allinai-agentkit login --hub http://127.0.0.1:4317   # terminal B: browser pairing; requires the demo running",
+      "allinai-agentkit login --hub http://127.0.0.1:4317   # terminal B: browser pairing; requires a Hub host running",
       "allinai-agentkit daemon  # terminal B: run the persistent client in the foreground",
       "# headless / CI: skip the browser and pair directly:",
       "allinai-agentkit init --hub http://127.0.0.1:4317 --token <TOKEN>",
@@ -97,18 +96,6 @@ export function cliManual(): CliManual {
           "receive agent.run commands, execute local agents, report events.",
         options: [],
         example: "allinai-agentkit daemon",
-        longRunning: true,
-      },
-      {
-        name: "demo",
-        summary:
-          "Start the local demo console with an in-memory Hub and browser " +
-          "authorization. Blocks until interrupted.",
-        options: [
-          { flag: "port", description: "Listen port (default 4317)" },
-          { flag: "host", description: "Listen host" },
-        ],
-        example: "allinai-agentkit demo --port 4317",
         longRunning: true,
       },
       {
@@ -217,10 +204,9 @@ export function cliManual(): CliManual {
     ],
     recipes: [
       {
-        title: "First-time setup with the demo Hub",
-        description: "Bring up a local Hub and pair a client against it.",
+        title: "First-time setup against a Hub host",
+        description: "Pair a client against a running Hub and keep it connected.",
         steps: [
-          "allinai-agentkit demo",
           "allinai-agentkit login --hub http://127.0.0.1:4317",
           "allinai-agentkit daemon",
           "allinai-agentkit status",
@@ -259,7 +245,7 @@ export function cliManual(): CliManual {
       "Every command prints one JSON document per line; parse the last stdout line as JSON.",
       "--config-dir PATH works on every command and replaces the default home ~/.allinai/agent.",
       "--help on any command prints this style of usage text and never executes side effects.",
-      "daemon, demo and logs -f block the foreground until interrupted; everything else returns immediately.",
+      "daemon and logs -f block the foreground until interrupted; everything else returns immediately.",
       "Commands that talk to the daemon (status, sync, logs, plugins, doctor credentials) require it to be running, except doctor which also works standalone.",
       "login/init write mode-0600 config and token files under the Agent home; tokens stay on this machine — do not echo them into shared channels.",
       "agent runtimes (codex / claude / pi / zcode) are optional peer dependencies: doctor reports which are installed.",

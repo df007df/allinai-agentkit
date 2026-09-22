@@ -18,8 +18,8 @@ describe("token registry", () => {
     const registry = new TokenRegistry();
     const record = registry.register("client-1");
     const authorize = createRegistryAuthorizer(registry);
-    // "demo-user" is the principal the demo site enqueues offers with; the
-    // authorizer must keep returning it so hub offer delivery keeps matching.
+    // "demo-user" is the registry principal; the authorizer must keep
+    // returning it so hub offer delivery keeps matching.
     assert.equal(await authorize(record.token, {} as never), "demo-user");
     assert.equal(await authorize("nope", {} as never), null);
   });

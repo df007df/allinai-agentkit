@@ -38,7 +38,6 @@
     "./cli": "./src/cli/commands.ts",
     "./service/launchd": "./src/service/launchd.ts",
     "./service/systemd": "./src/service/systemd.ts",
-    "./demo": "./src/demo/index.ts",
     "./console": "./src/console/index.ts",
     "./console-ui": "./src/console-ui/index.ts"
   },
@@ -134,11 +133,6 @@
         "import": "./dist/service/systemd.js",
         "default": "./dist/service/systemd.js"
       },
-      "./demo": {
-        "types": "./dist/demo/index.d.ts",
-        "import": "./dist/demo/index.js",
-        "default": "./dist/demo/index.js"
-      },
       "./console": {
         "types": "./dist/console/index.d.ts",
         "import": "./dist/console/index.js",
@@ -164,7 +158,6 @@
   ],
   "scripts": {
     "build": "node scripts/build.mjs",
-    "demo": "node bin/allinai-agentkit demo",
     "test": "tsx --tsconfig ./tsconfig.json --test 'src/**/*.test.ts'",
     "typecheck": "tsc --noEmit",
     "publish:stage": "node scripts/publish-stage.mjs publish",

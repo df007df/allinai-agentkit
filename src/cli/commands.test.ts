@@ -155,32 +155,6 @@ describe("login command", () => {
   });
 });
 
-describe("demo command", () => {
-  it("starts the demo site, reports endpoints and waits for shutdown", async () => {
-    let closed = false;
-    const result = await runCli(
-      ["demo", "--port", "0"],
-      {
-        startDemoSite: async () => ({
-          url: "http://127.0.0.1:4317",
-          hubUrl: "ws://127.0.0.1:4317/api/agent-hub/v2/ws",
-          registry: { list: () => [], register: () => {
-            throw new Error("unused");
-          }, verify: () => null, revoke: () => false } as never,
-          close: async () => {
-            closed = true;
-          },
-        }),
-        demoWaiter: async () => {},
-      },
-    );
-    assert.equal(result.exitCode, 0);
-    assert.ok(result.output.some((line) => line.includes("4317")));
-    assert.ok(result.output.some((line) => line.includes("hubWsUrl")));
-    assert.equal(closed, true);
-  });
-});
-
 describe("project commands", () => {
   it("registers and removes a project in the client-owned config", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "allinai-cli-project-"));

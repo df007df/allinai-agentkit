@@ -152,7 +152,7 @@ function sendJson(
 /**
  * Builds a request listener handling every declared business route under
  * `/_agentkit/api/v1`. Returns false for requests outside the namespace so
- * the host router (or the demo fallback chain) can continue.
+ * the host router (or the console fallback chain) can continue.
  */
 export function createAgentApiRouter<Principal>(
   options: AgentApiRouterOptions<Principal>,
