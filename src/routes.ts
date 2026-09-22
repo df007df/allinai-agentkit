@@ -16,19 +16,19 @@ export const LOGIN_PATH = `${AGENTKIT_ROOT_PREFIX}/login`;
 export const LOGIN_APPROVE_PATH = `${LOGIN_PATH}/approve`;
 export const LOGIN_DENY_PATH = `${LOGIN_PATH}/deny`;
 
-/** Demo control-plane endpoints (offers, plugin sync, inventory, SSE). */
-export const DEMO_PATH_PREFIX = `${AGENTKIT_ROOT_PREFIX}/demo`;
-export const DEMO_OBSERVE_PATH = `${DEMO_PATH_PREFIX}/observe`;
-export const DEMO_OFFERS_PATH = `${DEMO_PATH_PREFIX}/offers`;
-export const DEMO_PLUGIN_SYNC_PATH = `${DEMO_PATH_PREFIX}/plugins/sync`;
-export const DEMO_INVENTORY_PATH = `${DEMO_PATH_PREFIX}/inventory`;
-export const DEMO_INVENTORY_QUERY_PATH = `${DEMO_INVENTORY_PATH}/query`;
+/** Console control-plane endpoints (SSE observe; offers/plugin-sync/inventory retire in 0.5.0). */
+export const CONSOLE_PATH_PREFIX = `${AGENTKIT_ROOT_PREFIX}/console`;
+export const CONSOLE_OBSERVE_PATH = `${CONSOLE_PATH_PREFIX}/observe`;
+export const CONSOLE_OFFERS_PATH = `${CONSOLE_PATH_PREFIX}/offers`;
+export const CONSOLE_PLUGIN_SYNC_PATH = `${CONSOLE_PATH_PREFIX}/plugins/sync`;
+export const CONSOLE_INVENTORY_PATH = `${CONSOLE_PATH_PREFIX}/inventory`;
+export const CONSOLE_INVENTORY_QUERY_PATH = `${CONSOLE_INVENTORY_PATH}/query`;
 
 /** Reserved second-level segments under the umbrella prefix. */
 export const RESERVED_AGENTKIT_SEGMENTS = [
   "hub",
   "login",
-  "demo",
+  "console",
 ] as const;
 
 /** Static demo assets (pages, styles, scripts) served under the prefix. */

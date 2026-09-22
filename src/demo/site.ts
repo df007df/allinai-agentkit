@@ -15,11 +15,11 @@ import {
 } from "./token-registry.js";
 import {
   DEFAULT_HUB_WS_PATH,
-  DEMO_INVENTORY_PATH,
-  DEMO_INVENTORY_QUERY_PATH,
-  DEMO_OBSERVE_PATH,
-  DEMO_OFFERS_PATH,
-  DEMO_PLUGIN_SYNC_PATH,
+  CONSOLE_INVENTORY_PATH,
+  CONSOLE_INVENTORY_QUERY_PATH,
+  CONSOLE_OBSERVE_PATH,
+  CONSOLE_OFFERS_PATH,
+  CONSOLE_PLUGIN_SYNC_PATH,
   LOGIN_APPROVE_PATH,
   LOGIN_DENY_PATH,
 } from "../routes.js";
@@ -257,7 +257,7 @@ function handleInventoryGet(
   response: ServerResponse,
 ): void {
   const clientId = decodeURIComponent(
-    pathname.slice(`${DEMO_INVENTORY_PATH}/`.length),
+    pathname.slice(`${CONSOLE_INVENTORY_PATH}/`.length),
   );
   void context.hub
     .getInventory({ principal: DEMO_PRINCIPAL, clientId })
@@ -352,7 +352,7 @@ export function createDemoRouter(
         const url = new URL(request.url ?? "/", "http://demo.invalid");
         if (
           request.method === "GET" &&
-          url.pathname === DEMO_OBSERVE_PATH
+          url.pathname === CONSOLE_OBSERVE_PATH
         ) {
           handleObserve(context, request, response);
           return;
@@ -365,19 +365,19 @@ export function createDemoRouter(
           await handleLoginDeny(request, response);
           return;
         }
-        if (request.method === "POST" && url.pathname === DEMO_OFFERS_PATH) {
+        if (request.method === "POST" && url.pathname === CONSOLE_OFFERS_PATH) {
           await handleOffers(context, request, response);
           return;
         }
-        if (request.method === "POST" && url.pathname === DEMO_PLUGIN_SYNC_PATH) {
+        if (request.method === "POST" && url.pathname === CONSOLE_PLUGIN_SYNC_PATH) {
           await handlePluginSync(context, request, response);
           return;
         }
-        if (request.method === "POST" && url.pathname === DEMO_INVENTORY_QUERY_PATH) {
+        if (request.method === "POST" && url.pathname === CONSOLE_INVENTORY_QUERY_PATH) {
           await handleInventoryQuery(context, request, response);
           return;
         }
-        if (request.method === "GET" && url.pathname.startsWith(`${DEMO_INVENTORY_PATH}/`)) {
+        if (request.method === "GET" && url.pathname.startsWith(`${CONSOLE_INVENTORY_PATH}/`)) {
           handleInventoryGet(context, url.pathname, response);
           return;
         }

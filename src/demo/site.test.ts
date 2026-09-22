@@ -83,7 +83,7 @@ describe("demo observe endpoint", () => {
   it("streams a snapshot then incremental observations", async () => {
     const site = await startDemoSite({ port: 0 });
     try {
-      const response = await fetch(`${site.url}/_agentkit/demo/observe`);
+      const response = await fetch(`${site.url}/_agentkit/console/observe`);
       assert.equal(response.status, 200);
       assert.match(
         response.headers.get("content-type") ?? "",
@@ -216,7 +216,7 @@ describe("demo offers endpoint", () => {
         connected: async () => {},
       });
 
-      let response = await fetch(`${site.url}/_agentkit/demo/offers`, {
+      let response = await fetch(`${site.url}/_agentkit/console/offers`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -228,7 +228,7 @@ describe("demo offers endpoint", () => {
       const registerDeadline = Date.now() + 2_000;
       while (response.status === 404 && Date.now() < registerDeadline) {
         await new Promise((resolve) => setTimeout(resolve, 10));
-        response = await fetch(`${site.url}/_agentkit/demo/offers`, {
+        response = await fetch(`${site.url}/_agentkit/console/offers`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
@@ -255,7 +255,7 @@ describe("demo offers endpoint", () => {
         "写一首关于秋天的诗",
       );
 
-      const missing = await fetch(`${site.url}/_agentkit/demo/offers`, {
+      const missing = await fetch(`${site.url}/_agentkit/console/offers`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ clientId: "ghost", prompt: "x" }),
@@ -294,7 +294,7 @@ describe("demo inventory endpoints", () => {
       });
 
       const query = () =>
-        fetch(`${site.url}/_agentkit/demo/inventory/query`, {
+        fetch(`${site.url}/_agentkit/console/inventory/query`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ clientId: "inventory-client" }),
@@ -349,7 +349,7 @@ describe("demo inventory endpoints", () => {
         }),
       );
 
-      const get = () => fetch(`${site.url}/_agentkit/demo/inventory/report-client`);
+      const get = () => fetch(`${site.url}/_agentkit/console/inventory/report-client`);
       // 等注册落地：未注册时 store 侧所有权校验会以 500 拒绝，注册后为 404。
       let response = await get();
       const registerDeadline = Date.now() + 2_000;
@@ -378,7 +378,7 @@ describe("demo inventory endpoints", () => {
   it("rejects inventory query for unknown clients", async () => {
     const site = await startDemoSite({ port: 0 });
     try {
-      const missing = await fetch(`${site.url}/_agentkit/demo/inventory/query`, {
+      const missing = await fetch(`${site.url}/_agentkit/console/inventory/query`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ clientId: "ghost" }),
@@ -386,7 +386,7 @@ describe("demo inventory endpoints", () => {
       assert.equal(missing.status, 404);
       assert.deepEqual(await missing.json(), { error: "unknown_client" });
 
-      const invalid = await fetch(`${site.url}/_agentkit/demo/inventory/query`, {
+      const invalid = await fetch(`${site.url}/_agentkit/console/inventory/query`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: "{}",
