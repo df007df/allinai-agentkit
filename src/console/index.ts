@@ -33,6 +33,7 @@ export { createStaticHandler } from "./static.js";
 export {
   createConsoleRuntime,
   createConsoleRouter,
+  isLoopbackHost,
   startConsoleServer,
   type ConsoleRuntime,
   type ConsoleSiteHandle,

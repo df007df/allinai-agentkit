@@ -23,6 +23,7 @@ import { AGENTKIT_ROOT_PREFIX, DEFAULT_HUB_WS_PATH } from "@allin-ai/agentkit/ro
 import {
   createConsoleRuntime,
   createConsoleRouter,
+  isLoopbackHost,
 } from "@allin-ai/agentkit/console";
 
 type ConsoleRouter = (
@@ -84,10 +85,23 @@ export async function startWebHost(options?: {
   port?: number;
   host?: string;
   dev?: boolean;
-}): Promise<{ url: string; hubUrl: string; close(): Promise<void> }> {
+}): Promise<{
+  url: string;
+  hubUrl: string;
+  /** Console runtime handle; exposes stream.hostWarning for tests/embedders. */
+  runtime: ReturnType<typeof createConsoleRuntime>;
+  close(): Promise<void>;
+}> {
   const host = options?.host ?? "127.0.0.1";
   const dev = options?.dev ?? process.argv.includes("--dev");
   const runtime = createConsoleRuntime();
+  // Mirrors startConsoleServer: the console write endpoints are unauthenticated
+  // by design and rely on loopback-only deployment. Arm the warning (which the
+  // router turns into 403s) whenever the host is non-loopback, so this gate
+  // actually fires in the web package too.
+  runtime.stream.hostWarning = isLoopbackHost(host)
+    ? null
+    : `console 正监听非回环地址（--host ${host}），仅限受信任本机网络使用`;
   const router = createConsoleRouter(runtime);
 
   const app = next({ dev, dir: import.meta.dirname });
@@ -113,6 +127,7 @@ export async function startWebHost(options?: {
   return {
     url,
     hubUrl,
+    runtime,
     async close() {
       // SSE subscribers hold the server's sockets open; destroy them first or
       // server.close() never settles (mirrors startConsoleServer.close).

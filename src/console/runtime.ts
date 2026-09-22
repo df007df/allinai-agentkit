@@ -189,6 +189,7 @@ export async function startConsoleServer(options?: {
   };
 }
 
-function isLoopbackHost(host: string): boolean {
+/** Shared loopback gate: embedders (web/server.ts) arm hostWarning with it too. */
+export function isLoopbackHost(host: string): boolean {
   return host === "127.0.0.1" || host === "localhost" || host === "::1";
 }

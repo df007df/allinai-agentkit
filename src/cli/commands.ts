@@ -72,6 +72,8 @@ export type LocalAgentDaemon = {
   close(): Promise<void>;
   /** Resolves after an OS shutdown signal. Kept injectable so CLI tests never hang. */
   wait(): Promise<void>;
+  /** Loopback URL of the tool-approval hook bridge, or null when absent. */
+  toolApprovalBridgeUrl: string | null;
 };
 
 export type UserServiceInput = {
@@ -980,6 +982,7 @@ export async function createLocalAgentDaemon(
   let supervisor: ClientSupervisor | null = null;
   let runner: RunnerManager | null = null;
   let approvalBridge: ToolApprovalHttpBridge | null = null;
+  let logging: Promise<void> = Promise.resolve();
   let closed = false;
   let resolveShutdown: (() => void) | null = null;
   const shutdown = new Promise<void>((resolve) => {
@@ -1083,14 +1086,59 @@ export async function createLocalAgentDaemon(
       allowedWorkspaceRoots: config.policy.allowedWorkspaceRoots,
     };
     const logger = createRotatingJsonlLogger({ logsRoot: paths.logsRoot });
+    const writeLog = (
+      level: "debug" | "info" | "warn",
+      entry: Record<string, unknown>,
+    ) => {
+      // Writes are serialized and drained on close. Failure handling here is
+      // deliberately local: once the test/CLI process has removed the config
+      // dir, a rejected append must not surface as an unhandled rejection.
+      logging = logging
+        .then(() => logger.write(entry))
+        .catch(() => undefined);
+    };
     setBridgeLogger({
       debug: (tag, message, meta) =>
-        void logger.write({ level: "debug", tag, message, ...meta }),
+        writeLog("debug", { level: "debug", tag, message, ...meta }),
       info: (tag, message, meta) =>
-        void logger.write({ level: "info", tag, message, ...meta }),
+        writeLog("info", { level: "info", tag, message, ...meta }),
       warn: (tag, message, meta) =>
-        void logger.write({ level: "warn", tag, message, ...meta }),
+        writeLog("warn", { level: "warn", tag, message, ...meta }),
     });
+    // Loopback HTTP bridge for the Codex PreToolUse hook. The bridge is a
+    // pure replay surface: it only echoes tool-approval decisions a human
+    // already made (console offer channel or the local control socket — both
+    // funnel through runner.respondToolApproval). The wrapped runner records
+    // each decision in a bounded map; a hook POST with no recorded decision
+    // denies fail-closed instead of auto-allowing (the old behavior leaked
+    // allows to any local process).
+    //
+    // The wrapper is created BEFORE ClientSupervisor captures the runner, so
+    // the supervisor's respondToolApproval path flows through it. Capability
+    // is decided on the BASE runner: IsolatedRunnerManager exposes these as
+    // prototype methods, which an object spread would drop from the wrapper.
+    const baseRunner = runner;
+    const approvalDecisions = new ToolApprovalDecisionMap();
+    const supportsApprovalRelay =
+      typeof baseRunner.respondToolApproval === "function" &&
+      typeof baseRunner.ownerOfToolApproval === "function";
+    if (supportsApprovalRelay) {
+      runner = Object.create(baseRunner) as RunnerManager;
+      runner.respondToolApproval = (
+        executionId: string,
+        requestId: string,
+        decision: "allow" | "deny",
+        reason?: string,
+      ) => {
+        approvalDecisions.record(requestId, decision, reason);
+        baseRunner.respondToolApproval?.(
+          executionId,
+          requestId,
+          decision,
+          reason,
+        );
+      };
+    }
     supervisor = new ClientSupervisor({
       store,
       transport,
@@ -1142,24 +1190,7 @@ export async function createLocalAgentDaemon(
     // each decision in a bounded map; a hook POST with no recorded decision
     // denies fail-closed instead of auto-allowing (the old behavior leaked
     // allows to any local process).
-    const approvalDecisions = new ToolApprovalDecisionMap();
-    const baseRunner = runner;
-    if (baseRunner.respondToolApproval) {
-      const innerRespond = baseRunner.respondToolApproval.bind(baseRunner);
-      runner = {
-        ...baseRunner,
-        respondToolApproval: (
-          executionId: string,
-          requestId: string,
-          decision: "allow" | "deny",
-          reason?: string,
-        ) => {
-          approvalDecisions.record(requestId, decision, reason);
-          innerRespond(executionId, requestId, decision, reason);
-        },
-      };
-    }
-    if (runner.respondToolApproval && runner.ownerOfToolApproval) {
+    if (supportsApprovalRelay) {
       try {
         approvalBridge = await (options.startToolApprovalBridge ??
           startToolApprovalHttpBridge)({
@@ -1193,6 +1224,7 @@ export async function createLocalAgentDaemon(
         plugins: store!.listPluginStates(),
       };
     },
+    toolApprovalBridgeUrl: approvalBridge?.url ?? null,
     async sync() {
       await supervisor!.flush();
     },
@@ -1206,6 +1238,7 @@ export async function createLocalAgentDaemon(
       store!.close();
       await server.close();
       await approvalBridge?.close();
+      await logging;
     },
   };
 }

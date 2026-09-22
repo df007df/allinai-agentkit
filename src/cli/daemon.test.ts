@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, it } from "node:test";
 import { createAgentControlClient } from "../control.js";
+import { startToolApprovalHttpBridge } from "../control-http.js";
 import type {
   ClientTransport,
   ClientTransportHandlers,
@@ -379,5 +380,125 @@ describe("local agent daemon composition", () => {
         .state,
       "unpaired",
     );
+  });
+
+  it("starts the approval bridge for prototype-method runners and replays supervisor decisions", async () => {
+    if (process.platform === "win32") return;
+    dir = mkdtempSync(path.join(tmpdir(), "allinai-agentkit-daemon-relay-"));
+    writeFileSync(
+      path.join(dir, "config.json"),
+      JSON.stringify({
+        hubBaseUrl: "https://hub.example.test",
+        clientId: "test-client",
+        maxConcurrentRuns: 1,
+        policy: {
+          autoRuntimes: [],
+          autoPermissions: [],
+          allowedGitOrigins: [],
+          deniedPluginIds: [],
+          allowedWorkspaceRoots: [],
+        },
+      }),
+    );
+    const credentials = {
+      load: async () => null,
+      save: async () => undefined,
+      clear: async () => undefined,
+    };
+
+    // The real IsolatedRunnerManager exposes respondToolApproval and
+    // ownerOfToolApproval as PROTOTYPE methods. An object-literal fake masks a
+    // wrapper built with `{ ...baseRunner }`, so this runner is a small class:
+    // the capability gate must survive prototype-only methods.
+    const relayed: Array<{
+      executionId: string;
+      requestId: string;
+      decision: "allow" | "deny";
+      reason?: string;
+    }> = [];
+    class PrototypeMethodRunner {
+      respondToolApproval(
+        executionId: string,
+        requestId: string,
+        decision: "allow" | "deny",
+        reason?: string,
+      ): void {
+        relayed.push({
+          executionId,
+          requestId,
+          decision,
+          ...(reason !== undefined ? { reason } : {}),
+        });
+      }
+      ownerOfToolApproval(requestId: string): string | null {
+        return relayed.some((entry) => entry.requestId === requestId)
+          ? "exec-1"
+          : null;
+      }
+    }
+
+    // Port 0 keeps the real bridge off any fixed endpoint; the injected
+    // starter only records that the daemon actually attempted the start.
+    let bridgeStartAttempts = 0;
+    const daemon = await createLocalAgentDaemon({
+      configDir: dir,
+      credentials,
+      createRunner: () => new PrototypeMethodRunner() as never,
+      startToolApprovalBridge: async (bridgeOptions) => {
+        bridgeStartAttempts += 1;
+        return startToolApprovalHttpBridge({
+          ...bridgeOptions,
+          port: 0,
+        });
+      },
+    });
+    close = () => daemon.close();
+
+    // (i) The capability gate fires on prototype methods: the bridge started.
+    assert.equal(bridgeStartAttempts, 1, "bridge must start for the runner");
+    const bridgeUrl = daemon.toolApprovalBridgeUrl;
+    assert.ok(
+      bridgeUrl?.startsWith("http://127.0.0.1:"),
+      `bridge URL must be a loopback HTTP endpoint, got: ${bridgeUrl}`,
+    );
+
+    // (ii) A supervisor-level decision (the console/control path) must reach
+    // the WRAPPED runner — recorded into the decision map AND forwarded to the
+    // base runner — so a subsequent hook POST replays it instead of denying
+    // with unknown_request_id.
+    const client = createAgentControlClient(path.join(dir, "control.sock"));
+    assert.ok(
+      client.respondToolApproval,
+      "control client must expose respondToolApproval",
+    );
+    await client.respondToolApproval(
+      "exec-1",
+      "req-prototype-1",
+      "allow",
+      "human said yes",
+    );
+
+    const replay = await fetch(`${bridgeUrl}/control/tool-approval`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        platform: "codex",
+        payload: { requestId: "req-prototype-1", tool_name: "Bash" },
+      }),
+    });
+    assert.equal(replay.status, 200);
+    assert.deepEqual((await replay.json()) as Record<string, unknown>, {
+      decision: "allow",
+      reason: "human said yes",
+    });
+    // The decision was also forwarded to the base runner, not swallowed.
+    assert.deepEqual(relayed, [
+      {
+        executionId: "exec-1",
+        requestId: "req-prototype-1",
+        decision: "allow",
+        reason: "human said yes",
+      },
+    ]);
   });
 });

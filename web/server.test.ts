@@ -76,6 +76,28 @@ test("startWebHost reports a path-carrying hubUrl and closes cleanly", async () 
   }
 });
 
+test("non-loopback host arms hostWarning so write endpoints answer 403", async () => {
+  // Binding a real non-loopback address would need network setup; asserting
+  // runtime.stream.hostWarning directly keeps this cheap while covering the
+  // arming logic startWebHost mirrors from startConsoleServer.
+  const site = await startWebHost({ port: 0, dev: false, host: "0.0.0.0" });
+  try {
+    assert.ok(
+      site.runtime.stream.hostWarning?.includes("0.0.0.0"),
+      `non-loopback host must arm hostWarning, got: ${site.runtime.stream.hostWarning}`,
+    );
+    const denied = await fetch(`${site.url}/_agentkit/login/approve`, {
+      method: "POST",
+    });
+    assert.equal(denied.status, 403);
+    assert.deepEqual((await denied.json()) as Record<string, unknown>, {
+      error: "loopback_only",
+    });
+  } finally {
+    await site.close();
+  }
+});
+
 test("close() settles while an SSE subscriber is attached", async () => {
   const site = await startWebHost({ port: 0, dev: false });
   const response = await fetch(`${site.url}/_agentkit/console/observe`);
