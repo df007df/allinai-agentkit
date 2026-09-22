@@ -29,7 +29,7 @@ async function loginToken(
   assert.equal(response.status, 200);
   const payload = (await response.json()) as { redirectUrl: string };
   const token = new URL(payload.redirectUrl).searchParams.get("token") ?? "";
-  assert.match(token, /^demo-/);
+  assert.match(token, /^console-/);
   return token;
 }
 
@@ -148,7 +148,7 @@ describe("demo login routes", () => {
       assert.equal(target.host, "127.0.0.1:49152");
       assert.equal(target.searchParams.get("state"), "state-1");
       const token = target.searchParams.get("token") ?? "";
-      assert.match(token, /^demo-/);
+      assert.match(token, /^console-/);
       assert.equal(site.registry.verify(token)?.clientId, "login-client");
     } finally {
       await site.close();

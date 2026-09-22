@@ -10,9 +10,9 @@ import { createStaticHandler, resolveWebRoot } from "./static.js";
 import { createAgentApiRouter } from "../agent-api.js";
 import {
   createRegistryAuthorizer,
-  DEMO_PRINCIPAL,
   TokenRegistry,
-} from "./token-registry.js";
+} from "../console/token-registry.js";
+import { DEMO_PRINCIPAL } from "./token-registry.js";
 import {
   DEFAULT_HUB_WS_PATH,
   CONSOLE_INVENTORY_PATH,

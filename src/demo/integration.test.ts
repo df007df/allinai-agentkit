@@ -60,7 +60,7 @@ async function demoToken(site: { url: string }, clientId: string): Promise<strin
   assert.equal(approve.status, 200);
   const payload = (await approve.json()) as { redirectUrl: string };
   const token = new URL(payload.redirectUrl).searchParams.get("token") ?? "";
-  assert.match(token, /^demo-/);
+  assert.match(token, /^console-/);
   return token;
 }
 
