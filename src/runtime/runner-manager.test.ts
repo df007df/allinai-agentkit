@@ -323,7 +323,7 @@ describe("RunnerManager", () => {
     const manager = createRunnerManager({
       spawn: fake.spawn,
       childEntrypoint: "/client-owned/runner-child.js",
-      executionTimeoutMs: 100,
+      stallTimeoutMs: 100,
       terminationGraceMs: 25,
       scheduleTimeout: timers.schedule,
       clearScheduledTimeout: timers.clear,
@@ -367,5 +367,140 @@ describe("RunnerManager", () => {
     timers.run(25);
     assert.deepEqual(fake.children[2]?.killSignals, ["SIGTERM", "SIGKILL"]);
     fake.children[2]?.close(null, "SIGKILL");
+  });
+
+  it("fires a first-event watchdog with the captured stderr tail when the child stays silent", async () => {
+    const fake = fakeSpawner();
+    const timers = new FakeTimers();
+    const manager = createRunnerManager({
+      spawn: fake.spawn,
+      childEntrypoint: "/client-owned/runner-child.js",
+      firstEventTimeoutMs: 200,
+      terminationGraceMs: 25,
+      scheduleTimeout: timers.schedule,
+      clearScheduledTimeout: timers.clear,
+    });
+
+    const stream = manager.start("e1", runInput("codex"));
+    fake.children[0]?.stderr?.emit(
+      "data",
+      "stream error: ECONNRESET against api.example.com",
+    );
+    timers.run(200);
+    const events = await collect(stream);
+
+    assert.deepEqual(
+      events.map((event) => event.type),
+      ["error"],
+    );
+    assert.equal(events[0]?.payload?.reason, "runner_timeout");
+    assert.equal(events[0]?.payload?.phase, "first_event");
+    assert.equal(
+      events[0]?.payload?.stderrTail,
+      "stream error: ECONNRESET against api.example.com",
+    );
+    assert.equal(fake.children[0]?.killSignal, "SIGTERM");
+    // The total ceiling must not fire a second failure afterwards.
+    timers.run(25);
+    fake.children[0]?.close(null, "SIGKILL");
+    assert.equal(manager.hasActiveExecution("e1"), false);
+  });
+
+  it("disarms the first-event watchdog once the first event arrives", async () => {
+    const fake = fakeSpawner();
+    const timers = new FakeTimers();
+    const manager = createRunnerManager({
+      spawn: fake.spawn,
+      childEntrypoint: "/client-owned/runner-child.js",
+      firstEventTimeoutMs: 50,
+      stallTimeoutMs: 500,
+      terminationGraceMs: 25,
+      scheduleTimeout: timers.schedule,
+      clearScheduledTimeout: timers.clear,
+    });
+
+    const stream = manager.start("e1", runInput("claude"));
+    fake.children[0]?.writeEvent({ type: "init", payload: {} });
+    timers.run(50);
+    fake.children[0]?.writeEvent({ type: "done", payload: {} });
+    const events = await collect(stream);
+
+    assert.deepEqual(
+      events.map((event) => event.type),
+      ["init", "done"],
+    );
+    timers.run(500);
+    fake.children[0]?.close(null);
+    assert.equal(manager.hasActiveExecution("e1"), false);
+  });
+
+  it("keeps the run alive while events flow and fails on the stall and total limits", async () => {
+    const fake = fakeSpawner();
+    const timers = new FakeTimers();
+    const manager = createRunnerManager({
+      spawn: fake.spawn,
+      childEntrypoint: "/client-owned/runner-child.js",
+      firstEventTimeoutMs: 10,
+      stallTimeoutMs: 50,
+      totalTimeoutMs: 300,
+      terminationGraceMs: 25,
+      scheduleTimeout: timers.schedule,
+      clearScheduledTimeout: timers.clear,
+    });
+
+    const stream = manager.start("e1", runInput("codex"));
+    fake.children[0]?.writeEvent({ type: "init", payload: {} });
+    // Events keep arriving just inside the stall window: no stall failure.
+    for (let tick = 1; tick <= 3; tick += 1) {
+      fake.children[0]?.writeEvent({ type: "tool", payload: { n: tick } });
+      timers.run(49);
+      assert.equal(fake.children[0]?.killSignal, undefined);
+    }
+    // Total ceiling still fires even though the last event was recent.
+    timers.run(300);
+    const events = await collect(stream);
+    assert.deepEqual(
+      events.map((event) => event.type),
+      ["init", "tool", "tool", "tool", "error"],
+    );
+    const totalEvent = events.at(-1);
+    assert.equal(totalEvent?.payload?.phase, "total");
+    assert.match(String(totalEvent?.payload?.message), /total limit/);
+    timers.run(25);
+    fake.children[0]?.close(null, "SIGKILL");
+  });
+
+  it("fails with phase=stall when the event flow goes silent mid-run", async () => {
+    const fake = fakeSpawner();
+    const timers = new FakeTimers();
+    const manager = createRunnerManager({
+      spawn: fake.spawn,
+      childEntrypoint: "/client-owned/runner-child.js",
+      firstEventTimeoutMs: 10,
+      stallTimeoutMs: 50,
+      totalTimeoutMs: 10_000,
+      terminationGraceMs: 25,
+      scheduleTimeout: timers.schedule,
+      clearScheduledTimeout: timers.clear,
+    });
+
+    const stream = manager.start("e1", runInput("claude"));
+    fake.children[0]?.writeEvent({ type: "init", payload: {} });
+    fake.children[0]?.stderr?.emit("data", "connection stalled: ECONNRESET");
+    timers.run(50);
+    const events = await collect(stream);
+
+    assert.deepEqual(
+      events.map((event) => event.type),
+      ["init", "error"],
+    );
+    const errorEvent = events.at(-1);
+    assert.equal(errorEvent?.payload?.phase, "stall");
+    assert.equal(
+      errorEvent?.payload?.stderrTail,
+      "connection stalled: ECONNRESET",
+    );
+    timers.run(25);
+    fake.children[0]?.close(null, "SIGKILL");
   });
 });

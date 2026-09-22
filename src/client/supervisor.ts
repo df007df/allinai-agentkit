@@ -944,6 +944,12 @@ export class ClientSupervisor {
           this.appendProgressIfRunning(executionId, event);
           continue;
         }
+        // Vendor events are lossless SDK passthrough retained for local
+        // debugging; they stay out of the durable outbox and the Hub by
+        // default. They must not be treated as terminal either.
+        if (event.type === "vendor") {
+          continue;
+        }
         if (event.type === "done") {
           logExecution("info", "runner_done", executionId, {
             payload: event.payload,

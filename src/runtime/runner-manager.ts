@@ -12,8 +12,21 @@ import type {
   RunnerManager,
 } from "./types.js";
 
-const DEFAULT_EXECUTION_TIMEOUT_MS = 30 * 60 * 1000;
+const DEFAULT_STALL_TIMEOUT_MS = 5 * 60 * 1000;
+/**
+ * Absolute ceiling for one execution regardless of event flow. Generous on
+ * purpose: long but healthy agent turns keep resetting the stall timer.
+ */
+const DEFAULT_TOTAL_TIMEOUT_MS = 10 * 60 * 1000;
 const DEFAULT_TERMINATION_GRACE_MS = 5_000;
+/**
+ * Slow-failure watchdog: a healthy run emits its first JSONL event (at least
+ * `init`) within seconds. Waiting far longer than that means the vendor
+ * process is stuck on network/auth/startup, and its stderr usually says why.
+ */
+const DEFAULT_FIRST_EVENT_TIMEOUT_MS = 120_000;
+/** How much of the child's stderr is retained for failure diagnostics. */
+const STDERR_TAIL_BYTES = 16 * 1024;
 
 export const DEFAULT_RUNNER_CHILD_ENTRYPOINT = fileURLToPath(
   new URL("./runner-child.js", import.meta.url),
@@ -26,6 +39,11 @@ export type RunnerChildProcess = {
     end?(): void;
   } | null;
   stdout: {
+    on(event: "data", listener: (chunk: string | Uint8Array) => void): unknown;
+    on(event: "error", listener: (error: Error) => void): unknown;
+  } | null;
+  /** Optional so in-process test doubles without a stderr pipe still fit. */
+  stderr: {
     on(event: "data", listener: (chunk: string | Uint8Array) => void): unknown;
     on(event: "error", listener: (error: Error) => void): unknown;
   } | null;
@@ -59,7 +77,15 @@ export type RunnerManagerOptions = {
   spawn?: RunnerSpawn;
   /** A local package-controlled path. Hub payloads never influence this value. */
   childEntrypoint?: string;
-  executionTimeoutMs?: number;
+  /** How long the event flow may stay silent before the run fails. Reset by every event. */
+  stallTimeoutMs?: number;
+  /** Absolute wall-clock ceiling for one execution, regardless of event flow. */
+  totalTimeoutMs?: number;
+  /**
+   * Armed at spawn and disarmed by the first JSONL event. Firing produces a
+   * `runner_timeout` failure carrying the captured stderr tail.
+   */
+  firstEventTimeoutMs?: number;
   /** Delay after SIGTERM before an unclosed child/process group receives SIGKILL. */
   terminationGraceMs?: number;
   killProcessGroup?: (pid: number, signal: NodeJS.Signals) => void;
@@ -113,13 +139,27 @@ type ActiveRun = {
   executionId: string;
   child: RunnerChildProcess;
   events: PlatformEventQueue;
-  executionTimeout: TimerHandle;
+  totalTimeout: TimerHandle;
+  stallTimeout: TimerHandle;
+  firstEventTimeout: TimerHandle;
+  firstEventSeen: boolean;
+  stderrTail: string;
   terminationTimeout: TimerHandle | null;
   cancelled: boolean;
   outputClosed: boolean;
   closeReceived: boolean;
   terminationRequested: boolean;
 };
+
+const STDERR_TAIL_KEEP_BYTES = STDERR_TAIL_BYTES / 2;
+
+function appendStderrTail(active: ActiveRun, chunk: string): void {
+  const merged = active.stderrTail + chunk;
+  active.stderrTail =
+    merged.length > STDERR_TAIL_KEEP_BYTES
+      ? merged.slice(merged.length - STDERR_TAIL_KEEP_BYTES)
+      : merged;
+}
 
 function defaultKillProcessGroup(pid: number, signal: NodeJS.Signals): void {
   process.kill(-pid, signal);
@@ -165,7 +205,9 @@ function validatePositiveTimeout(value: number, name: string): void {
 export class IsolatedRunnerManager implements RunnerManager {
   private readonly spawn: RunnerSpawn;
   private readonly childEntrypoint: string;
-  private readonly executionTimeoutMs: number;
+  private readonly stallTimeoutMs: number;
+  private readonly totalTimeoutMs: number;
+  private readonly firstEventTimeoutMs: number;
   private readonly terminationGraceMs: number;
   private readonly killProcessGroup: (
     pid: number,
@@ -183,11 +225,15 @@ export class IsolatedRunnerManager implements RunnerManager {
     this.spawn = options.spawn ?? (nodeSpawn as unknown as RunnerSpawn);
     this.childEntrypoint =
       options.childEntrypoint ?? DEFAULT_RUNNER_CHILD_ENTRYPOINT;
-    this.executionTimeoutMs =
-      options.executionTimeoutMs ?? DEFAULT_EXECUTION_TIMEOUT_MS;
+    this.stallTimeoutMs = options.stallTimeoutMs ?? DEFAULT_STALL_TIMEOUT_MS;
+    this.totalTimeoutMs = options.totalTimeoutMs ?? DEFAULT_TOTAL_TIMEOUT_MS;
+    this.firstEventTimeoutMs =
+      options.firstEventTimeoutMs ?? DEFAULT_FIRST_EVENT_TIMEOUT_MS;
     this.terminationGraceMs =
       options.terminationGraceMs ?? DEFAULT_TERMINATION_GRACE_MS;
-    validatePositiveTimeout(this.executionTimeoutMs, "executionTimeoutMs");
+    validatePositiveTimeout(this.stallTimeoutMs, "stallTimeoutMs");
+    validatePositiveTimeout(this.totalTimeoutMs, "totalTimeoutMs");
+    validatePositiveTimeout(this.firstEventTimeoutMs, "firstEventTimeoutMs");
     validatePositiveTimeout(this.terminationGraceMs, "terminationGraceMs");
     this.killProcessGroup = options.killProcessGroup ?? defaultKillProcessGroup;
     this.scheduleTimeout = options.scheduleTimeout ?? defaultScheduleTimeout;
@@ -225,28 +271,55 @@ export class IsolatedRunnerManager implements RunnerManager {
       executionId,
       child,
       events,
-      executionTimeout: {} as TimerHandle,
+      totalTimeout: {} as TimerHandle,
+      stallTimeout: {} as TimerHandle,
+      firstEventTimeout: {} as TimerHandle,
+      firstEventSeen: false,
+      stderrTail: "",
       terminationTimeout: null,
       cancelled: false,
       outputClosed: false,
       closeReceived: false,
       terminationRequested: false,
     };
-    active.executionTimeout = this.scheduleTimeout(() => {
+    active.totalTimeout = this.scheduleTimeout(() => {
       if (active.closeReceived) return;
       if (!active.outputClosed) {
         this.reportFailure(
           active,
           "runner_timeout",
-          `Runner exceeded ${this.executionTimeoutMs}ms`,
+          `Runner exceeded the ${this.totalTimeoutMs}ms total limit`,
+          { phase: "total" },
         );
         return;
       }
       // A terminal runner event is not enough if the child never exits. It is
       // still tracked and eventually cleaned up without emitting a second event.
       this.requestTermination(active);
-    }, this.executionTimeoutMs);
-    unrefTimer(active.executionTimeout);
+    }, this.totalTimeoutMs);
+    unrefTimer(active.totalTimeout);
+
+    active.stallTimeout = this.scheduleTimeout(() => {
+      if (active.closeReceived || active.outputClosed) return;
+      this.reportFailure(
+        active,
+        "runner_timeout",
+        `Runner received no events within ${this.stallTimeoutMs}ms`,
+        { phase: "stall" },
+      );
+    }, this.stallTimeoutMs);
+    unrefTimer(active.stallTimeout);
+
+    active.firstEventTimeout = this.scheduleTimeout(() => {
+      if (active.closeReceived || active.firstEventSeen) return;
+      this.reportFailure(
+        active,
+        "runner_timeout",
+        `Runner received no events within ${this.firstEventTimeoutMs}ms`,
+        { phase: "first_event" },
+      );
+    }, this.firstEventTimeoutMs);
+    unrefTimer(active.firstEventTimeout);
 
     this.activeRuns.set(executionId, active);
     this.bindChild(active);
@@ -307,6 +380,18 @@ export class IsolatedRunnerManager implements RunnerManager {
       }
       this.cleanup(active);
     });
+    if (active.child.stderr) {
+      active.child.stderr.on("data", (chunk) => {
+        appendStderrTail(
+          active,
+          typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8"),
+        );
+      });
+      active.child.stderr.on("error", () => {
+        // Stderr is best-effort diagnostics; read failures must never turn
+        // into runner failures on their own.
+      });
+    }
     if (!active.child.stdout) {
       this.reportFailure(
         active,
@@ -328,6 +413,22 @@ export class IsolatedRunnerManager implements RunnerManager {
 
   private handleOutputLine(active: ActiveRun, line: string): void {
     if (active.outputClosed || line.length === 0) return;
+    if (!active.firstEventSeen) {
+      active.firstEventSeen = true;
+      this.clearScheduledTimeout(active.firstEventTimeout);
+    }
+    // Every arriving event proves the run is alive: restart the stall clock.
+    this.clearScheduledTimeout(active.stallTimeout);
+    active.stallTimeout = this.scheduleTimeout(() => {
+      if (active.closeReceived || active.outputClosed) return;
+      this.reportFailure(
+        active,
+        "runner_timeout",
+        `Runner received no events within ${this.stallTimeoutMs}ms`,
+        { phase: "stall" },
+      );
+    }, this.stallTimeoutMs);
+    unrefTimer(active.stallTimeout);
     let parsed: unknown;
     try {
       parsed = JSON.parse(line) as unknown;
@@ -358,9 +459,18 @@ export class IsolatedRunnerManager implements RunnerManager {
     active: ActiveRun,
     reason: string,
     message: string,
+    details?: Record<string, unknown>,
   ): void {
     if (active.outputClosed) return;
-    active.events.push(platformErrorEvent(reason, message));
+    this.clearScheduledTimeout(active.firstEventTimeout);
+    active.events.push(
+      platformErrorEvent(reason, message, {
+        ...details,
+        ...(active.stderrTail.length > 0
+          ? { stderrTail: active.stderrTail }
+          : {}),
+      }),
+    );
     this.closeOutput(active);
     this.requestTermination(active);
   }
@@ -383,7 +493,9 @@ export class IsolatedRunnerManager implements RunnerManager {
   }
 
   private cleanup(active: ActiveRun): void {
-    this.clearScheduledTimeout(active.executionTimeout);
+    this.clearScheduledTimeout(active.totalTimeout);
+    this.clearScheduledTimeout(active.stallTimeout);
+    this.clearScheduledTimeout(active.firstEventTimeout);
     if (active.terminationTimeout) {
       this.clearScheduledTimeout(active.terminationTimeout);
       active.terminationTimeout = null;

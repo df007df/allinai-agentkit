@@ -79,6 +79,62 @@ describe("Pi adapter", () => {
     assert.equal(disposed, true);
   });
 
+  it("maps unrecognized session and message_update events to vendor without dropping them", async () => {
+    const adapter = createPiAdapter({
+      createAgentSession: async () => {
+        let listener: ((event: never) => void) | undefined;
+        return {
+          session: {
+            sessionId: "pi-session-2",
+            subscribe(next) {
+              listener = next as (event: never) => void;
+              return () => {
+                listener = undefined;
+              };
+            },
+            async prompt() {
+              listener?.({
+                type: "message_update",
+                assistantMessageEvent: {
+                  type: "text_start",
+                  contentIndex: 0,
+                },
+              } as never);
+              listener?.({
+                type: "turn_start",
+              } as never);
+              listener?.({
+                type: "compaction_start",
+                reason: "threshold",
+              } as never);
+              listener?.({ type: "agent_start" } as never);
+              listener?.({
+                type: "agent_end",
+                messages: [{ role: "assistant" }],
+                willRetry: false,
+              } as never);
+            },
+            async abort() {},
+            dispose() {},
+          },
+        };
+      },
+    });
+
+    const events = await collect(
+      adapter.start(runInput(), new AbortController().signal),
+    );
+
+    assert.deepEqual(
+      events.map((event) => event.type),
+      ["vendor", "vendor", "vendor", "init", "done"],
+    );
+    assert.equal(events[0]?.payload?.vendorUpdateType, "text_start");
+    assert.equal(events[1]?.payload?.vendorEventType, "turn_start");
+    assert.equal(events[2]?.payload?.vendorEventType, "compaction_start");
+    assert.equal(events[4]?.payload?.messageCount, 1);
+  });
+
   it("reports the installed official SDK version", async () => {
     const probe = await createPiAdapter({
       loadPi: async () => ({

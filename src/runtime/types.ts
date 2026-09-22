@@ -17,9 +17,20 @@ export type PlatformRunInput = {
   context?: Record<string, unknown>;
 };
 
-/** A normalized event emitted by every platform runner. */
+/**
+ * A normalized event emitted by every platform runner. `vendor` is the lossless
+ * catch-all for SDK messages that have no precise normalized counterpart: it is
+ * preserved end to end but intentionally not logged or reported by default.
+ */
 export type PlatformEvent = {
-  type: "init" | "text_delta" | "thinking_delta" | "tool" | "done" | "error";
+  type:
+    | "init"
+    | "text_delta"
+    | "thinking_delta"
+    | "tool"
+    | "vendor"
+    | "done"
+    | "error";
   payload?: Record<string, unknown>;
 };
 

@@ -5,6 +5,7 @@ export const PLATFORM_EVENT_TYPES = [
   "text_delta",
   "thinking_delta",
   "tool",
+  "vendor",
   "done",
   "error",
 ] as const satisfies readonly PlatformEvent["type"][];
@@ -34,7 +35,6 @@ export function isPlatformEvent(value: unknown): value is PlatformEvent {
 export function isTerminalPlatformEvent(event: PlatformEvent): boolean {
   return event.type === "done" || event.type === "error";
 }
-
 /** Keeps process/protocol failures in the same durable event shape as SDK failures. */
 export function platformErrorEvent(
   reason: string,

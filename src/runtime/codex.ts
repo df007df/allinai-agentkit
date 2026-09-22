@@ -109,6 +109,13 @@ function mapCodexEvent(event: CodexSdkEvent): PlatformEvent | null {
       : null;
   }
 
+  if (event.type === "turn.started") {
+    return {
+      type: "vendor",
+      payload: payload({ vendorEventType: event.type }),
+    };
+  }
+
   if (event.type === "item.completed" && isRecord(event.item)) {
     if (event.item.type === "agent_message") {
       const message = text(event.item.text);
@@ -128,6 +135,22 @@ function mapCodexEvent(event: CodexSdkEvent): PlatformEvent | null {
           }
         : null;
     }
+    if (
+      event.item.type === "command_execution" ||
+      event.item.type === "file_change" ||
+      event.item.type === "mcp_tool_call" ||
+      event.item.type === "web_search" ||
+      event.item.type === "todo_list"
+    ) {
+      return {
+        type: "tool",
+        payload: payload({ item: event.item, vendorEventType: event.type }),
+      };
+    }
+    return {
+      type: "vendor",
+      payload: payload({ item: event.item, vendorEventType: event.type }),
+    };
   }
 
   if (event.type === "turn.completed") {
@@ -167,7 +190,10 @@ function mapCodexEvent(event: CodexSdkEvent): PlatformEvent | null {
     };
   }
 
-  return null;
+  return {
+    type: "vendor",
+    payload: payload({ vendorEventType: event.type }),
+  };
 }
 
 function errorMessage(error: unknown): string {

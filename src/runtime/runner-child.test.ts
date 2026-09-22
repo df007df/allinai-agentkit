@@ -97,8 +97,15 @@ describe("runner child", () => {
     assert.ok(kinds.length > 0, "child must emit JSONL events");
     assert.ok(
       kinds.every((kind) =>
-        ["init", "text_delta", "thinking_delta", "tool", "done", "error"]
-          .includes(kind as string),
+        [
+          "init",
+          "text_delta",
+          "thinking_delta",
+          "tool",
+          "vendor",
+          "done",
+          "error",
+        ].includes(kind as string),
       ),
       `unexpected event kinds: ${JSON.stringify(kinds)}`,
     );

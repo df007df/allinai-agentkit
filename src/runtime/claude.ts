@@ -182,8 +182,19 @@ function mapClaudeMessage(message: ClaudeSdkMessage): PlatformEvent {
     return { type: "done", payload: payload(message, { result }) };
   }
 
+  if (type === "user" && isRecord(raw.message)) {
+    // Tool results and control replies arrive as user-role messages; they are
+    // the observable outcome of tool execution, not agent output.
+    const content = Array.isArray(raw.message.content)
+      ? raw.message.content
+      : [];
+    if (content.some((block) => isRecord(block) && block.type === "tool_result")) {
+      return { type: "tool", payload: payload(message) };
+    }
+  }
+
   return {
-    type: "tool",
+    type: "vendor",
     payload: payload(message, { vendorMessageType: type, subtype }),
   };
 }

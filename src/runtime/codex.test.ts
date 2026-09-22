@@ -111,6 +111,83 @@ describe("Codex adapter", () => {
     });
   });
 
+  it("maps tool-like completed items to tool and the rest to vendor without dropping any event", async () => {
+    const adapter = createCodexAdapter({
+      createCodex: () => ({
+        startThread: () => ({
+          async runStreamed() {
+            return {
+              events: (async function* () {
+                yield { type: "thread.started", thread_id: "thread-2" };
+                yield { type: "turn.started" };
+                yield {
+                  type: "item.completed",
+                  item: { id: "c1", type: "command_execution", command: "ls" },
+                };
+                yield {
+                  type: "item.completed",
+                  item: { id: "f1", type: "file_change", path: "a.ts" },
+                };
+                yield {
+                  type: "item.completed",
+                  item: { id: "m1", type: "mcp_tool_call", tool: "search" },
+                };
+                yield {
+                  type: "item.completed",
+                  item: { id: "w1", type: "web_search", query: "q" },
+                };
+                yield {
+                  type: "item.completed",
+                  item: { id: "t1", type: "todo_list", items: [] },
+                };
+                yield {
+                  type: "item.completed",
+                  item: { id: "x1", type: "totally_new_item_type" },
+                };
+                yield { type: "item.started", item: { id: "s1", type: "command_execution" } };
+                yield { type: "item.updated", item: { id: "s1", type: "command_execution" } };
+                yield { type: "turn.completed", usage: { input_tokens: 1 } };
+              })(),
+            };
+          },
+        }),
+        resumeThread: () => {
+          throw new Error("not used");
+        },
+      }),
+    });
+
+    const events = await collect(
+      adapter.start(runInput(), new AbortController().signal),
+    );
+
+    assert.deepEqual(
+      events.map((event) => event.type),
+      [
+        "init",
+        "vendor",
+        "tool",
+        "tool",
+        "tool",
+        "tool",
+        "tool",
+        "vendor",
+        "tool",
+        "tool",
+        "done",
+      ],
+    );
+    const vendorTurn = events[1];
+    assert.equal(vendorTurn?.payload?.vendorEventType, "turn.started");
+    const vendorItem = events.find(
+      (event) => event.type === "vendor" && event.payload?.item,
+    );
+    assert.equal(
+      (vendorItem?.payload?.item as { type?: string } | undefined)?.type,
+      "totally_new_item_type",
+    );
+  });
+
   it("resumes an existing SDK thread and emits its known session before stream output", async () => {
     const adapter = createCodexAdapter({
       createCodex: () => ({

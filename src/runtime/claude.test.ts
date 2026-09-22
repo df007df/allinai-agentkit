@@ -104,6 +104,38 @@ describe("Claude adapter", () => {
     assert.equal(events[2]?.payload?.result, "Hello");
   });
 
+  it("maps tool results to tool and other lifecycle messages to vendor with the original message kept", async () => {
+    const adapter = createClaudeAdapter({
+      query: ((() =>
+        fakeQuery([
+          { type: "system", subtype: "init", session_id: "claude-thread-2" },
+          {
+            type: "user",
+            message: {
+              content: [{ type: "tool_result", tool_use_id: "t1", content: "ok" }],
+            },
+          },
+          { type: "system", subtype: "compact_boundary", compact_metadata: {} },
+          { type: "result", subtype: "success", result: "done" },
+        ])) as unknown as ClaudeQueryFactory),
+    });
+
+    const events = await collect(
+      adapter.start(runInput(), new AbortController().signal),
+    );
+
+    assert.deepEqual(
+      events.map((event) => event.type),
+      ["init", "tool", "vendor", "done"],
+    );
+    assert.equal(
+      (events[1]?.payload?.vendorMessage as { type?: string } | undefined)?.type,
+      "user",
+    );
+    assert.equal(events[2]?.payload?.vendorMessageType, "system");
+    assert.equal(events[2]?.payload?.subtype, "compact_boundary");
+  });
+
   it("asks the injected AskUser hook instead of importing a Domain bridge", async () => {
     const asked: string[] = [];
     let canUseTool:

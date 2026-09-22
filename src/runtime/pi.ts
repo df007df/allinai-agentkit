@@ -5,15 +5,17 @@ import type {
   PlatformRunInput,
 } from "./types.js";
 
+type PiAssistantMessageEvent = {
+  type: string;
+  delta?: string;
+  [key: string]: unknown;
+};
+
 type PiSessionEvent =
   | { type: "agent_start" }
   | {
       type: "message_update";
-      assistantMessageEvent: {
-        type: string;
-        delta?: string;
-        [key: string]: unknown;
-      };
+      assistantMessageEvent: PiAssistantMessageEvent;
     }
   | {
       type: "agent_end";
@@ -21,10 +23,7 @@ type PiSessionEvent =
       messages: unknown[];
     }
   | {
-      type:
-        | "tool_execution_start"
-        | "tool_execution_update"
-        | "tool_execution_end";
+      type: "tool_execution_start" | "tool_execution_update" | "tool_execution_end";
       [key: string]: unknown;
     };
 
@@ -124,69 +123,88 @@ function mapPiSessionEvent(
   event: PiSessionEvent,
   runtimeSessionId: string,
 ): PlatformEvent | null {
-  switch (event.type) {
-    case "agent_start":
-      return {
-        type: "init",
-        payload: { runtimeSessionId, vendorEventType: event.type },
-      };
-    case "message_update": {
-      const update = event.assistantMessageEvent;
-      if (update.type === "text_delta") {
-        return {
-          type: "text_delta",
-          payload: {
-            text: update.delta,
-            vendorEventType: event.type,
-            vendorUpdateType: update.type,
-          },
-        };
-      }
-      if (update.type === "thinking_delta") {
-        return {
-          type: "thinking_delta",
-          payload: {
-            text: update.delta,
-            vendorEventType: event.type,
-            vendorUpdateType: update.type,
-          },
-        };
-      }
-      if (
-        update.type === "toolcall_start" ||
-        update.type === "toolcall_delta" ||
-        update.type === "toolcall_end"
-      ) {
-        return {
-          type: "tool",
-          payload: {
-            vendorEventType: event.type,
-            vendorUpdateType: update.type,
-            update,
-          },
-        };
-      }
-      return null;
-    }
-    case "tool_execution_start":
-    case "tool_execution_update":
-    case "tool_execution_end":
-      return { type: "tool", payload: { ...event } };
-    case "agent_end":
-      // Pi may retry after this event. `prompt()` completion emits the single
-      // terminal event when all retries have settled.
-      return event.willRetry
-        ? null
-        : {
-            type: "done",
-            payload: {
-              vendorEventType: event.type,
-              messageCount: event.messages.length,
-            },
-          };
-    default:
-      return null;
+  if (event.type === "agent_start") {
+    return {
+      type: "init",
+      payload: { runtimeSessionId, vendorEventType: event.type },
+    };
   }
+  if (event.type === "message_update") {
+    const update: PiAssistantMessageEvent = event.assistantMessageEvent;
+    if (update.type === "text_delta") {
+      return {
+        type: "text_delta",
+        payload: {
+          text: update.delta,
+          vendorEventType: event.type,
+          vendorUpdateType: update.type,
+        },
+      };
+    }
+    if (update.type === "thinking_delta") {
+      return {
+        type: "thinking_delta",
+        payload: {
+          text: update.delta,
+          vendorEventType: event.type,
+          vendorUpdateType: update.type,
+        },
+      };
+    }
+    if (
+      update.type === "toolcall_start" ||
+      update.type === "toolcall_delta" ||
+      update.type === "toolcall_end"
+    ) {
+      return {
+        type: "tool",
+        payload: {
+          vendorEventType: event.type,
+          vendorUpdateType: update.type,
+          update,
+        },
+      };
+    }
+    return {
+      type: "vendor",
+      payload: {
+        vendorEventType: event.type,
+        vendorUpdateType: update.type,
+        update,
+      },
+    };
+  }
+  if (event.type === "agent_end") {
+    // Pi may retry after this event. `prompt()` completion emits the single
+    // terminal event when all retries have settled.
+    const { willRetry, messages } = event as {
+      willRetry?: boolean;
+      messages: unknown[];
+    };
+    return willRetry
+      ? null
+      : {
+          type: "done",
+          payload: {
+            vendorEventType: event.type,
+            messageCount: messages.length,
+          },
+        };
+  }
+  if (
+    event.type === "tool_execution_start" ||
+    event.type === "tool_execution_update" ||
+    event.type === "tool_execution_end"
+  ) {
+    return { type: "tool", payload: { ...event } };
+  }
+  // Session extension events (compaction, retries, queue updates, bash
+  // output, ...) arrive outside the closed union above; keep them lossless.
+  const extended = event as { type: string; [key: string]: unknown };
+  return {
+    type: "vendor",
+    payload: { vendorEventType: extended.type, event: { ...extended } },
+  };
 }
 
 function errorMessage(error: unknown): string {
