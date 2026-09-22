@@ -155,29 +155,68 @@ describe("login command", () => {
   });
 });
 
-describe("demo command", () => {
-  it("starts the demo site, reports endpoints and waits for shutdown", async () => {
+describe("web command", () => {
+  it("starts the console site, reports endpoints and waits for shutdown", async () => {
     let closed = false;
-    const result = await runCli(
-      ["demo", "--port", "0"],
-      {
-        startDemoSite: async () => ({
-          url: "http://127.0.0.1:4317",
-          hubUrl: "ws://127.0.0.1:4317/api/agent-hub/v2/ws",
-          registry: { list: () => [], register: () => {
-            throw new Error("unused");
-          }, verify: () => null, revoke: () => false } as never,
-          close: async () => {
-            closed = true;
-          },
-        }),
-        demoWaiter: async () => {},
-      },
-    );
+    const output: string[] = [];
+    const result = await runCli(["web", "--port", "0"], {
+      write: (line) => output.push(line),
+      startConsoleSite: async () => ({
+        url: "http://127.0.0.1:4317",
+        hubUrl: "ws://127.0.0.1:4317/_agentkit/hub/v2/ws",
+        close: async () => {
+          closed = true;
+        },
+      }),
+      webWaiter: async () => {},
+    });
     assert.equal(result.exitCode, 0);
-    assert.ok(result.output.some((line) => line.includes("4317")));
-    assert.ok(result.output.some((line) => line.includes("hubWsUrl")));
+    assert.ok(output.some((line) => line.includes('"consoleUrl"')));
+    assert.ok(output.some((line) => line.includes('"hubWsUrl"')));
     assert.equal(closed, true);
+  });
+
+  it("rejects a non-integer or out-of-range --port before starting the site", async () => {
+    let started = 0;
+    const run = (port: string) =>
+      runCli(["web", "--port", port], {
+        write: () => undefined,
+        startConsoleSite: async () => {
+          started += 1;
+          throw new Error("site must not start");
+        },
+        webWaiter: async () => {},
+      });
+    const fractional = await run("4317.5");
+    const tooLarge = await run("65536");
+    const notANumber = await run("not-a-port");
+
+    for (const result of [fractional, tooLarge, notANumber]) {
+      assert.equal(result.exitCode, 1);
+      assert.match(
+        result.output.join(""),
+        /--port must be an integer between 0 and 65535/,
+      );
+    }
+    assert.equal(started, 0);
+  });
+
+  it("explains how to install the web package when its module is missing", async () => {
+    // The web package IS a devDependency now, so the default dynamic import
+    // would succeed; simulate the absent-package path by injecting a starter
+    // that throws the same module-missing error the real default starter
+    // surfaces when @allinai/agentkit-web is not installed.
+    const result = await runCli(["web"], {
+      write: () => undefined,
+      startConsoleSite: async () => {
+        throw new Error(
+          "Console UI not installed. Run: npm i @allinai/agentkit-web",
+        );
+      },
+      webWaiter: async () => {},
+    });
+    assert.equal(result.exitCode, 1);
+    assert.match(result.output.join(""), /npm i @allinai\/agentkit-web/);
   });
 });
 

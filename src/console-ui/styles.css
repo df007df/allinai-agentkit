@@ -1,0 +1,322 @@
+/* console-ui dark theme — ported from web/style.css (dark-tech, emerald accent).
+   All selectors are console-* scoped; drop this file next to the React mount. */
+
+:root {
+  color-scheme: dark;
+  --console-bg: #0a0f0d;
+  --console-bg-raised: #101815;
+  --console-bg-tint: rgba(52, 211, 153, 0.08);
+  --console-border: rgba(154, 168, 161, 0.18);
+  --console-border-strong: rgba(154, 168, 161, 0.34);
+  --console-text: #e7edea;
+  --console-text-dim: #93a39b;
+  --console-accent: #34d399;
+  --console-accent-ink: #06281c;
+  --console-danger: #f0a4a4;
+  --console-radius: 10px;
+  --console-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  --console-sans: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+.console-app,
+.console-card {
+  box-sizing: border-box;
+  background: var(--console-bg);
+  color: var(--console-text);
+  font-family: var(--console-sans);
+  line-height: 1.7;
+}
+
+.console-app *,
+.console-card * { box-sizing: border-box; }
+
+/* ---------- head / status ---------- */
+
+.console-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.console-head h2 { margin: 0; }
+
+/* 状态点为真实语义（SSE 连接状态） */
+.console-status {
+  font-family: var(--console-mono);
+  font-size: 0.78rem;
+  color: var(--console-text-dim);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.console-status::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--console-text-dim);
+}
+.console-status[data-state="online"] { color: var(--console-accent); }
+.console-status[data-state="online"]::before { background: var(--console-accent); }
+.console-status[data-state="offline"] { color: var(--console-danger); }
+.console-status[data-state="offline"]::before { background: var(--console-danger); }
+
+.console-warning {
+  border-left: 3px solid rgba(52, 211, 153, 0.45);
+  background: var(--console-bg-tint);
+  border-radius: 0 8px 8px 0;
+  padding: 0.7rem 1rem;
+  font-size: 0.88rem;
+  color: var(--console-text-dim);
+}
+
+.console-clients {
+  color: var(--console-text-dim);
+  font-size: 0.85rem;
+  margin-top: 1.25rem;
+}
+
+/* ---------- execution list ---------- */
+
+.console-exec-list {
+  list-style: none;
+  margin: 1.25rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.console-empty {
+  color: var(--console-text-dim);
+  font-size: 0.9rem;
+}
+
+.console-exec-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 0.9rem;
+  font: inherit;
+  text-align: left;
+  color: var(--console-text);
+  background: var(--console-bg-raised);
+  border: 1px solid var(--console-border);
+  border-radius: var(--console-radius);
+  padding: 0.85rem 1.1rem;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+.console-exec-row:hover {
+  border-color: rgba(52, 211, 153, 0.45);
+  background: var(--console-bg-tint);
+}
+
+.console-exec-id {
+  font-family: var(--console-mono);
+  font-size: 0.85rem;
+  color: var(--console-accent);
+  word-break: break-all;
+}
+.console-exec-time,
+.console-exec-count {
+  font-family: var(--console-mono);
+  font-size: 0.78rem;
+  color: var(--console-text-dim);
+  white-space: nowrap;
+}
+
+/* ---------- badges ---------- */
+
+.console-badge {
+  display: inline-block;
+  font-family: var(--console-mono);
+  font-size: 0.74rem;
+  letter-spacing: 0.04em;
+  border: 1px solid var(--console-border-strong);
+  border-radius: 999px;
+  padding: 0.1rem 0.65rem;
+  color: var(--console-text-dim);
+  white-space: nowrap;
+}
+.console-badge-active {
+  border-color: rgba(52, 211, 153, 0.55);
+  background: var(--console-bg-tint);
+  color: var(--console-accent);
+}
+.console-badge-ok {
+  border-color: rgba(52, 211, 153, 0.55);
+  background: var(--console-accent);
+  color: var(--console-accent-ink);
+  font-weight: 600;
+}
+.console-badge-bad {
+  border-color: rgba(240, 164, 164, 0.55);
+  background: rgba(240, 164, 164, 0.12);
+  color: var(--console-danger);
+}
+
+/* ---------- detail / timeline ---------- */
+
+.console-detail {
+  margin-top: 1.25rem;
+  display: grid;
+  gap: 0.9rem;
+  align-content: start;
+}
+
+.console-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.65rem 1.4rem;
+  border-radius: var(--console-radius);
+  border: 1px solid transparent;
+  font: inherit;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.2s ease, background 0.2s ease;
+}
+.console-btn:active { transform: translateY(1px); }
+.console-btn:disabled { opacity: 0.55; cursor: default; }
+
+.console-btn-primary {
+  background: var(--console-accent);
+  color: var(--console-accent-ink);
+  font-weight: 600;
+}
+.console-btn-primary:hover { filter: brightness(1.08); }
+
+.console-btn-ghost {
+  border-color: var(--console-border-strong);
+  color: var(--console-text);
+  background: transparent;
+}
+.console-btn-ghost:hover { border-color: var(--console-accent); }
+
+.console-detail-title {
+  margin: 0;
+  font-family: var(--console-mono);
+  font-size: 1rem;
+  color: var(--console-accent);
+  word-break: break-all;
+}
+
+.console-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-left: 2px solid var(--console-border-strong);
+  display: grid;
+  gap: 0.55rem;
+  font-family: var(--console-mono);
+  font-size: 0.8rem;
+}
+.console-timeline li {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding: 0.2rem 0 0.2rem 1rem;
+  color: var(--console-text-dim);
+}
+.console-timeline li::before {
+  content: "";
+  position: absolute;
+  left: -5px;
+  top: 0.65rem;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--console-accent);
+}
+.console-timeline-time { color: var(--console-accent); }
+.console-timeline-seq { color: var(--console-text-dim); }
+
+.console-payload { width: 100%; }
+.console-payload summary {
+  cursor: pointer;
+  color: var(--console-text-dim);
+}
+.console-payload summary:hover { color: var(--console-accent); }
+.console-payload pre {
+  margin: 0.4rem 0 0.2rem;
+  padding: 0.75rem 0.9rem;
+  background: var(--console-bg-raised);
+  border: 1px solid var(--console-border);
+  border-radius: var(--console-radius);
+  overflow-x: auto;
+  font-size: 0.76rem;
+  line-height: 1.7;
+  color: var(--console-text);
+}
+
+/* ---------- authorize card ---------- */
+
+.console-card {
+  width: min(26rem, 100%);
+  border: 1px solid var(--console-border);
+  border-radius: var(--console-radius);
+  background: var(--console-bg-raised);
+  padding: 2rem 2.2rem 2.2rem;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+}
+
+.console-brand {
+  font-family: var(--console-mono);
+  font-size: 0.95rem;
+  color: var(--console-text);
+  display: inline-block;
+  margin-bottom: 1.5rem;
+}
+.console-brand::before {
+  content: "▮ ";
+  color: var(--console-accent);
+}
+
+.console-card h1 {
+  margin: 0 0 0.5rem;
+  font-size: 1.5rem;
+  letter-spacing: -0.01em;
+}
+
+.console-subtext {
+  margin: 0 0 1.5rem;
+  color: var(--console-text-dim);
+}
+
+.console-login-client {
+  border: 1px solid var(--console-border);
+  border-radius: var(--console-radius);
+  background: var(--console-bg);
+  padding: 0.75rem 1rem;
+  margin-bottom: 1.25rem;
+}
+.console-login-client code {
+  font-family: var(--console-mono);
+  font-size: 0.9rem;
+  color: var(--console-accent);
+  word-break: break-all;
+}
+
+.console-cta-row {
+  display: flex;
+  gap: 0.9rem;
+  flex-wrap: wrap;
+  margin-top: 1.5rem;
+}
+
+.console-error { color: var(--console-danger); font-size: 0.88rem; }
+
+/* ---------- responsive / motion ---------- */
+
+@media (max-width: 880px) {
+  .console-exec-row { grid-template-columns: 1fr auto; }
+  .console-exec-time { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .console-app *,
+  .console-card * { transition: none !important; }
+}

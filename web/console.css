@@ -1,0 +1,42 @@
+/* Console shell: @allinai/agentkit/console-ui dark theme + mobile viewport fit. */
+@import "@allin-ai/agentkit/console-ui/styles.css";
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: #0b0f14;
+  min-height: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Mobile viewport tweaks: safe-area padding for notched devices and a
+   single-column console grid on narrow screens. */
+body {
+  padding:
+    env(safe-area-inset-top, 0) env(safe-area-inset-right, 0)
+    env(safe-area-inset-bottom, 0) env(safe-area-inset-left, 0);
+}
+
+@media (max-width: 720px) {
+  .console-app {
+    padding: 12px;
+    gap: 12px;
+  }
+  .console-head h2 {
+    font-size: 18px;
+  }
+  .console-clients,
+  .console-exec-list {
+    max-height: none;
+  }
+  .console-exec-row {
+    flex-wrap: wrap;
+  }
+  .console-detail {
+    max-height: 60vh;
+  }
+  .console-btn {
+    padding: 10px 14px;
+  }
+}

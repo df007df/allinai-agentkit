@@ -11,12 +11,12 @@
     if (/^\s*(npx|npm|sh|git|node|allinai-agentkit)\b/.test(text) && !/[{;]/.test(text.split("\n")[0] + text.split("\n")[1])) {
       return "terminal.sh";
     }
-    if (/import\s+.*from\s+"@allin-ai\/agentkit\/demo"/.test(text)) return "demo.ts";
+    if (/import\s+.*from\s+"@allin-ai\/agentkit\/console(-ui)?"/.test(text)) return "console.ts";
     if (/createMemoryHub/.test(text)) return "memory-hub.ts";
     if (/HubStore\s*<|implements HubStore/.test(text)) return "store.ts";
     if (/ClientSupervisor|WsClientTransport/.test(text)) return "supervisor.ts";
     if (/createAgentControlClient/.test(text)) return "control.ts";
-    if (/startDemoSite/.test(text)) return "demo.ts";
+    if (/startConsoleServer/.test(text)) return "console.ts";
     if (/createAgentHub/.test(text)) return "hub.ts";
     if (/\ next|NextJS|next\(/.test(text)) return "server.ts";
     return "snippet-" + nextFileNo++ + ".ts";

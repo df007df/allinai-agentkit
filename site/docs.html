@@ -49,7 +49,7 @@
         <a href="#integration-client" class="sub">Agent 端编程接入</a>
         <a href="#integration-nextjs" class="sub">Next.js 集成</a>
         <a href="#integration-control" class="sub">宿主进程监管</a>
-        <a href="#integration-demo" class="sub">程序化 demo</a>
+        <a href="#integration-console" class="sub">Console 编程接入</a>
         <a href="#architecture">架构与模块</a>
         <a href="#architecture-wire" class="sub">wire 协议</a>
         <a href="#architecture-modules" class="sub">模块明细</a>
@@ -84,8 +84,8 @@
           <p>环境要求：<strong>Node.js ≥ 22.18</strong>；插件同步需要本机 <code>git</code>。三种方式按需选择。</p>
 
           <h3 id="install-npx">2.1 npx 免安装</h3>
-          <p>临时体验或本地联调，无需任何安装动作：</p>
-          <pre class="code-block"><code>npx @allin-ai/agentkit demo</code></pre>
+          <p>临时体验或本地联调，无需任何安装动作（Console 另需 <code>@allin-ai/agentkit-web</code>）：</p>
+          <pre class="code-block"><code>npx @allin-ai/agentkit --help</code></pre>
 
           <h3 id="install-global">2.2 npm 全局安装</h3>
           <pre class="code-block"><code>npm install -g @allin-ai/agentkit
@@ -112,10 +112,15 @@ node bin/allinai-agentkit --help</code></pre>
           <h2>3 快速开始</h2>
           <p>安装后三步跑通完整链路（npx 用户把命令前的 <code>node bin/</code> 换成 <code>npx @allin-ai/agentkit</code>）：</p>
 
-          <h3>步骤一：启动 demo 控制台（终端 A）</h3>
-          <pre class="code-block"><code>node bin/allinai-agentkit demo
-<span class="c"># 输出 demoUrl（默认 http://127.0.0.1:4317）与 hubWsUrl，浏览器打开 demoUrl</span></code></pre>
-          <p>demo = 本地控制台 + 内存 Hub + 授权页，仅监听回环地址，重启即清空。</p>
+          <h3>步骤一：启动 Console（终端 A）</h3>
+          <pre class="code-block"><code>node bin/allinai-agentkit web
+<span class="c"># 输出 consoleUrl（默认 http://127.0.0.1:4317）与 hubWsUrl，浏览器打开 consoleUrl</span></code></pre>
+          <p>
+            <code>web</code> 把 Hub 与 Console UI 跑在同一进程，仅监听回环地址。
+            它需要 <code>@allin-ai/agentkit-web</code>（官方 Next.js 控制台）：
+            npm 全局安装 <code>npm i -g @allin-ai/agentkit @allin-ai/agentkit-web</code>；
+            源码开发时它是 workspace devDep，<code>pnpm install</code> 已链接。
+          </p>
 
           <h3>步骤二：浏览器授权（终端 B）</h3>
           <pre class="code-block"><code>node bin/allinai-agentkit login --hub http://127.0.0.1:4317
@@ -135,9 +140,9 @@ node bin/allinai-agentkit --help</code></pre>
 
           <h3 id="quickstart-auth">3.1 授权模型</h3>
           <p>
-            demo 启动不发放任何全局 token。client 凭自己 config 里的唯一 clientId 发起
-            <code>login</code>，浏览器授权页确认后，web 内存中登记 <code>token → clientId</code>
-            并以此放行后续连接。内存态，Hub 重启即清空，需要重新 login。
+            Console 启动不发放任何全局 token。client 凭自己 config 里的唯一 clientId 发起
+            <code>login</code>，浏览器授权页确认后，Console 内存中登记 <code>token → clientId</code>
+            并以此放行后续连接。内存态，重启即清空，需要重新 login。
             生产环境的鉴权由宿主在 <code>createAgentHub({ authorize })</code> 里自己实现。
           </p>
         </section>
@@ -145,7 +150,7 @@ node bin/allinai-agentkit --help</code></pre>
         <section id="cli" class="doc-section">
           <h2>4 CLI 参考</h2>
           <p>
-            全部子命令：<code>allinai-agentkit &lt;init|login|daemon|demo|install|status|logs|sync|restart|uninstall|doctor|projects|project|plugins|docs&gt;</code>
+            全部子命令：<code>allinai-agentkit &lt;init|login|daemon|web|install|status|logs|sync|restart|uninstall|doctor|projects|project|plugins|docs&gt;</code>
           </p>
           <table class="doc-table">
             <thead>
@@ -168,8 +173,8 @@ node bin/allinai-agentkit --help</code></pre>
                 <td>—</td>
               </tr>
               <tr>
-                <td><code>demo</code></td>
-                <td>启动本地 demo 控制台 + 内存 Hub</td>
+                <td><code>web</code></td>
+                <td>启动本地 Console：Hub 与 web UI 同进程（需 <code>@allin-ai/agentkit-web</code>）</td>
                 <td><code>--port N</code> · <code>--host H</code></td>
               </tr>
               <tr>
@@ -454,11 +459,16 @@ console.log(await control.health());   <span class="c">// { status: "ok" | "degr
 console.log(await control.status());   <span class="c">// { state: "running" | ... }</span>
 await control.approve(executionId);    <span class="c">// 放行待批准执行</span></code></pre>
 
-          <h3 id="integration-demo">6.6 程序化 demo</h3>
-          <pre class="code-block"><code><span class="c">// 程序化启动 demo 控制台（等价于 allinai-agentkit demo）</span>
-import { startDemoSite } from "@allin-ai/agentkit/demo";
+          <h3 id="integration-console">6.6 Console 编程接入</h3>
+          <p>
+            Console（<code>allinai-agentkit web</code> 的底层）也能程序化启动：
+            <code>/console</code> 提供服务端胶水，<code>/console-ui</code> 提供 React 组件，
+            官方 Next.js 控制台 <code>@allin-ai/agentkit-web</code> 正是基于两者构建的自托管参考实现。
+          </p>
+          <pre class="code-block"><code><span class="c">// 程序化启动 Console（Hub + web UI 同进程，等价于 allinai-agentkit web）</span>
+import { startConsoleServer } from "@allin-ai/agentkit/console";
 
-const site = await startDemoSite({ port: 4317 });
+const site = await startConsoleServer({ port: 4317 });
 console.log(site.url, site.hubUrl);
 
 await site.close();</code></pre>
@@ -524,7 +534,7 @@ await site.close();</code></pre>
 
             <div class="arch-row arch-dev">
               <span class="arch-chip">/hub/testkit — HubStore 内存实现，测试与本地联调</span>
-              <span class="arch-chip">/demo — startDemoSite() 一键本地控制台</span>
+              <span class="arch-chip">/console + /console-ui — Console 服务端与 React 组件（@allin-ai/agentkit-web 采用）</span>
             </div>
           </div>
 
@@ -551,7 +561,7 @@ await site.close();</code></pre>
                 <p>
                   根入口，公共 API 汇总：/protocol、/hub、/client 核心类，以及
                   /config、/credentials、/control、/logger、/paths。刻意不含
-                  /runtime（可选 peer）、/hub/testkit 与 /demo。
+                  /runtime（可选 peer）、/hub/testkit 与 /console。
                 </p>
               </div>
               <div class="export-row">
@@ -707,19 +717,32 @@ await site.close();</code></pre>
                   <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { runCli } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit/cli"</span><span class="pn">;</span></code></pre>
                 </div>
                 <p>
-                  runCli：init / login / daemon / demo / install / status / logs /
+                  runCli：init / login / daemon / web / install / status / logs /
                   sync / restart / uninstall / doctor / projects / plugins
                   全部子命令的实现，bin/allinai-agentkit 就是它的薄封装。
                 </p>
               </div>
               <div class="export-row">
                 <div class="ide">
-                  <div class="ide-titlebar"><span class="ide-dot r"></span><span class="ide-dot y"></span><span class="ide-dot g"></span><span class="ide-file">demo.ts</span></div>
-                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { startDemoSite } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit/demo"</span><span class="pn">;</span></code></pre>
+                  <div class="ide-titlebar"><span class="ide-dot r"></span><span class="ide-dot y"></span><span class="ide-dot g"></span><span class="ide-file">console.ts</span></div>
+                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { startConsoleServer } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit/console"</span><span class="pn">;</span></code></pre>
                 </div>
                 <p>
-                  startDemoSite()：本地调试控制台 + 内存 Hub + 浏览器授权，
-                  一条命令起全套，仅监听回环地址。
+                  Console 服务端胶水：startConsoleServer() 在一个进程里起 Hub 与
+                  web UI，含 TokenRegistry（内存 token → clientId）、SSE 观察流
+                  与静态资源处理，仅监听回环地址。<code>@allin-ai/agentkit-web</code>
+                  的 custom server 复用同一套路由。
+                </p>
+              </div>
+              <div class="export-row">
+                <div class="ide">
+                  <div class="ide-titlebar"><span class="ide-dot r"></span><span class="ide-dot y"></span><span class="ide-dot g"></span><span class="ide-file">console-ui.tsx</span></div>
+                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { ConsoleApp } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit/console-ui"</span><span class="pn">;</span></code></pre>
+                </div>
+                <p>
+                  Console 的 React 组件：ConsoleApp、ExecutionList、AuthorizeCard
+                  等，配合 useAgentEvents() 经 SSE 接入协议事件时间线；
+                  <code>@allin-ai/agentkit-web</code> 基于它构建控制台页面。
                 </p>
               </div>
             </div>

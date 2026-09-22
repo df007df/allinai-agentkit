@@ -6,3 +6,5 @@ out/
 coverage/
 .publish-stage/
 docs/
+.next/
+web/.next/

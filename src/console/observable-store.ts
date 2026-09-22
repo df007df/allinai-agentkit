@@ -11,13 +11,14 @@ import type {
   HubStore,
   StoredOffer,
 } from "../hub/index.js";
+import type { ClientEvent } from "../protocol/index.js";
 
 export type HubObservation =
   | { kind: "client.registered"; clientId: string; at: number }
   | { kind: "client.heartbeat"; clientId: string; at: number }
   | { kind: "offer.enqueued"; offerId: string; targetClientId: string; commandKind: string; at: number }
   | { kind: "offers.delivered"; clientId: string; count: number; at: number }
-  | { kind: "events.ingested"; clientId: string; count: number; at: number }
+  | { kind: "events.ingested"; clientId: string; count: number; at: number; events: ClientEvent[] }
   | { kind: "plugin.acknowledged"; clientId: string; at: number }
   | { kind: "inventory.recorded"; clientId: string; at: number };
 
@@ -98,6 +99,7 @@ export class ObservableStore<Principal> implements HubStore<Principal> {
       clientId: input.clientId,
       count: input.events.length,
       at: Date.now(),
+      events: [...input.events],
     });
     return result;
   }

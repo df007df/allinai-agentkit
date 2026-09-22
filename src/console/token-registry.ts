@@ -2,10 +2,6 @@ import { randomUUID } from "node:crypto";
 import type { IncomingMessage } from "node:http";
 import type { HubAuthorizer } from "../hub/index.js";
 
-/** Every demo token authorizes as one constant principal so the demo
- * router can enqueue offers without ownership conflicts. */
-export const DEMO_PRINCIPAL = "demo-user";
-
 export type RegisteredToken = {
   readonly token: string;
   readonly clientId: string;
@@ -22,7 +18,7 @@ export class TokenRegistry {
       throw new TypeError("clientId must be a nonempty string");
     }
     const record: RegisteredToken = {
-      token: `demo-${randomUUID()}`,
+      token: `console-${randomUUID()}`,
       clientId,
       issuedAt: Date.now(),
     };
@@ -43,9 +39,16 @@ export class TokenRegistry {
   }
 }
 
+/**
+ * Principal every registry-issued token authorizes as. Kept stable so hub
+ * offer delivery keeps matching; it is console-scoped and intentionally not
+ * part of this module's public API.
+ */
+const CONSOLE_PRINCIPAL = "demo-user";
+
 export function createRegistryAuthorizer(
   registry: TokenRegistry,
 ): HubAuthorizer<string> {
   return async (token: string, _request: IncomingMessage) =>
-    registry.verify(token) ? DEMO_PRINCIPAL : null;
+    registry.verify(token) ? CONSOLE_PRINCIPAL : null;
 }

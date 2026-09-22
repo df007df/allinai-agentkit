@@ -73,4 +73,27 @@ describe("observable store", () => {
     const record = await store.registerClient(registration("client-2"));
     assert.equal(record.clientId, "client-2");
   });
+
+  it("events.ingested observation carries the ingested ClientEvents", async () => {
+    const seen: HubObservation[] = [];
+    const store = new ObservableStore(new MemoryHubStore<string>(), (o) => seen.push(o));
+    await store.registerClient(registration("client-3"));
+    const batch = {
+      principal: "demo-user",
+      clientId: "client-3",
+      events: [
+        {
+          executionId: "execution-3",
+          eventSeq: 1,
+          type: "received" as const,
+          occurredAt: "2026-09-22T00:00:00.000Z",
+        },
+      ],
+    };
+    await store.ingestEvents(batch);
+    const obs = seen.find((o) => o.kind === "events.ingested");
+    assert.ok(obs && obs.kind === "events.ingested");
+    assert.equal(obs.events.length, 1);
+    assert.equal(obs.events[0].type, "received");
+  });
 });

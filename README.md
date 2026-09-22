@@ -1,6 +1,6 @@
 # allinai-agentkit
 
-独立持久 **Agent Client**：连接 Hub，可靠执行本地平台 Agent（Codex / Claude / Pi，可选）与受策略门控的能力，并向上游回报状态。本仓库 = npm 包 `@allin-ai/agentkit` + CLI `allinai-agentkit` + 内置本地 demo 控制台（memory hub + 授权接入）。
+独立持久 **Agent Client**：连接 Hub，可靠执行本地平台 Agent（Codex / Claude / Pi，可选）与受策略门控的能力，并向上游回报状态。本仓库 = npm 包 `@allin-ai/agentkit`（协议 / hub / client / console）+ CLI `allinai-agentkit` + 官方 Next.js 控制台 `@allin-ai/agentkit-web`（自托管 UI 的参考实现）。
 
 官网（介绍与使用场景）：https://df007df.github.io/allinai-agentkit/ ，由 `site/` 目录经 GitHub Actions 自动发布。完整文档（安装 → CLI 参考 → 功能 → 系统集成 → 架构）：https://df007df.github.io/allinai-agentkit/docs.html
 
@@ -9,12 +9,15 @@
 要求 Node.js ≥ 22.18。包已发布到 npm，无需克隆仓库：
 
 ```bash
-# 终端 A：启动 demo 控制台 + hub（默认 http://127.0.0.1:4317）
-npx @allin-ai/agentkit demo
+# Console 需要 @allin-ai/agentkit-web（官方 Next.js 控制台）
+npm i -g @allin-ai/agentkit @allin-ai/agentkit-web
+
+# 终端 A：启动 Console（Hub + web UI 同进程；默认 http://127.0.0.1:4317）
+allinai-agentkit web
 
 # 终端 B：浏览器授权接入，然后常驻接入
-npx @allin-ai/agentkit login --hub http://127.0.0.1:4317
-npx @allin-ai/agentkit daemon
+allinai-agentkit login --hub http://127.0.0.1:4317
+allinai-agentkit daemon
 ```
 
 ## 快速开始（本地源码）
@@ -22,8 +25,9 @@ npx @allin-ai/agentkit daemon
 ```bash
 pnpm install && pnpm build
 
-# 终端 A：启动 demo 控制台 + hub（默认 http://127.0.0.1:4317）
-node bin/allinai-agentkit demo
+# 终端 A：启动 Console（Hub + web UI 同进程；默认 http://127.0.0.1:4317）
+# @allin-ai/agentkit-web 是本仓库的 workspace devDep，pnpm install 已链接
+node bin/allinai-agentkit web
 
 # 终端 B：浏览器授权接入
 node bin/allinai-agentkit login --hub http://127.0.0.1:4317
@@ -34,7 +38,7 @@ node bin/allinai-agentkit daemon
 
 打开 http://127.0.0.1:4317 ：控制台会出现你的 client，可派发任务并观察协议事件时间线。
 
-授权模型：demo 启动不发放任何全局 token；client 凭自己 config 里的唯一 clientId 发起 `login`，浏览器授权页确认后，web 内存中登记 `token → clientId` 并以此放行后续连接（内存态，重启即清空，需重新 login）。
+授权模型：Console 启动不发放任何全局 token；client 凭自己 config 里的唯一 clientId 发起 `login`，浏览器授权页确认后，Console 内存中登记 `token → clientId` 并以此放行后续连接（内存态，重启即清空，需重新 login）。
 
 ## 安装（一键 sh 脚本）
 
@@ -76,11 +80,18 @@ flowchart TB
     you["宿主进程（桌面 App / 服务端）"] -.->|"AgentControlClient 监管"| ctl
 ```
 
-支撑模块（daemon 内部使用）：`/config` 工作目录与本地策略、`/credentials` token 存取（0600 文件，全平台一致）、`/paths` 数据目录、`/logger` 滚动日志、`/service/*` 开机自启。开发与联调：`/hub/testkit` 内存 Hub，`/demo` 一键控制台。
+支撑模块（daemon 内部使用）：`/config` 工作目录与本地策略、`/credentials` token 存取（0600 文件，全平台一致）、`/paths` 数据目录、`/logger` 滚动日志、`/service/*` 开机自启。开发与联调：`/hub/testkit` 内存 Hub；`/console` Console 服务端胶水（路由 / SSE 观察 / 授权桥），`/console-ui` React 组件。
+
+## 两个包
+
+| 包 | 内容 |
+|---|---|
+| `@allin-ai/agentkit`（core） | 协议（`/protocol`）、Hub（`/hub`）、Client（`/client`）、Console 服务端胶水（`/console`）、Console React 组件（`/console-ui`），以及 config / credentials / control / logger 等设施与 CLI |
+| `@allin-ai/agentkit-web` | 官方 Next.js 控制台（自定义 server 把 Hub 与 Console UI 跑在同一进程），自托管 UI 的参考实现；`allinai-agentkit web` 依赖它 |
 
 | 入口 | 分组 | 内容 |
 |---|---|---|
-| `@allin-ai/agentkit` | 入口 | 公共 API 汇总（protocol / hub / client 核心、config、credentials、control、logger、paths；不含 runtime、testkit、demo） |
+| `@allin-ai/agentkit` | 入口 | 公共 API 汇总（protocol / hub / client 核心、config、credentials、control、logger、paths；不含 runtime、testkit、console） |
 | `@allin-ai/agentkit/protocol` | 协议 | v2 wire 协议与全部编解码；`/wire` 为兼容别名 |
 | `@allin-ai/agentkit/hub` | Hub 侧 | `createAgentHub({ authorize, store })`，HubStore 六方法端口，`offer()` 派发 |
 | `@allin-ai/agentkit/hub/testkit` | Hub 侧 | `MemoryHubStore` / `createMemoryHub`，易失实现（勿用于生产） |
@@ -95,12 +106,13 @@ flowchart TB
 | `@allin-ai/agentkit/service/launchd` | 设施 | macOS 用户级服务注册 |
 | `@allin-ai/agentkit/service/systemd` | 设施 | Linux 用户级服务注册 |
 | `@allin-ai/agentkit/cli` | 工具 | 全部 CLI 子命令实现（bin 的薄封装在其上） |
-| `@allin-ai/agentkit/demo` | 工具 | `startDemoSite()`：本地控制台 + 内存 Hub + 浏览器授权 |
+| `@allin-ai/agentkit/console` | 工具 | Console 服务端胶水：`startConsoleServer()`、TokenRegistry、SSE 观察流、静态资源处理 |
+| `@allin-ai/agentkit/console-ui` | 工具 | Console React 组件（`ConsoleApp` 等）与 SSE 事件接入，`@allin-ai/agentkit-web` 基于它构建 |
 
 ## CLI
 
 ```
-allinai-agentkit <init|login|daemon|demo|install|status|logs|sync|restart|uninstall|doctor|projects|project|plugins|docs>
+allinai-agentkit <init|login|daemon|web|install|status|logs|sync|restart|uninstall|doctor|projects|project|plugins|docs>
 allinai-agentkit project --name web --path /work/web    # 注册项目工作目录
 allinai-agentkit project --name web --remove            # 移除
 allinai-agentkit projects                               # 列出已注册项目
@@ -119,7 +131,7 @@ Hub 无法自选任意路径——只能从本地注册的目录里按名字挑�
 
 ### 插件
 
-- Hub 主动推送：`hub.syncPlugins({ principal, targetClientId, revision, plugins })`（demo 站点提供 `POST /_agentkit/demo/plugins/sync`）。
+- Hub 主动推送：`hub.syncPlugins({ principal, targetClientId, revision, plugins })`（Console 暴露 `POST /_agentkit/console/plugins/sync`）。
 - client 收到后校验清单、克隆到不可变修订目录并原子激活，随后回 `plugin.sync.ack`（含每个插件的 resolvedCommit）。
 - 本地随时查看：`allinai-agentkit plugins`；重新上报：`allinai-agentkit plugins --refresh`。
 

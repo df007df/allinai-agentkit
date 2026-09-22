@@ -20,6 +20,16 @@ function getProductionTargets() {
   }
 
   return Object.entries(exports).flatMap(([entrypoint, target]) => {
+    // Static asset exports (e.g. ./console-ui/styles.css) point straight at a
+    // copied file instead of an {import, types, default} entrypoint trio.
+    if (target && typeof target === "string") {
+      if (!target.startsWith("./dist/")) {
+        throw new Error(
+          `Production export ${entrypoint} must target the dist directory.`,
+        );
+      }
+      return [target];
+    }
     if (!target || typeof target !== "object") {
       throw new Error(
         `Production export ${entrypoint} must declare ESM and type targets.`,
@@ -71,5 +81,17 @@ execFileSync(
     stdio: "inherit",
   },
 );
+
+// Copy static asset exports (css and friends) that tsc does not emit.
+import { cpSync, mkdirSync } from "node:fs";
+for (const [entrypoint, target] of Object.entries(
+  manifest.publishConfig?.exports ?? {},
+)) {
+  if (typeof target !== "string" || !target.endsWith(".css")) continue;
+  const source = path.join(packageRoot, String(manifest.exports?.[entrypoint]));
+  const destination = path.join(packageRoot, target);
+  mkdirSync(path.dirname(destination), { recursive: true });
+  cpSync(source, destination);
+}
 
 assertBuiltPublicTargets();
