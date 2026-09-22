@@ -92,7 +92,11 @@ function now(): string {
 }
 
 function commandAttempt(command: ClientCommand): number {
-  return command.kind === "cancel" ? 0 : command.attempt;
+  // Cancel and approval decisions are run-scoped control frames, not new
+  // attempts of a persisted execution, so they carry no attempt counter.
+  return command.kind === "cancel" || command.kind === "respond_tool_approval"
+    ? 0
+    : command.attempt;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

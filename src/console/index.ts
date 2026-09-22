@@ -1,12 +1,14 @@
 export {
   TokenRegistry,
   createRegistryAuthorizer,
+  CONSOLE_PRINCIPAL,
   type RegisteredToken,
 } from "./token-registry.js";
 export {
   ObservableStore,
   type HubObservation,
   type HubObservationSink,
+  type ToolApprovalObservation,
 } from "./observable-store.js";
 export {
   ConsoleState,
@@ -25,6 +27,7 @@ export {
   handleConsoleLoginDeny,
   isLoopbackRedirect,
 } from "./login-bridge.js";
+export { handleConsoleToolApproval } from "./tool-approval.js";
 export { createStaticHandler, resolveWebRoot } from "./static.js";
 export {
   createConsoleRuntime,

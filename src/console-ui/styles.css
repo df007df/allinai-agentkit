@@ -320,3 +320,36 @@
   .console-app *,
   .console-card * { transition: none !important; }
 }
+
+/* ---------- tool approvals ---------- */
+.console-approvals {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+.console-approval-card {
+  border: 1px solid var(--console-border-strong);
+  border-radius: var(--console-radius);
+  padding: 0.75rem 0.9rem;
+  display: grid;
+  gap: 0.5rem;
+  background: var(--console-bg-tint);
+}
+.console-approval-card .console-approval-head strong { font-size: 0.95rem; }
+.console-approval-card .console-approval-head .t {
+  color: var(--console-text-dim);
+  font-size: 0.8rem;
+}
+.console-approval-card .console-approval-input {
+  margin: 0;
+  padding: 0.5rem 0.7rem;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  font-size: 0.78rem;
+  overflow-x: auto;
+  max-height: 8rem;
+}
+.console-approval-card .console-approval-actions { display: flex; gap: 0.5rem; }
+.console-approval-card .console-approval-actions .console-btn { flex: 1; }

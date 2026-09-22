@@ -13,6 +13,14 @@ import type {
 } from "../hub/index.js";
 import type { ClientEvent } from "../protocol/index.js";
 
+/** A tool-approval request surfaced from a progress event, for approver UIs. */
+export type ToolApprovalObservation = {
+  executionId: string;
+  requestId: string;
+  toolName: string;
+  toolInput: Record<string, unknown>;
+};
+
 export type HubObservation =
   | { kind: "client.registered"; clientId: string; at: number }
   | { kind: "client.heartbeat"; clientId: string; at: number }
@@ -20,7 +28,13 @@ export type HubObservation =
   | { kind: "offers.delivered"; clientId: string; count: number; at: number }
   | { kind: "events.ingested"; clientId: string; count: number; at: number; events: ClientEvent[] }
   | { kind: "plugin.acknowledged"; clientId: string; at: number }
-  | { kind: "inventory.recorded"; clientId: string; at: number };
+  | { kind: "inventory.recorded"; clientId: string; at: number }
+  | {
+      kind: "tool_approval.requested";
+      clientId: string;
+      approval: ToolApprovalObservation;
+      at: number;
+    };
 
 export type HubObservationSink = (observation: HubObservation) => void;
 
@@ -101,6 +115,30 @@ export class ObservableStore<Principal> implements HubStore<Principal> {
       at: Date.now(),
       events: [...input.events],
     });
+    // Surface tool-approval asks so an approver UI can act without polling.
+    for (const event of input.events) {
+      const approval = event.payload?.toolApproval as
+        | ToolApprovalObservation
+        | undefined;
+      if (event.type === "progress" && approval) {
+        this.notify({
+          kind: "tool_approval.requested",
+          clientId: input.clientId,
+          approval: {
+            executionId: event.executionId,
+            requestId: String(approval.requestId),
+            toolName: String(approval.toolName),
+            toolInput:
+              approval.toolInput &&
+              typeof approval.toolInput === "object" &&
+              !Array.isArray(approval.toolInput)
+                ? (approval.toolInput as Record<string, unknown>)
+                : {},
+          },
+          at: Date.now(),
+        });
+      }
+    }
     return result;
   }
 

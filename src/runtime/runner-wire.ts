@@ -13,6 +13,26 @@ export type RunnerChildMessage = {
   event: PlatformEvent;
 };
 
+/** Child → parent: a tool call needs a human decision before it may run. */
+export type RunnerApprovalRequestMessage = {
+  type: "tool_approval.request";
+  requestId: string;
+  toolName: string;
+  toolInput: Record<string, unknown>;
+};
+
+/** Parent → child: the human decision for a pending tool approval. */
+export type RunnerApprovalResponseMessage = {
+  type: "tool_approval.response";
+  requestId: string;
+  decision: "allow" | "deny";
+  reason?: string;
+};
+
+export type RunnerParentMessage =
+  | RunnerStartMessage
+  | RunnerApprovalResponseMessage;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -91,6 +111,60 @@ export function parseRunnerStart(value: unknown): RunnerStartMessage | null {
     type: "run.start",
     executionId: value.executionId,
     input: value.input,
+  };
+}
+
+export function encodeApprovalRequest(
+  request: RunnerApprovalRequestMessage,
+): string {
+  return encodeJsonLine(request);
+}
+
+export function parseApprovalRequest(
+  value: unknown,
+): RunnerApprovalRequestMessage | null {
+  if (
+    !isRecord(value) ||
+    value.type !== "tool_approval.request" ||
+    typeof value.requestId !== "string" ||
+    value.requestId.length === 0 ||
+    typeof value.toolName !== "string" ||
+    !isRecord(value.toolInput)
+  ) {
+    return null;
+  }
+  return {
+    type: "tool_approval.request",
+    requestId: value.requestId,
+    toolName: value.toolName,
+    toolInput: value.toolInput,
+  };
+}
+
+export function encodeApprovalResponse(
+  response: RunnerApprovalResponseMessage,
+): string {
+  return encodeJsonLine(response);
+}
+
+export function parseApprovalResponse(
+  value: unknown,
+): RunnerApprovalResponseMessage | null {
+  if (
+    !isRecord(value) ||
+    value.type !== "tool_approval.response" ||
+    typeof value.requestId !== "string" ||
+    value.requestId.length === 0 ||
+    (value.decision !== "allow" && value.decision !== "deny") ||
+    (value.reason !== undefined && typeof value.reason !== "string")
+  ) {
+    return null;
+  }
+  return {
+    type: "tool_approval.response",
+    requestId: value.requestId,
+    decision: value.decision,
+    ...(value.reason !== undefined ? { reason: value.reason } : {}),
   };
 }
 

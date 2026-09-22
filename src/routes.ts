@@ -23,6 +23,8 @@ export const CONSOLE_OFFERS_PATH = `${CONSOLE_PATH_PREFIX}/offers`;
 export const CONSOLE_PLUGIN_SYNC_PATH = `${CONSOLE_PATH_PREFIX}/plugins/sync`;
 export const CONSOLE_INVENTORY_PATH = `${CONSOLE_PATH_PREFIX}/inventory`;
 export const CONSOLE_INVENTORY_QUERY_PATH = `${CONSOLE_INVENTORY_PATH}/query`;
+/** In-flight tool-approval decisions from an approver UI. */
+export const CONSOLE_TOOL_APPROVAL_PATH = `${CONSOLE_PATH_PREFIX}/tool-approval`;
 
 /** Reserved second-level segments under the umbrella prefix. */
 export const RESERVED_AGENTKIT_SEGMENTS = [

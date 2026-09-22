@@ -2,7 +2,11 @@
 
 import { useEffect, useState, type ReactElement } from "react";
 import type { ClientEvent } from "../protocol/index.js";
-import { LOGIN_APPROVE_PATH, LOGIN_DENY_PATH } from "../routes.js";
+import {
+  CONSOLE_TOOL_APPROVAL_PATH,
+  LOGIN_APPROVE_PATH,
+  LOGIN_DENY_PATH,
+} from "../routes.js";
 import {
   connectAgentEvents,
   type AgentEventStream,
@@ -18,6 +22,28 @@ export type ConsoleSnapshotFrame = {
   warning: string | null;
 };
 
+/** One pending tool call awaiting a human allow/deny decision. */
+export type ToolApprovalView = {
+  clientId: string;
+  executionId: string;
+  requestId: string;
+  toolName: string;
+  toolInput: Record<string, unknown>;
+};
+
+/** Live observation frame for tool_approval.requested. */
+export type ToolApprovalObservationFrame = {
+  kind: "tool_approval.requested";
+  clientId: string;
+  approval: {
+    executionId: string;
+    requestId: string;
+    toolName: string;
+    toolInput: Record<string, unknown>;
+  };
+  at: number;
+};
+
 /** Connection state of the observe stream, for the status dot. */
 export type StreamStatus = "connecting" | "open" | "reconnecting";
 
@@ -25,9 +51,16 @@ export type StreamStatus = "connecting" | "open" | "reconnecting";
 export function useAgentEvents(): {
   snapshot: ConsoleSnapshotFrame | null;
   status: StreamStatus;
+  approvals: ToolApprovalView[];
+  dismissApproval(requestId: string): void;
+  respondApproval(
+    approval: ToolApprovalView,
+    decision: "allow" | "deny",
+  ): Promise<void>;
 } {
   const [snapshot, setSnapshot] = useState<ConsoleSnapshotFrame | null>(null);
   const [status, setStatus] = useState<StreamStatus>("connecting");
+  const [approvals, setApprovals] = useState<ToolApprovalView[]>([]);
 
   useEffect(() => {
     const stream: AgentEventStream = connectAgentEvents({
@@ -35,16 +68,62 @@ export function useAgentEvents(): {
         const frame = raw as ConsoleSnapshotFrame;
         if (frame && Array.isArray(frame.events)) setSnapshot(frame);
       },
-      onObservation: () => {
-        // Live observations only matter for the status dot; the next
-        // events.ingested round-trips through the server snapshot on reconnect.
+      onObservation: (raw) => {
+        const observation = raw as ToolApprovalObservationFrame;
+        if (
+          observation &&
+          observation.kind === "tool_approval.requested" &&
+          observation.approval
+        ) {
+          const approval = observation.approval;
+          setApprovals((pending) =>
+            pending.some((p) => p.requestId === approval.requestId)
+              ? pending
+              : [
+                  ...pending,
+                  {
+                    clientId: observation.clientId,
+                    executionId: approval.executionId,
+                    requestId: approval.requestId,
+                    toolName: approval.toolName,
+                    toolInput: approval.toolInput,
+                  },
+                ],
+          );
+        }
       },
       onStatus: setStatus,
     });
     return () => stream.close();
   }, []);
 
-  return { snapshot, status };
+  const dismissApproval = (requestId: string): void => {
+    setApprovals((pending) =>
+      pending.filter((p) => p.requestId !== requestId),
+    );
+  };
+
+  const respondApproval = async (
+    approval: ToolApprovalView,
+    decision: "allow" | "deny",
+  ): Promise<void> => {
+    try {
+      await fetch(CONSOLE_TOOL_APPROVAL_PATH, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          clientId: approval.clientId,
+          executionId: approval.executionId,
+          requestId: approval.requestId,
+          decision,
+        }),
+      });
+    } finally {
+      dismissApproval(approval.requestId);
+    }
+  };
+
+  return { snapshot, status, approvals, dismissApproval, respondApproval };
 }
 
 function statusLabel(status: StreamStatus): string {
@@ -128,8 +207,52 @@ export function ExecutionDetail(props: {
   );
 }
 
+/** Pending tool-approval cards: allow/deny posts straight to the daemon. */
+export function ApprovalList(props: {
+  approvals: ToolApprovalView[];
+  onRespond(
+    approval: ToolApprovalView,
+    decision: "allow" | "deny",
+  ): Promise<void>;
+}): ReactElement {
+  if (props.approvals.length === 0) return <></>;
+  return (
+    <ul className="console-approvals">
+      {props.approvals.map((approval) => (
+        <li key={approval.requestId} className="console-approval-card">
+          <div className="console-approval-head">
+            <strong>{approval.toolName}</strong>
+            <span className="t">
+              {` · ${approval.clientId} · ${approval.executionId.slice(0, 8)}`}
+            </span>
+          </div>
+          <pre className="console-approval-input">
+            {JSON.stringify(approval.toolInput, null, 2)}
+          </pre>
+          <div className="console-approval-actions">
+            <button
+              type="button"
+              className="console-btn"
+              onClick={() => void props.onRespond(approval, "allow")}
+            >
+              允许
+            </button>
+            <button
+              type="button"
+              className="console-btn console-btn-ghost"
+              onClick={() => void props.onRespond(approval, "deny")}
+            >
+              拒绝
+            </button>
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function ConsoleApp(): ReactElement {
-  const { snapshot, status } = useAgentEvents();
+  const { snapshot, status, approvals, respondApproval } = useAgentEvents();
   const [selectedExecutionId, setSelectedExecutionId] = useState<
     string | null
   >(null);
@@ -152,6 +275,7 @@ export function ConsoleApp(): ReactElement {
       {snapshot?.warning ? (
         <p className="console-warning">{snapshot.warning}</p>
       ) : null}
+      <ApprovalList approvals={approvals} onRespond={respondApproval} />
       {selected === null ? (
         <ExecutionList
           executions={executions}

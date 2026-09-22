@@ -118,6 +118,24 @@ export function cliManual(): CliManual {
         example: "allinai-agentkit install",
       },
       {
+        name: "codex-hooks",
+        summary:
+          "Install the Codex PreToolUse approval hook: tool calls post to the local daemon and its synchronous reply allows or blocks them. Codex has no SDK approval callback, so this out-of-process hook is the only gating channel. After installing, run `codex` and trust the hook via /hooks (untrusted hooks are skipped).",
+        options: [
+          {
+            flag: "control-endpoint",
+            description:
+              "Daemon control endpoint base URL; default http://127.0.0.1:8787.",
+          },
+          {
+            flag: "codex-home",
+            description: "Codex home directory; default ~/.codex.",
+          },
+        ],
+        example:
+          "allinai-agentkit codex-hooks --control-endpoint http://127.0.0.1:8787",
+      },
+      {
         name: "uninstall",
         summary: "Remove the user-level OS service.",
         options: [],

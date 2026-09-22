@@ -17,6 +17,17 @@ export type AgentStatus = { state: string; [key: string]: unknown };
 export type AgentControl = {
   health(): AgentHealth | Promise<AgentHealth>;
   approve(executionId: string): Promise<void>;
+  /**
+   * Answers an in-flight tool approval inside a running execution. Unknown
+   * request ids fail with an error; the decision is delivered to the runner
+   * child and the blocked tool call settles.
+   */
+  respondToolApproval?(
+    executionId: string,
+    requestId: string,
+    decision: "allow" | "deny",
+    reason?: string,
+  ): Promise<void>;
   status(): AgentStatus | Promise<AgentStatus>;
   /** Flush locally durable work; it never accepts a Hub-provided command. */
   sync?(): Promise<void>;
@@ -52,6 +63,12 @@ export type AgentControlServerOptions = {
 export type AgentControlClient = {
   health(): Promise<AgentHealth>;
   approve(executionId: string): Promise<void>;
+  respondToolApproval?(
+    executionId: string,
+    requestId: string,
+    decision: "allow" | "deny",
+    reason?: string,
+  ): Promise<void>;
   status(): Promise<AgentStatus>;
   sync?(): Promise<void>;
   plugins?(): Promise<unknown>;
@@ -69,7 +86,15 @@ type ControlRequest =
   | { id: string; method: "sync" }
   | { id: string; method: "plugins" }
   | { id: string; method: "refreshPlugins" }
-  | { id: string; method: "approve"; executionId: string };
+  | { id: string; method: "approve"; executionId: string }
+  | {
+      id: string;
+      method: "respondToolApproval";
+      executionId: string;
+      requestId: string;
+      decision: "allow" | "deny";
+      reason?: string;
+    };
 
 type ControlRequestInput =
   | { method: "health" }
@@ -77,7 +102,14 @@ type ControlRequestInput =
   | { method: "sync" }
   | { method: "plugins" }
   | { method: "refreshPlugins" }
-  | { method: "approve"; executionId: string };
+  | { method: "approve"; executionId: string }
+  | {
+      method: "respondToolApproval";
+      executionId: string;
+      requestId: string;
+      decision: "allow" | "deny";
+      reason?: string;
+    };
 
 type ControlResponse = {
   id: string;
@@ -120,6 +152,23 @@ function parseRequest(value: unknown): ControlRequest {
     input.executionId
   ) {
     return { id: input.id, method: "approve", executionId: input.executionId };
+  }
+  if (
+    input.method === "respondToolApproval" &&
+    typeof input.executionId === "string" &&
+    input.executionId &&
+    typeof input.requestId === "string" &&
+    input.requestId &&
+    (input.decision === "allow" || input.decision === "deny")
+  ) {
+    return {
+      id: input.id,
+      method: "respondToolApproval",
+      executionId: input.executionId,
+      requestId: input.requestId,
+      decision: input.decision,
+      ...(typeof input.reason === "string" ? { reason: input.reason } : {}),
+    };
   }
   throw new TypeError("Unsupported control request");
 }
@@ -265,6 +314,18 @@ async function handleLine(
         throw new Error("Local Agent Client does not support plugin refresh");
       await control.refreshPlugins();
       response = { id: request.id, ok: true };
+    } else if (request.method === "respondToolApproval") {
+      if (!control.respondToolApproval)
+        throw new Error(
+          "Local Agent Client does not support in-flight tool approvals",
+        );
+      await control.respondToolApproval(
+        request.executionId,
+        request.requestId,
+        request.decision,
+        request.reason,
+      );
+      response = { id: request.id, ok: true };
     } else {
       await control.approve(request.executionId);
       response = { id: request.id, ok: true };
@@ -351,6 +412,28 @@ export function createAgentControlClient(
       await sendControlRequest(
         endpoint,
         { method: "approve", executionId },
+        options,
+      );
+    },
+    async respondToolApproval(
+      executionId: string,
+      requestId: string,
+      decision: "allow" | "deny",
+      reason?: string,
+    ) {
+      if (!executionId.trim())
+        throw new TypeError("executionId must be a nonempty string");
+      if (!requestId.trim())
+        throw new TypeError("requestId must be a nonempty string");
+      await sendControlRequest(
+        endpoint,
+        {
+          method: "respondToolApproval",
+          executionId,
+          requestId,
+          decision,
+          ...(reason !== undefined ? { reason } : {}),
+        },
         options,
       );
     },

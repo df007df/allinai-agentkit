@@ -24,7 +24,15 @@ export type ClientCommand =
       capabilityId: string;
       input: Record<string, unknown>;
     }
-  | { kind: "cancel"; commandId: string; executionId: string };
+  | { kind: "cancel"; commandId: string; executionId: string }
+  | {
+      kind: "respond_tool_approval";
+      commandId: string;
+      executionId: string;
+      requestId: string;
+      decision: "allow" | "deny";
+      reason?: string;
+    };
 
 export const CLIENT_EVENT_TYPES = [
   "received",

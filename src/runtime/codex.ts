@@ -50,8 +50,17 @@ export class OptionalRuntimeDependencyError extends Error {
 
 export type CodexAdapterRunInput = PlatformRunInput & {
   platform: "codex";
-  /** A previously reported Codex thread id, when this is a resume. */
+  /**
+   * A previously reported Codex thread id, when this is a resume. Falls back
+   * to the transport-level `sessionId` when the host does not set this alias.
+   */
   resumeThreadId?: string;
+  /**
+   * SDK escalation policy. The official SDK exposes no approval callback, so
+   * in-flight decisions cannot be delivered; defaults to `never` (sandbox is
+   * the boundary) and human gating is delivered out of process via hooks.
+   */
+  approvalPolicy?: "never" | "on-request" | "on-failure" | "untrusted";
 };
 
 export type CodexAdapter = {
@@ -271,17 +280,25 @@ export function createCodexAdapter(
       const threadOptions = {
         ...(input.cwd ? { workingDirectory: input.cwd } : {}),
         ...(input.model ? { model: input.model } : {}),
+        // The SDK exposes no approval callback, so escalation requests cannot
+        // be answered in-process. Lock the policy to `never` and let the
+        // sandbox be the boundary; tool-level human gating for Codex is the
+        // hooks-channel deliverable (see docs/research 2026-09-22).
+        ...(input.approvalPolicy ?? "never" ? { approvalPolicy: (input.approvalPolicy ?? "never") as "never" } : {}),
       };
-      const thread = input.resumeThreadId
-        ? sdk.resumeThread(input.resumeThreadId, threadOptions)
+      // `sessionId` is the platform-reported runtimeSessionId from a previous
+      // run; resuming continues the persisted Codex thread in place.
+      const resumeThreadId = input.resumeThreadId ?? input.sessionId;
+      const thread = resumeThreadId
+        ? sdk.resumeThread(resumeThreadId, threadOptions)
         : sdk.startThread(threadOptions);
       let terminal = false;
 
-      if (input.resumeThreadId) {
+      if (resumeThreadId) {
         yield {
           type: "init",
           payload: payload({
-            runtimeSessionId: input.resumeThreadId,
+            runtimeSessionId: resumeThreadId,
             resumed: true,
           }),
         };

@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { parseRunnerChildMessage, parseRunnerStart } from "./runner-wire.js";
+import {
+  encodeApprovalRequest,
+  encodeApprovalResponse,
+  parseApprovalRequest,
+  parseApprovalResponse,
+  parseRunnerChildMessage,
+  parseRunnerStart,
+} from "./runner-wire.js";
 
 describe("runner wire validation", () => {
   it("rejects unknown keys in a start frame and its declared input", () => {
@@ -36,5 +43,47 @@ describe("runner wire validation", () => {
       }),
       null,
     );
+  });
+});
+
+describe("runner tool approval wire", () => {
+  it("round-trips an approval request through encode and parse", () => {
+    const request = {
+      type: "tool_approval.request" as const,
+      requestId: "req-1",
+      toolName: "Bash",
+      toolInput: { command: "rm -rf /" },
+    };
+    const parsed = parseApprovalRequest(JSON.parse(encodeApprovalRequest(request)));
+    assert.deepEqual(parsed, request);
+  });
+
+  it("rejects malformed approval requests", () => {
+    assert.equal(
+      parseApprovalRequest({ type: "tool_approval.request", requestId: "", toolName: "Bash", toolInput: {} }),
+      null,
+    );
+    assert.equal(
+      parseApprovalRequest({ type: "tool_approval.request", requestId: "r1", toolName: "Bash", toolInput: "x" }),
+      null,
+    );
+    assert.equal(parseApprovalRequest({ type: "event", event: { type: "done" } }), null);
+  });
+
+  it("round-trips an approval response and rejects malformed ones", () => {
+    const response = {
+      type: "tool_approval.response" as const,
+      requestId: "req-1",
+      decision: "deny" as const,
+      reason: "not today",
+    };
+    const parsed = parseApprovalResponse(
+      JSON.parse(encodeApprovalResponse(response)),
+    );
+    assert.deepEqual(parsed, response);
+    assert.equal(parseApprovalResponse({ ...response, decision: "maybe" }), null);
+    assert.equal(parseApprovalResponse({ ...response, requestId: "" }), null);
+    const { reason: _reason, ...withoutReason } = response;
+    assert.deepEqual(parseApprovalResponse(withoutReason), withoutReason);
   });
 });

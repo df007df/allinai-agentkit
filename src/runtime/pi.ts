@@ -37,7 +37,48 @@ type PiSession = {
 
 type PiCreateSession = (options?: {
   cwd?: string;
+  sessionManager?: unknown;
+  resourceLoader?: unknown;
 }) => Promise<{ session: PiSession }>;
+
+type PiSessionManagerModule = {
+  SessionManager: {
+    listAll(
+      sessionDir?: string,
+      onProgress?: unknown,
+    ): Promise<Array<{ path: string; id: string }>>;
+    open(path: string, sessionDir?: string, cwdOverride?: string): unknown;
+  };
+};
+
+type PiDefaultResourceLoaderModule = {
+  DefaultResourceLoader: new (options: {
+    cwd: string;
+    agentDir?: string;
+    extensionFactories?: Array<unknown>;
+  }) => unknown;
+};
+
+/** Everything the adapter needs from the official SessionManager surface. */
+export type PiSessionResolver = {
+  /** Resolves a previous sessionId (full or unique prefix) to its file. */
+  resolveSessionFile(sessionId: string): Promise<string | null>;
+  /** Opens a session file for continued prompting. */
+  openSessionFile(
+    sessionFile: string,
+    cwd?: string,
+  ): unknown;
+};
+
+/**
+ * Host-owned tool decision bridge, same shape as the runner child's
+ * `onAskUser`. When present, the adapter injects an inline approval extension
+ * that gates every tool call on this callback.
+ */
+export type PiOnAskUser = (
+  toolName: string,
+  toolInput: Record<string, unknown>,
+) => Promise<{ behavior: "allow" } | { behavior: "deny"; message: string }>;
 
 type PiSdkModule = {
   VERSION?: string;
@@ -46,7 +87,13 @@ type PiSdkModule = {
 
 export type PiSdkLoader = () => Promise<PiSdkModule>;
 
-export type PiAdapterRunInput = PlatformRunInput & { platform: "pi" };
+export type PiResourceLoaderLoader = () => Promise<PiDefaultResourceLoaderModule>;
+
+export type PiAdapterRunInput = PlatformRunInput & {
+  platform: "pi";
+  /** Host-owned tool decision bridge; presence enables in-process gating. */
+  onAskUser?: PiOnAskUser;
+};
 
 export type PiAdapter = {
   readonly id: "pi";
@@ -62,6 +109,13 @@ export type CreatePiAdapterDeps = {
   createAgentSession?: PiCreateSession;
   /** Test seam for the optional SDK module. It is never invoked at import time. */
   loadPi?: PiSdkLoader;
+  /**
+   * Test seam for session resume. Production reads the official
+   * SessionManager (id or unique prefix match, then open).
+   */
+  sessionResolver?: PiSessionResolver;
+  /** Test seam for the inline approval extension's resource loader. */
+  loadResourceLoader?: PiResourceLoaderLoader;
 };
 
 const PI_SDK_PACKAGE = "@earendil-works/pi-coding-agent";
@@ -212,12 +266,86 @@ function errorMessage(error: unknown): string {
 }
 
 /**
+ * Builds a DefaultResourceLoader carrying one inline approval extension. The
+ * extension subscribes to `tool_call` and blocks until the host decision
+ * bridge settles, so gating happens in-process without TUI dialogs.
+ */
+async function buildApprovalResourceLoader(
+  onAskUser: PiOnAskUser,
+  loadResourceLoader: PiResourceLoaderLoader | undefined,
+  cwd: string | undefined,
+): Promise<unknown> {
+  const loaderDeps = loadResourceLoader ?? loadInstalledResourceLoader;
+  const { DefaultResourceLoader } = await loaderDeps();
+  return new DefaultResourceLoader({
+    cwd: cwd ?? process.cwd(),
+    extensionFactories: [
+      {
+        name: "agentkit-tool-approval",
+        hidden: true,
+        factory: (pi: {
+          on(
+            event: "tool_call",
+            handler: (event: {
+              toolName: string;
+              input: Record<string, unknown>;
+            }) => Promise<{ block?: boolean; reason?: string } | void>,
+          ): void;
+        }) => {
+          pi.on("tool_call", async (event) => {
+            const decision = await onAskUser(event.toolName, event.input);
+            if (decision.behavior === "deny") {
+              return { block: true, reason: decision.message };
+            }
+            return undefined;
+          });
+        },
+      },
+    ],
+  });
+}
+
+function loadInstalledResourceLoader(): Promise<PiDefaultResourceLoaderModule> {
+  return import(PI_SDK_PACKAGE) as Promise<PiDefaultResourceLoaderModule>;
+}
+
+/**
+ * Builds the production resolver on the official SessionManager index. It
+ * accepts the full id or a unique prefix, so hosts may store the short form
+ * Pi shows in its own resume picker.
+ */
+function createOfficialSessionResolver(
+  loadSessionManager: () => Promise<PiSessionManagerModule>,
+): PiSessionResolver {
+  return {
+    async resolveSessionFile(sessionId) {
+      const { SessionManager } = await loadSessionManager();
+      const sessions = await SessionManager.listAll();
+      const exact = sessions.find((session) => session.id === sessionId);
+      if (exact) return exact.path;
+      const matches = sessions.filter((session) =>
+        session.id.startsWith(sessionId),
+      );
+      return matches.length === 1 ? (matches[0]?.path ?? null) : null;
+    },
+    async openSessionFile(sessionFile, cwd) {
+      const { SessionManager } = await loadSessionManager();
+      return SessionManager.open(sessionFile, undefined, cwd);
+    },
+  };
+}
+
+/**
  * Official Pi SDK adapter. It uses `createAgentSession()` and translates the
  * session subscription stream; tests replace only this factory and never start
  * a real Pi agent.
  */
 export function createPiAdapter(deps: CreatePiAdapterDeps = {}): PiAdapter {
   const loadPi = deps.loadPi ?? loadInstalledPi;
+  const loadSessionManager = (): Promise<PiSessionManagerModule> =>
+    (async () => (await loadPiModule(loadPi)) as unknown as PiSessionManagerModule)();
+  const sessionResolver: PiSessionResolver =
+    deps.sessionResolver ?? createOfficialSessionResolver(loadSessionManager);
 
   return {
     id: "pi",
@@ -267,9 +395,55 @@ export function createPiAdapter(deps: CreatePiAdapterDeps = {}): PiAdapter {
         const createSession =
           deps.createAgentSession ??
           (await loadPiModule(loadPi)).createAgentSession;
-        const created = await createSession(
-          input.cwd ? { cwd: input.cwd } : undefined,
-        );
+        let sessionOptions: {
+          cwd?: string;
+          sessionManager?: unknown;
+          resourceLoader?: unknown;
+        } | undefined = input.cwd ? { cwd: input.cwd } : undefined;
+        if (input.onAskUser) {
+          // In-process tool gating: an inline extension holds every tool call
+          // on the host decision bridge before execution.
+          sessionOptions = {
+            ...sessionOptions,
+            resourceLoader: await buildApprovalResourceLoader(
+              input.onAskUser,
+              deps.loadResourceLoader,
+              input.cwd,
+            ),
+          };
+        }
+        if (input.sessionId) {
+          const sessionFile = await sessionResolver.resolveSessionFile(
+            input.sessionId,
+          );
+          if (sessionFile) {
+            const sessionManager = sessionResolver.openSessionFile(
+              sessionFile,
+              input.cwd,
+            );
+            sessionOptions = {
+              ...(input.cwd ? { cwd: input.cwd } : {}),
+              sessionManager,
+            };
+            emit({
+              type: "init",
+              payload: {
+                runtimeSessionId: input.sessionId,
+                resumed: true,
+                sessionFile,
+              },
+            });
+          } else {
+            emit({
+              type: "vendor",
+              payload: {
+                vendorEventType: "session_resume_unavailable",
+                requestedSessionId: input.sessionId,
+              },
+            });
+          }
+        }
+        const created = await createSession(sessionOptions);
         session = created.session;
         if (abortRequested || signal.aborted) {
           abort();

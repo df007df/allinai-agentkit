@@ -298,3 +298,36 @@ describe("agent-client protocol export boundary", () => {
     }
   });
 });
+
+describe("respond_tool_approval command wire", () => {
+  it("parses a valid approval decision with and without reason", () => {
+    const base = {
+      kind: "respond_tool_approval",
+      commandId: "cmd-1",
+      executionId: "exec-1",
+      requestId: "req-1",
+      decision: "deny",
+    };
+    const parsed = parseClientCommand(base);
+    assert.deepEqual(parsed, base);
+    assert.deepEqual(parseClientCommand({ ...base, decision: "allow", reason: "ok" }), {
+      ...base,
+      decision: "allow",
+      reason: "ok",
+    });
+  });
+
+  it("rejects malformed approval decisions", () => {
+    const base = {
+      kind: "respond_tool_approval",
+      commandId: "cmd-1",
+      executionId: "exec-1",
+      requestId: "req-1",
+      decision: "allow",
+    };
+    assert.equal(parseClientCommand({ ...base, decision: "maybe" }), null);
+    assert.equal(parseClientCommand({ ...base, requestId: "" }), null);
+    assert.equal(parseClientCommand({ ...base, extra: 1 }), null);
+    assert.equal(parseClientCommand({ ...base, reason: 42 }), null);
+  });
+});

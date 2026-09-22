@@ -13,7 +13,10 @@ export {
   ExecutionList,
   ExecutionDetail,
   AuthorizeCard,
+  ApprovalList,
   useAgentEvents,
   type ConsoleSnapshotFrame,
   type StreamStatus,
+  type ToolApprovalView,
+  type ToolApprovalObservationFrame,
 } from "./components.js";

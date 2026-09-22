@@ -44,7 +44,7 @@ export class TokenRegistry {
  * offer delivery keeps matching; it is console-scoped and intentionally not
  * part of this module's public API.
  */
-const CONSOLE_PRINCIPAL = "demo-user";
+export const CONSOLE_PRINCIPAL = "demo-user";
 
 export function createRegistryAuthorizer(
   registry: TokenRegistry,

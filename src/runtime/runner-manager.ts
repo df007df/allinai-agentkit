@@ -2,8 +2,10 @@ import { spawn as nodeSpawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { isTerminalPlatformEvent, platformErrorEvent } from "./events.js";
 import {
+  encodeApprovalResponse,
   encodeRunnerStart,
   JsonlDecoder,
+  parseApprovalRequest,
   parseRunnerChildMessage,
 } from "./runner-wire.js";
 import type {
@@ -149,6 +151,8 @@ type ActiveRun = {
   outputClosed: boolean;
   closeReceived: boolean;
   terminationRequested: boolean;
+  /** Tool approvals awaiting a human decision; each freezes the stall clock. */
+  pendingApprovals: Set<string>;
 };
 
 const STDERR_TAIL_KEEP_BYTES = STDERR_TAIL_BYTES / 2;
@@ -281,6 +285,7 @@ export class IsolatedRunnerManager implements RunnerManager {
       outputClosed: false,
       closeReceived: false,
       terminationRequested: false,
+      pendingApprovals: new Set(),
     };
     active.totalTimeout = this.scheduleTimeout(() => {
       if (active.closeReceived) return;
@@ -328,7 +333,8 @@ export class IsolatedRunnerManager implements RunnerManager {
     try {
       if (!child.stdin) throw new Error("Runner child stdin is unavailable");
       child.stdin.write(encodeRunnerStart(executionId, input));
-      child.stdin.end?.();
+      // stdin stays open: the parent may need to send tool approval
+      // decisions while the run is in flight.
     } catch (error) {
       this.reportFailure(active, "runner_input_failed", errorMessage(error));
     }
@@ -340,7 +346,75 @@ export class IsolatedRunnerManager implements RunnerManager {
     const active = this.activeRuns.get(executionId);
     if (!active || active.closeReceived) return;
     active.cancelled = true;
+    this.denyPendingApprovals(active, "Execution cancelled");
     this.requestTermination(active);
+  }
+
+  respondToolApproval(
+    executionId: string,
+    requestId: string,
+    decision: "allow" | "deny",
+    reason?: string,
+  ): void {
+    const active = this.activeRuns.get(executionId);
+    if (!active || active.closeReceived) return;
+    if (!active.pendingApprovals.delete(requestId)) return;
+    // A decision unblocks tool execution, so the stall clock resumes now.
+    this.clearScheduledTimeout(active.stallTimeout);
+    active.stallTimeout = this.scheduleTimeout(() => {
+      if (active.closeReceived || active.outputClosed) return;
+      if (active.pendingApprovals.size > 0) return;
+      this.reportFailure(
+        active,
+        "runner_timeout",
+        `Runner received no events within ${this.stallTimeoutMs}ms`,
+        { phase: "stall" },
+      );
+    }, this.stallTimeoutMs);
+    unrefTimer(active.stallTimeout);
+    try {
+      if (!active.child.stdin) throw new Error("Runner child stdin is unavailable");
+      active.child.stdin.write(
+        encodeApprovalResponse({
+          type: "tool_approval.response",
+          requestId,
+          decision,
+          ...(reason !== undefined ? { reason } : {}),
+        }),
+      );
+    } catch (error) {
+      this.reportFailure(active, "runner_input_failed", errorMessage(error));
+    }
+  }
+
+  private denyPendingApprovals(active: ActiveRun, reason: string): void {
+    for (const requestId of active.pendingApprovals) {
+      try {
+        active.child.stdin?.write(
+          encodeApprovalResponse({
+            type: "tool_approval.response",
+            requestId,
+            decision: "deny",
+            reason,
+          }),
+        );
+      } catch {
+        // The child is being torn down anyway.
+      }
+    }
+    active.pendingApprovals.clear();
+  }
+
+  /**
+   * Resolves which execution owns a pending approval request id, for out-of
+   * -process callers (e.g. the Codex hooks HTTP bridge) that only know the id.
+   * Returns null when no active run holds it.
+   */
+  ownerOfToolApproval(requestId: string): string | null {
+    for (const [executionId, active] of this.activeRuns) {
+      if (active.pendingApprovals.has(requestId)) return executionId;
+    }
+    return null;
   }
 
   /**
@@ -418,17 +492,22 @@ export class IsolatedRunnerManager implements RunnerManager {
       this.clearScheduledTimeout(active.firstEventTimeout);
     }
     // Every arriving event proves the run is alive: restart the stall clock.
+    // A pending tool approval also holds the clock: the wait is expected to
+    // be as long as the human takes, not a silent platform failure.
     this.clearScheduledTimeout(active.stallTimeout);
-    active.stallTimeout = this.scheduleTimeout(() => {
-      if (active.closeReceived || active.outputClosed) return;
-      this.reportFailure(
-        active,
-        "runner_timeout",
-        `Runner received no events within ${this.stallTimeoutMs}ms`,
-        { phase: "stall" },
-      );
-    }, this.stallTimeoutMs);
-    unrefTimer(active.stallTimeout);
+    if (active.pendingApprovals.size === 0) {
+      active.stallTimeout = this.scheduleTimeout(() => {
+        if (active.closeReceived || active.outputClosed) return;
+        if (active.pendingApprovals.size > 0) return;
+        this.reportFailure(
+          active,
+          "runner_timeout",
+          `Runner received no events within ${this.stallTimeoutMs}ms`,
+          { phase: "stall" },
+        );
+      }, this.stallTimeoutMs);
+      unrefTimer(active.stallTimeout);
+    }
     let parsed: unknown;
     try {
       parsed = JSON.parse(line) as unknown;
@@ -438,6 +517,21 @@ export class IsolatedRunnerManager implements RunnerManager {
         "runner_protocol_error",
         "Runner child emitted invalid JSONL",
       );
+      return;
+    }
+    const approval = parseApprovalRequest(parsed);
+    if (approval) {
+      active.pendingApprovals.add(approval.requestId);
+      active.events.push({
+        type: "tool",
+        payload: {
+          toolApproval: {
+            requestId: approval.requestId,
+            toolName: approval.toolName,
+            toolInput: approval.toolInput,
+          },
+        },
+      });
       return;
     }
     const message = parseRunnerChildMessage(parsed);

@@ -17,9 +17,11 @@ import {
   handleConsoleLoginApprove,
   handleConsoleLoginDeny,
 } from "./login-bridge.js";
+import { handleConsoleToolApproval } from "./tool-approval.js";
 import { createStaticHandler } from "./static.js";
 import {
   CONSOLE_OBSERVE_PATH,
+  CONSOLE_TOOL_APPROVAL_PATH,
   LOGIN_APPROVE_PATH,
   LOGIN_DENY_PATH,
 } from "../routes.js";
@@ -90,6 +92,10 @@ export function createConsoleRouter(
     }
     if (request.method === "POST" && url.pathname === LOGIN_DENY_PATH) {
       await handleConsoleLoginDeny(request, response);
+      return true;
+    }
+    if (request.method === "POST" && url.pathname === CONSOLE_TOOL_APPROVAL_PATH) {
+      await handleConsoleToolApproval(runtime, request, response);
       return true;
     }
     if (options?.beforeStatic) {

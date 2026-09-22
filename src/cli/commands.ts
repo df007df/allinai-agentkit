@@ -22,6 +22,11 @@ import {
 } from "../logger.js";
 import { resolveAgentPaths, type AgentPaths } from "../paths.js";
 import { renderManualMarkdown, cliManual } from "./docs.js";
+import { installCodexHooks } from "../codex-hooks.js";
+import {
+  startToolApprovalHttpBridge,
+  type ToolApprovalHttpBridge,
+} from "../control-http.js";
 import { PluginManager } from "../plugins/manager.js";
 import { parsePluginManifest } from "../plugins/manifest.js";
 import { ShellCapabilityHost } from "../capabilities/shell-host.js";
@@ -134,6 +139,11 @@ export type LocalAgentDaemonOptions = {
     clientId: string;
   }) => ClientTransport;
   createRunner?: () => RunnerManager;
+  /**
+   * Test seam for the loopback HTTP bridge that the Codex PreToolUse hook
+   * posts approvals to; replacing it keeps daemon tests off the network.
+   */
+  startToolApprovalBridge?: typeof startToolApprovalHttpBridge;
   loadConfig?: (paths: Pick<AgentPaths, "configFile">) => AgentConfig;
   /** Same shape as RunCliOptions.probeRuntimes; backs the inventory provider. */
   probeRuntimes?: () => Promise<RuntimeProbeResult[]>;
@@ -164,6 +174,7 @@ export const COMMAND_OPTIONS: Readonly<Record<string, CommandOptionSpec>> = {
   web: { values: ["port", "host", "config-dir"] },
   daemon: { values: ["config-dir"] },
   install: { values: ["config-dir"] },
+  "codex-hooks": { values: ["control-endpoint", "codex-home", "config-dir"] },
   status: { values: ["config-dir"] },
   logs: { values: ["config-dir"], booleans: ["f"] },
   sync: { values: ["config-dir"] },
@@ -423,10 +434,11 @@ async function defaultFollowLog(
 
 function help(): string {
   return [
-    "Usage: allinai-agentkit <init|login|web|daemon|install|status|logs|sync|restart|uninstall|doctor|projects|project|plugins|docs> [--config-dir PATH]",
+    "Usage: allinai-agentkit <init|login|web|daemon|install|codex-hooks|status|logs|sync|restart|uninstall|doctor|projects|project|plugins|docs> [--config-dir PATH]",
     "  project --name NAME --path DIR   register a local project working directory",
     "  project --name NAME --remove     remove a registered project",
     "  plugins [--refresh]              list installed plugins; --refresh re-reports them to the Hub",
+    "  codex-hooks                      install the Codex PreToolUse approval hook (then trust it via /hooks in codex)",
     "  docs [--json]                    print the full CLI manual (Markdown; --json for structured output)",
   ].join("\n");
 }
@@ -612,6 +624,20 @@ export async function runCli(
         installed: true,
         platform: input.platform,
         configDir: input.configDir,
+      });
+      return { exitCode: 0, output };
+    }
+
+    if (command === "codex-hooks") {
+      const endpoint = flagValue(parsed.flags, "control-endpoint") ?? "http://127.0.0.1:8787";
+      const codexHome = flagValue(parsed.flags, "codex-home");
+      const result = installCodexHooks({ controlEndpoint: endpoint, codexHome });
+      emit(output, write, {
+        installed: true,
+        hooksPath: result.hooksPath,
+        scriptPath: result.scriptPath,
+        merged: result.merged,
+        nextStep: result.trustNote,
       });
       return { exitCode: 0, output };
     }
@@ -952,6 +978,7 @@ export async function createLocalAgentDaemon(
   let store: ClientStateStore | null = null;
   let supervisor: ClientSupervisor | null = null;
   let runner: RunnerManager | null = null;
+  let approvalBridge: ToolApprovalHttpBridge | null = null;
   let closed = false;
   let resolveShutdown: (() => void) | null = null;
   const shutdown = new Promise<void>((resolve) => {
@@ -981,6 +1008,20 @@ export async function createLocalAgentDaemon(
         approve: async (executionId) => {
           if (!supervisor) throw new Error("Agent daemon is still starting");
           await supervisor.approve(executionId);
+        },
+        respondToolApproval: async (
+          executionId,
+          requestId,
+          decision,
+          reason,
+        ) => {
+          if (!supervisor) throw new Error("Agent daemon is still starting");
+          await supervisor.respondToolApproval(
+            executionId,
+            requestId,
+            decision,
+            reason,
+          );
         },
         sync: async () => {
           if (!supervisor) throw new Error("Agent daemon is still starting");
@@ -1092,6 +1133,27 @@ export async function createLocalAgentDaemon(
       },
     });
     await supervisor.start();
+
+    // Loopback HTTP bridge for the Codex PreToolUse hook: the hook script is
+    // a plain shell pipeline and cannot speak the Unix-socket control
+    // protocol, so approvals arrive over localhost HTTP instead. The bridge
+    // only accepts request ids that an active runner run actually owns.
+    if (runner.respondToolApproval && runner.ownerOfToolApproval) {
+      approvalBridge = await (options.startToolApprovalBridge ??
+        startToolApprovalHttpBridge)({
+        respondToolApproval: async (executionId, requestId, decision, reason) => {
+          if (!supervisor) throw new Error("Agent daemon is still starting");
+          await supervisor.respondToolApproval(
+            executionId,
+            requestId,
+            decision,
+            reason,
+          );
+        },
+        resolveExecutionId: (requestId) =>
+          runner?.ownerOfToolApproval?.(requestId) ?? null,
+      });
+    }
   } catch (error) {
     await server.close();
     store?.close();
@@ -1124,6 +1186,7 @@ export async function createLocalAgentDaemon(
       await supervisor!.shutdown();
       store!.close();
       await server.close();
+      await approvalBridge?.close();
     },
   };
 }

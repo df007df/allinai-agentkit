@@ -504,3 +504,101 @@ describe("RunnerManager", () => {
     fake.children[0]?.close(null, "SIGKILL");
   });
 });
+
+describe("RunnerManager tool approvals", () => {
+  it("does not close child stdin after run.start so decisions can be sent later", async () => {
+    const fake = fakeSpawner();
+    const manager = createRunnerManager({
+      spawn: fake.spawn,
+      childEntrypoint: "/client-owned/runner-child.js",
+    });
+
+    const stream = manager.start("e1", runInput("claude"));
+    const child = fake.children[0]!;
+    child.writeEvent({ type: "done" });
+    await collect(stream);
+
+    assert.equal(child.stdin.writes.length, 1);
+    // The FakeChild stdin surface has no end(): its absence in the writes
+    // history is the assertion that run.start was not followed by a close.
+    assert.ok(!child.stdin.writes.join("").includes('"end"'));
+  });
+
+  it("surfaces a tool_approval.request as a tool progress event and forwards the decision to the child", async () => {
+    const fake = fakeSpawner();
+    const manager = createRunnerManager({
+      spawn: fake.spawn,
+      childEntrypoint: "/client-owned/runner-child.js",
+    });
+
+    const iterator = manager.start("e2", runInput("pi"))[Symbol.asyncIterator]();
+    const child = fake.children[0]!;
+    // Drain nothing manually; instead emit the approval request directly.
+    child.writeRaw(
+      `${JSON.stringify({
+        type: "tool_approval.request",
+        requestId: "req-7",
+        toolName: "Bash",
+        toolInput: { command: "rm -rf /tmp/x" },
+      })}\n`,
+    );
+    const approvalEvent = await iterator.next();
+    assert.equal(approvalEvent.value?.type, "tool");
+    assert.deepEqual(approvalEvent.value?.payload?.toolApproval, {
+      requestId: "req-7",
+      toolName: "Bash",
+      toolInput: { command: "rm -rf /tmp/x" },
+    });
+
+    manager.respondToolApproval?.("e2", "req-7", "deny", "not today");
+    const decisionLine = JSON.parse(child.stdin.writes[1]!);
+    assert.equal(decisionLine.type, "tool_approval.response");
+    assert.equal(decisionLine.requestId, "req-7");
+    assert.equal(decisionLine.decision, "deny");
+    assert.equal(decisionLine.reason, "not today");
+
+    child.writeEvent({ type: "done" });
+    const final = await iterator.next();
+    assert.equal(final.value?.type, "done");
+    // The queue closes after the terminal event; the next read reports done.
+    const closed = await iterator.next();
+    assert.equal(closed.done, true);
+  });
+
+  it("ignores decisions for unknown request ids and denies every pending approval on cancel", async () => {
+    const fake = fakeSpawner();
+    const manager = createRunnerManager({
+      spawn: fake.spawn,
+      childEntrypoint: "/client-owned/runner-child.js",
+    });
+
+    const iterator = manager.start("e3", runInput("claude"))[Symbol.asyncIterator]();
+    const child = fake.children[0]!;
+    child.writeRaw(
+      `${JSON.stringify({
+        type: "tool_approval.request",
+        requestId: "req-a",
+        toolName: "Edit",
+        toolInput: { path: "a.ts" },
+      })}\n`,
+    );
+    await iterator.next();
+
+    manager.respondToolApproval?.("e3", "req-unknown", "allow");
+    const writesAfterUnknown = child.stdin.writes.length;
+    manager.cancel("e3");
+
+    // Unknown request ids must not write anything; cancel denies the one
+    // pending approval so the child can settle before termination.
+    assert.equal(child.stdin.writes.length, writesAfterUnknown + 1);
+    const decisionLine = JSON.parse(
+      child.stdin.writes[child.stdin.writes.length - 1]!,
+    );
+    assert.equal(decisionLine.type, "tool_approval.response");
+    assert.equal(decisionLine.requestId, "req-a");
+    assert.equal(decisionLine.decision, "deny");
+    assert.equal(decisionLine.reason, "Execution cancelled");
+    child.close(0, null);
+    await iterator.next();
+  });
+});

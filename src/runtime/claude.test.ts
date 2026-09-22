@@ -104,6 +104,62 @@ describe("Claude adapter", () => {
     assert.equal(events[2]?.payload?.result, "Hello");
   });
 
+  it("maps a transport sessionId onto the SDK resume option when options lack one", async () => {
+    let seenOptions: Record<string, unknown> | undefined;
+    const adapter = createClaudeAdapter({
+      query: (({ options }: Parameters<ClaudeQueryFactory>[0]) => {
+        seenOptions = options as Record<string, unknown>;
+        return fakeQuery([
+          { type: "system", subtype: "init", session_id: "claude-thread-1" },
+          { type: "result", subtype: "success", result: "done" },
+        ]);
+      }) as ClaudeQueryFactory,
+    });
+
+    await collect(
+      adapter.start(
+        {
+          ...runInput(),
+          options: { ...runInput().options, resume: undefined } as never,
+          sessionId: "claude-thread-9",
+        },
+        new AbortController().signal,
+      ),
+    );
+
+    assert.equal(seenOptions?.resume, "claude-thread-9");
+  });
+
+  it("forwards an explicit options.resume over the transport sessionId and survives absent options", async () => {
+    const seen: Array<string | undefined> = [];
+    const adapter = createClaudeAdapter({
+      query: (({ options }: Parameters<ClaudeQueryFactory>[0]) => {
+        seen.push(
+          options === undefined ? undefined : String(options.resume),
+        );
+        return fakeQuery([{ type: "result", subtype: "success" }]);
+      }) as ClaudeQueryFactory,
+    });
+
+    await collect(
+      adapter.start(
+        { ...runInput(), options: { resume: "explicit-1" } as never, sessionId: "session-2" },
+        new AbortController().signal,
+      ),
+    );
+    // The runner child forwards PlatformRunInput without `options`; the
+    // adapter must not crash and must still map the transport sessionId.
+    await collect(
+      adapter.start(
+        { prompt: "hi", sessionId: "session-3" } as never,
+        new AbortController().signal,
+      ),
+    );
+
+    assert.equal(seen[0], "explicit-1");
+    assert.equal(seen[1], "session-3");
+  });
+
   it("maps tool results to tool and other lifecycle messages to vendor with the original message kept", async () => {
     const adapter = createClaudeAdapter({
       query: ((() =>

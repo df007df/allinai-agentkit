@@ -148,6 +148,89 @@ describe("Pi adapter", () => {
     assert.deepEqual(probe, { installed: true, version: "0.85.1" });
   });
 
+  it("resumes an existing session file when a transport sessionId resolves", async () => {
+    let receivedSessionManager: unknown;
+    const adapter = createPiAdapter({
+      createAgentSession: async (options) => {
+        receivedSessionManager = options?.sessionManager;
+        return {
+          session: {
+            sessionId: "pi-session-1",
+            subscribe: () => () => undefined,
+            async prompt() {},
+            async abort() {},
+            dispose() {},
+          },
+        };
+      },
+      sessionResolver: {
+        resolveSessionFile: async (sessionId) =>
+          sessionId === "pi-session-1"
+            ? "/sessions/dir/2026-09-22T08-50-50Z_pi-session-1.jsonl"
+            : null,
+        openSessionFile: (sessionFile) => ({ __opened: sessionFile }),
+      },
+    });
+
+    const events = await collect(
+      adapter.start(
+        { ...runInput(), sessionId: "pi-session-1" },
+        new AbortController().signal,
+      ),
+    );
+
+    const init = events.find((event) => event.type === "init");
+    assert.equal(init?.payload?.runtimeSessionId, "pi-session-1");
+    assert.equal(init?.payload?.resumed, true);
+    assert.match(String(init?.payload?.sessionFile), /pi-session-1\.jsonl$/);
+    assert.ok(receivedSessionManager, "sessionManager must be passed through");
+    assert.equal(
+      events.some((event) => event.type === "done"),
+      true,
+    );
+  });
+
+  it("emits a lossless vendor note and keeps going when the sessionId cannot be resolved", async () => {
+    const adapter = createPiAdapter({
+      createAgentSession: async (options) => {
+        assert.equal(options?.sessionManager, undefined);
+        return {
+          session: {
+            sessionId: "pi-session-fresh",
+            subscribe: () => () => undefined,
+            async prompt() {},
+            async abort() {},
+            dispose() {},
+          },
+        };
+      },
+      sessionResolver: {
+        resolveSessionFile: async () => null,
+        openSessionFile: () => {
+          throw new Error("must not open when resolution failed");
+        },
+      },
+    });
+
+    const events = await collect(
+      adapter.start(
+        { ...runInput(), sessionId: "gone-session" },
+        new AbortController().signal,
+      ),
+    );
+
+    const note = events.find(
+      (event) =>
+        event.type === "vendor" &&
+        event.payload?.vendorEventType === "session_resume_unavailable",
+    );
+    assert.equal(note?.payload?.requestedSessionId, "gone-session");
+    assert.equal(
+      events.some((event) => event.type === "done"),
+      true,
+    );
+  });
+
   it("raises an actionable optional dependency error when the SDK is absent", async () => {
     const adapter = createPiAdapter({
       loadPi: async () => {

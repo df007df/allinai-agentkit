@@ -312,6 +312,32 @@ export class ClientSupervisor {
   }
 
   /**
+   * Answers an in-flight tool approval inside a running execution. The
+   * decision crosses the runner wire to the blocked child; unknown request
+   * ids are runner-level errors and surface here.
+   */
+  async respondToolApproval(
+    executionId: string,
+    requestId: string,
+    decision: "allow" | "deny",
+    reason?: string,
+  ): Promise<void> {
+    if (!this.options.runner.respondToolApproval) {
+      throw new Error("The runner does not support in-flight tool approvals");
+    }
+    logExecution("info", "tool_approval_responded", executionId, {
+      requestId,
+      decision,
+    });
+    this.options.runner.respondToolApproval(
+      executionId,
+      requestId,
+      decision,
+      reason,
+    );
+  }
+
+  /**
    * Pushes durable outbox rows and removes only the watermark each execution
    * actually received. A failed push does not touch local state, so reconnect
    * replay remains possible; the failure propagates to the caller.
@@ -350,6 +376,19 @@ export class ClientSupervisor {
     if (command.kind === "cancel") {
       logExecution("info", "cancel_requested", command.executionId);
       await this.cancelActiveExecution(command.executionId);
+      return;
+    }
+    if (command.kind === "respond_tool_approval") {
+      logExecution("info", "tool_approval_command", command.executionId, {
+        requestId: command.requestId,
+        decision: command.decision,
+      });
+      await this.respondToolApproval(
+        command.executionId,
+        command.requestId,
+        command.decision,
+        command.reason,
+      );
       return;
     }
 

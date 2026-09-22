@@ -13,7 +13,6 @@ function runInput() {
     platform: "codex" as const,
     prompt: "Summarise the repository",
     cwd: "/work/project",
-    sessionId: "session-1",
     model: "gpt-5.3-codex",
   };
 }
@@ -59,6 +58,7 @@ describe("Codex adapter", () => {
           assert.deepEqual(options, {
             workingDirectory: "/work/project",
             model: "gpt-5.3-codex",
+            approvalPolicy: "never",
           });
           return {
             async runStreamed(prompt) {
@@ -196,7 +196,10 @@ describe("Codex adapter", () => {
         },
         resumeThread: (threadId, options) => {
           assert.equal(threadId, "thread-old");
-          assert.deepEqual(options, { workingDirectory: "/work/project" });
+          assert.deepEqual(options, {
+            workingDirectory: "/work/project",
+            approvalPolicy: "never",
+          });
           return {
             async runStreamed() {
               return { events: (async function* () {})() };
@@ -218,6 +221,38 @@ describe("Codex adapter", () => {
       ["init", "done"],
     );
     assert.equal(events[0]?.payload?.runtimeSessionId, "thread-old");
+  });
+
+  it("falls back to the transport sessionId when resumeThreadId is absent", async () => {
+    const adapter = createCodexAdapter({
+      createCodex: () => ({
+        startThread: () => {
+          throw new Error("sessionId must not start a fresh thread");
+        },
+        resumeThread: (threadId) => {
+          assert.equal(threadId, "session-1");
+          return {
+            async runStreamed() {
+              return { events: (async function* () {})() };
+            },
+          };
+        },
+      }),
+    });
+
+    const events = await collect(
+      adapter.start(
+        { ...runInput(), model: undefined, sessionId: "session-1" },
+        new AbortController().signal,
+      ),
+    );
+
+    assert.deepEqual(
+      events.map((event) => event.type),
+      ["init", "done"],
+    );
+    assert.equal(events[0]?.payload?.runtimeSessionId, "session-1");
+    assert.equal(events[0]?.payload?.resumed, true);
   });
 
   it("aborts an active Codex stream through the supplied signal", async () => {

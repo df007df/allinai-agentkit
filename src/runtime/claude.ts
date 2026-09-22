@@ -32,6 +32,11 @@ export type ClaudeAdapterRunInput = {
   options: Omit<ClaudeSdkOptions, "abortController" | "canUseTool">;
   /** Host-owned tool decision bridge. The adapter never imports a host package. */
   onAskUser?: ClaudeCanUseTool;
+  /**
+   * Platform-level session id from a previous run; when the host does not set
+   * `options.resume` directly, the adapter maps this onto the SDK resume option.
+   */
+  sessionId?: string;
 };
 
 export type ClaudeQueryFactory = (parameters: {
@@ -243,10 +248,15 @@ export function createClaudeAdapter(
       try {
         const queryFactory =
           deps.query ?? (await loadClaudeModule(loadClaude)).query;
+        // The runner child forwards the transport-level PlatformRunInput, so
+        // `options` may be absent; the resume id falls back to `sessionId`.
+        const options = input.options ?? {};
+        const sessionId = text(options.resume) ?? input.sessionId;
         activeQuery = queryFactory({
           prompt: input.prompt,
           options: {
-            ...input.options,
+            ...options,
+            ...(sessionId ? { resume: sessionId } : {}),
             abortController,
             ...(input.onAskUser ? { canUseTool: input.onAskUser } : {}),
           },

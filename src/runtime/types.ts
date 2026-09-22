@@ -58,6 +58,23 @@ export interface RunnerManager {
   ): AsyncIterable<PlatformEvent>;
   cancel(executionId: string): Promise<void>;
   /**
+   * Delivers a human tool-approval decision to the in-flight run. Unknown or
+   * already-settled request ids are ignored; runs without in-process approval
+   * support may omit it.
+   */
+  respondToolApproval?(
+    executionId: string,
+    requestId: string,
+    decision: "allow" | "deny",
+    reason?: string,
+  ): void;
+  /**
+   * Finds the execution that owns a pending tool approval request id, for
+   * out-of-process callers (hooks HTTP bridge) that only know the id.
+   * Implementations without in-process approval support may omit it.
+   */
+  ownerOfToolApproval?(requestId: string): string | null;
+  /**
    * Resolves when every child owned by this manager has emitted close and its
    * process resources have been released. Older test doubles may omit it.
    */
