@@ -38,7 +38,9 @@
     "./cli": "./src/cli/commands.ts",
     "./service/launchd": "./src/service/launchd.ts",
     "./service/systemd": "./src/service/systemd.ts",
-    "./demo": "./src/demo/index.ts"
+    "./demo": "./src/demo/index.ts",
+    "./console": "./src/console/index.ts",
+    "./console-ui": "./src/console-ui/index.ts"
   },
   "publishConfig": {
     "exports": {
@@ -136,6 +138,16 @@
         "types": "./dist/demo/index.d.ts",
         "import": "./dist/demo/index.js",
         "default": "./dist/demo/index.js"
+      },
+      "./console": {
+        "types": "./dist/console/index.d.ts",
+        "import": "./dist/console/index.js",
+        "default": "./dist/console/index.js"
+      },
+      "./console-ui": {
+        "types": "./dist/console-ui/index.d.ts",
+        "import": "./dist/console-ui/index.js",
+        "default": "./dist/console-ui/index.js"
       }
     },
     "main": "./dist/index.js",
@@ -164,7 +176,8 @@
   "peerDependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.168",
     "@earendil-works/pi-coding-agent": "0.85.1",
-    "@openai/codex-sdk": "^0.142.4"
+    "@openai/codex-sdk": "^0.142.4",
+    "react": ">=19"
   },
   "peerDependenciesMeta": {
     "@anthropic-ai/claude-agent-sdk": {
@@ -182,7 +195,9 @@
     "@earendil-works/pi-coding-agent": "0.85.1",
     "@openai/codex-sdk": "^0.142.4",
     "@types/node": "^22.15.3",
+    "@types/react": "^19.0.0",
     "@types/ws": "^8.5.14",
+    "react": "^19.0.0",
     "tsx": "^4.20.3",
     "typescript": "^5.8.3",
     "ws": "^8.18.0"

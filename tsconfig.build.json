@@ -9,5 +9,5 @@
     "rootDir": "src",
     "tsBuildInfoFile": ".tsbuildinfo/build.tsbuildinfo"
   },
-  "exclude": ["src/**/*.test.ts"]
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
 }
