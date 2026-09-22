@@ -331,4 +331,53 @@ describe("local agent daemon composition", () => {
     assert.ok(claude?.installed);
     assert.equal(claude.version, null);
   });
+
+  it("keeps booting when the tool-approval bridge fails to listen", async () => {
+    if (process.platform === "win32") return;
+    dir = mkdtempSync(path.join(tmpdir(), "allinai-agentkit-daemon-bridge-"));
+    writeFileSync(
+      path.join(dir, "config.json"),
+      JSON.stringify({
+        hubBaseUrl: "https://hub.example.test",
+        clientId: "test-client",
+        maxConcurrentRuns: 1,
+        policy: {
+          autoRuntimes: [],
+          autoPermissions: [],
+          allowedGitOrigins: [],
+          deniedPluginIds: [],
+          allowedWorkspaceRoots: [],
+        },
+      }),
+    );
+    const credentials = {
+      load: async () => null,
+      save: async () => undefined,
+      clear: async () => undefined,
+    };
+
+    const daemon = await createLocalAgentDaemon({
+      configDir: dir,
+      credentials,
+      // Approval-capable runner shape so the daemon ATTEMPTS the bridge start;
+      // the injected starter rejects and boot must survive it.
+      createRunner: () =>
+        ({
+          respondToolApproval: () => {},
+          ownerOfToolApproval: () => null,
+        }) as never,
+      startToolApprovalBridge: async () => {
+        throw new Error("EADDRINUSE: port 8787 taken");
+      },
+    });
+    close = () => daemon.close();
+
+    // The bridge failure is non-fatal: the daemon is up and serving control.
+    assert.deepEqual(await daemon.health(), { status: "unpaired" });
+    assert.equal(
+      (await createAgentControlClient(path.join(dir, "control.sock")).status())
+        .state,
+      "unpaired",
+    );
+  });
 });

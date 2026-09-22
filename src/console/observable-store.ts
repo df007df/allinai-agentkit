@@ -24,7 +24,15 @@ export type ToolApprovalObservation = {
 export type HubObservation =
   | { kind: "client.registered"; clientId: string; at: number }
   | { kind: "client.heartbeat"; clientId: string; at: number }
-  | { kind: "offer.enqueued"; offerId: string; targetClientId: string; commandKind: string; at: number }
+  | {
+      kind: "offer.enqueued";
+      offerId: string;
+      targetClientId: string;
+      commandKind: string;
+      /** Set only for respond_tool_approval offers: the requestId being answered. */
+      approvalRequestId?: string;
+      at: number;
+    }
   | { kind: "offers.delivered"; clientId: string; count: number; at: number }
   | { kind: "events.ingested"; clientId: string; count: number; at: number; events: ClientEvent[] }
   | { kind: "plugin.acknowledged"; clientId: string; at: number }
@@ -94,11 +102,15 @@ export class ObservableStore<Principal> implements HubStore<Principal> {
     input: HubOfferInput<Principal>,
   ): Promise<StoredOffer> {
     const offer = await this.inner.enqueueOffer(input);
+    const command = input.command;
     this.notify({
       kind: "offer.enqueued",
       offerId: offer.offerId,
       targetClientId: input.targetClientId,
-      commandKind: input.command.kind,
+      commandKind: command.kind,
+      ...(command.kind === "respond_tool_approval"
+        ? { approvalRequestId: command.requestId }
+        : {}),
       at: Date.now(),
     });
     return offer;

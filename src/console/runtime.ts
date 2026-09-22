@@ -86,6 +86,21 @@ export function createConsoleRouter(
       handleConsoleObserve(runtime.stream, request, response);
       return true;
     }
+    // The console write endpoints are unauthenticated by design: their only
+    // protection is the loopback-only deployment contract. When the host is
+    // non-loopback (hostWarning set), refuse them before any handler runs so
+    // a LAN-reachable console cannot mint tokens or relay approvals.
+    if (
+      runtime.stream.hostWarning !== null &&
+      request.method === "POST" &&
+      (url.pathname === LOGIN_APPROVE_PATH ||
+        url.pathname === LOGIN_DENY_PATH ||
+        url.pathname === CONSOLE_TOOL_APPROVAL_PATH)
+    ) {
+      response.writeHead(403, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: "loopback_only" }));
+      return true;
+    }
     if (request.method === "POST" && url.pathname === LOGIN_APPROVE_PATH) {
       await handleConsoleLoginApprove(runtime, request, response);
       return true;
@@ -133,11 +148,24 @@ export async function startConsoleServer(options?: {
   const server = http.createServer();
   runtime.hub.attach(server, {
     fallback: (request, response) => {
-      void router(request, response).then((handled) => {
-        if (handled) return; // responder owns the response end
-        if (!response.headersSent) response.writeHead(404);
-        response.end(JSON.stringify({ error: "not_found" }));
-      });
+      void router(request, response)
+        .then((handled) => {
+          if (handled) return; // responder owns the response end
+          if (!response.headersSent) response.writeHead(404);
+          response.end(JSON.stringify({ error: "not_found" }));
+        })
+        .catch(() => {
+          // Aborted POST bodies throw in readJsonBody; without this catch the
+          // rejection is unhandled and kills the process.
+          if (!response.headersSent) {
+            response.writeHead(400, { "content-type": "application/json" });
+          }
+          try {
+            response.end(JSON.stringify({ error: "bad_request" }));
+          } catch {
+            // The client is gone; nothing left to answer.
+          }
+        });
     },
   });
   server.listen(options?.port ?? 4317, host);

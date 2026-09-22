@@ -61,7 +61,22 @@ export function createAgentkitFallback(params: {
         return;
       }
       params.nextHandler(request, response);
-    })();
+    })().catch(() => {
+      // Aborted POST bodies throw in readJsonBody; without this catch the
+      // rejection is unhandled and kills the process.
+      if (!response.headersSent) {
+        try {
+          response.writeHead(400, { "content-type": "application/json" });
+        } catch {
+          // Headers already sent by a losing race; fall through to end().
+        }
+      }
+      try {
+        response.end(JSON.stringify({ error: "bad_request" }));
+      } catch {
+        // The client is gone; nothing left to answer.
+      }
+    });
   };
 }
 
@@ -99,6 +114,10 @@ export async function startWebHost(options?: {
     url,
     hubUrl,
     async close() {
+      // SSE subscribers hold the server's sockets open; destroy them first or
+      // server.close() never settles (mirrors startConsoleServer.close).
+      for (const response of runtime.stream.subscribers) response.destroy();
+      runtime.stream.subscribers.clear();
       await runtime.close();
       server.close();
       await once(server, "close");

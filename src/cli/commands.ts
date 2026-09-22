@@ -25,6 +25,7 @@ import { renderManualMarkdown, cliManual } from "./docs.js";
 import { installCodexHooks } from "../codex-hooks.js";
 import {
   startToolApprovalHttpBridge,
+  ToolApprovalDecisionMap,
   type ToolApprovalHttpBridge,
 } from "../control-http.js";
 import { PluginManager } from "../plugins/manager.js";
@@ -1134,25 +1135,43 @@ export async function createLocalAgentDaemon(
     });
     await supervisor.start();
 
-    // Loopback HTTP bridge for the Codex PreToolUse hook: the hook script is
-    // a plain shell pipeline and cannot speak the Unix-socket control
-    // protocol, so approvals arrive over localhost HTTP instead. The bridge
-    // only accepts request ids that an active runner run actually owns.
-    if (runner.respondToolApproval && runner.ownerOfToolApproval) {
-      approvalBridge = await (options.startToolApprovalBridge ??
-        startToolApprovalHttpBridge)({
-        respondToolApproval: async (executionId, requestId, decision, reason) => {
-          if (!supervisor) throw new Error("Agent daemon is still starting");
-          await supervisor.respondToolApproval(
-            executionId,
-            requestId,
-            decision,
-            reason,
-          );
+    // Loopback HTTP bridge for the Codex PreToolUse hook. The bridge is a
+    // pure replay surface: it only echoes tool-approval decisions a human
+    // already made (console offer channel or the local control socket — both
+    // funnel through runner.respondToolApproval). The wrapped runner records
+    // each decision in a bounded map; a hook POST with no recorded decision
+    // denies fail-closed instead of auto-allowing (the old behavior leaked
+    // allows to any local process).
+    const approvalDecisions = new ToolApprovalDecisionMap();
+    const baseRunner = runner;
+    if (baseRunner.respondToolApproval) {
+      const innerRespond = baseRunner.respondToolApproval.bind(baseRunner);
+      runner = {
+        ...baseRunner,
+        respondToolApproval: (
+          executionId: string,
+          requestId: string,
+          decision: "allow" | "deny",
+          reason?: string,
+        ) => {
+          approvalDecisions.record(requestId, decision, reason);
+          innerRespond(executionId, requestId, decision, reason);
         },
-        resolveExecutionId: (requestId) =>
-          runner?.ownerOfToolApproval?.(requestId) ?? null,
-      });
+      };
+    }
+    if (runner.respondToolApproval && runner.ownerOfToolApproval) {
+      try {
+        approvalBridge = await (options.startToolApprovalBridge ??
+          startToolApprovalHttpBridge)({
+          resolveDecision: (requestId) => approvalDecisions.resolve(requestId),
+        });
+      } catch (error) {
+        // The bridge is an optional convenience for hook-based approvals; a
+        // listen failure (port taken, no loopback) must not fail daemon boot.
+        bridgeLog.warn("daemon", "tool_approval_bridge_unavailable", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
   } catch (error) {
     await server.close();

@@ -75,7 +75,11 @@ function stage() {
   rmSync(stageDir, { recursive: true, force: true });
   mkdirSync(stageDir, { recursive: true });
 
-  for (const entry of ["dist", "bin", "web", "README.md", "LICENSE"]) {
+  // Core no longer ships web assets: `files` is [bin, dist], no publishConfig
+  // export references web/, and the Console UI is published separately as
+  // @allin-ai/agentkit-web. Staging web/ wholesale would drag web/.next and
+  // dereferenced node_modules into the core tarball.
+  for (const entry of ["dist", "bin", "README.md", "LICENSE"]) {
     const source = path.join(packageRoot, entry);
     if (!existsSync(source)) {
       throw new Error(`Missing publish input: ${entry}`);

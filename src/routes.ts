@@ -16,13 +16,9 @@ export const LOGIN_PATH = `${AGENTKIT_ROOT_PREFIX}/login`;
 export const LOGIN_APPROVE_PATH = `${LOGIN_PATH}/approve`;
 export const LOGIN_DENY_PATH = `${LOGIN_PATH}/deny`;
 
-/** Console control-plane endpoints (SSE observe; offers/plugin-sync/inventory retire in 0.5.0). */
+/** Console control-plane endpoints. */
 export const CONSOLE_PATH_PREFIX = `${AGENTKIT_ROOT_PREFIX}/console`;
 export const CONSOLE_OBSERVE_PATH = `${CONSOLE_PATH_PREFIX}/observe`;
-export const CONSOLE_OFFERS_PATH = `${CONSOLE_PATH_PREFIX}/offers`;
-export const CONSOLE_PLUGIN_SYNC_PATH = `${CONSOLE_PATH_PREFIX}/plugins/sync`;
-export const CONSOLE_INVENTORY_PATH = `${CONSOLE_PATH_PREFIX}/inventory`;
-export const CONSOLE_INVENTORY_QUERY_PATH = `${CONSOLE_INVENTORY_PATH}/query`;
 /** In-flight tool-approval decisions from an approver UI. */
 export const CONSOLE_TOOL_APPROVAL_PATH = `${CONSOLE_PATH_PREFIX}/tool-approval`;
 

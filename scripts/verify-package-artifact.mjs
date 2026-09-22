@@ -101,18 +101,14 @@ function assertTarballContents(filename, manifest) {
   for (const target of getProductionTargets(manifest)) {
     requireEntry(`package/${target.slice(2)}`);
   }
-  for (const webAsset of [
-    "web/server.ts",
-    "web/package.json",
-    "web/next.config.mjs",
-    "web/app/layout.tsx",
-    "web/app/page.tsx",
-    "web/app/authorize/page.tsx",
-    "web/public/manifest.webmanifest",
-    "web/public/sw.js",
-    "web/public/icon.svg",
-  ]) {
-    requireEntry(`package/${webAsset}`);
+  // Core no longer ships web assets: the Console UI lives in the separate
+  // @allin-ai/agentkit-web package. Any web/ content in the tarball means the
+  // stage step regressed (web/.next and dereferenced node_modules included).
+  for (const entry of entries) {
+    assert(
+      !entry.startsWith("package/web/"),
+      `tarball must not include web assets: ${entry}`,
+    );
   }
 
   for (const entry of entries) {

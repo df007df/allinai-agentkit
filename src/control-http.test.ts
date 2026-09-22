@@ -21,21 +21,16 @@ async function post(
 }
 
 describe("tool approval HTTP bridge", () => {
-  it("resolves the owning execution and forwards allow decisions", async () => {
-    const calls: Array<{
-      executionId: string;
-      requestId: string;
-      decision: string;
-    }> = [];
+  it("replays recorded human decisions and denies unknown request ids", async () => {
+    const decisions = new Map<string, { decision: "allow" | "deny"; reason?: string }>([
+      ["req-1", { decision: "allow" }],
+      ["req-2", { decision: "deny", reason: "not in this workspace" }],
+    ]);
     let bridge: ToolApprovalHttpBridge | null = null;
     try {
       bridge = await startToolApprovalHttpBridge({
         port: 0,
-        respondToolApproval: async (executionId, requestId, decision) => {
-          calls.push({ executionId, requestId, decision });
-        },
-        resolveExecutionId: (requestId) =>
-          requestId === "req-1" ? "exec-9" : null,
+        resolveDecision: (requestId) => decisions.get(requestId) ?? null,
       });
 
       const ok = await post(bridge.url, {
@@ -44,20 +39,28 @@ describe("tool approval HTTP bridge", () => {
       });
       assert.equal(ok.status, 200);
       assert.deepEqual(ok.json, { decision: "allow" });
-      assert.deepEqual(calls, [
-        { executionId: "exec-9", requestId: "req-1", decision: "allow" },
-      ]);
 
-      // Unknown request ids are denied fail-closed without touching the runner.
+      const denied = await post(bridge.url, {
+        platform: "codex",
+        payload: { requestId: "req-2" },
+      });
+      assert.equal(denied.status, 200);
+      assert.deepEqual(denied.json, {
+        decision: "deny",
+        reason: "not in this workspace",
+      });
+
+      // No human decision has arrived for this request id: fail closed. The
+      // bridge never invents an allow from a mere owner match.
       const unknown = await post(bridge.url, {
         platform: "codex",
         payload: { requestId: "req-unknown" },
       });
+      assert.equal(unknown.status, 200);
       assert.deepEqual(unknown.json, {
         decision: "deny",
-        reason: "approval request not owned by this daemon",
+        reason: "unknown_request_id",
       });
-      assert.equal(calls.length, 1);
     } finally {
       await bridge?.close();
     }
@@ -68,8 +71,7 @@ describe("tool approval HTTP bridge", () => {
     try {
       bridge = await startToolApprovalHttpBridge({
         port: 0,
-        respondToolApproval: async () => {},
-        resolveExecutionId: () => null,
+        resolveDecision: () => null,
       });
 
       const miss = await fetch(`${bridge.url}/unrelated`);
@@ -83,6 +85,7 @@ describe("tool approval HTTP bridge", () => {
       assert.equal(malformed.status, 200);
       const body = (await malformed.json()) as Record<string, unknown>;
       assert.equal(body.decision, "deny");
+      assert.equal(body.reason, "unknown_request_id");
     } finally {
       await bridge?.close();
     }

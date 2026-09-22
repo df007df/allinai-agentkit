@@ -3,7 +3,11 @@ import { test } from "node:test";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { startConsoleServer } from "./index.js";
+import {
+  createConsoleRouter,
+  createConsoleRuntime,
+  startConsoleServer,
+} from "./index.js";
 
 test("console server serves static root, observe SSE, and hub ws path", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "console-web-"));
@@ -37,4 +41,56 @@ test("console server serves static root, observe SSE, and hub ws path", async ()
   } finally {
     await site.close();
   }
+});
+
+test("write approval endpoints are loopback-gated by stream.hostWarning", async () => {
+  const runtime = createConsoleRuntime();
+  const router = createConsoleRouter(runtime);
+  // Empty async-iterable body: handlers run for real once the gate opens.
+  const emptyBody = (async function* () {})();
+  const post = async (pathname: string, body: unknown) => {
+    void body;
+    const handled = await router(
+      {
+        method: "POST",
+        url: pathname,
+        [Symbol.asyncIterator]: () => emptyBody[Symbol.asyncIterator](),
+      } as never,
+      {
+        writeHead: () => undefined,
+        end: () => undefined,
+      } as never,
+    );
+    return { handled };
+  };
+
+  // Non-loopback host: the unauthenticated write endpoints must be refused
+  // without running their handlers (no token minted, no offer enqueued).
+  runtime.stream.hostWarning = "console 正监听非回环地址";
+  const approveBlocked = await post("/_agentkit/login/approve", {});
+  assert.equal(approveBlocked.handled, true);
+  assert.equal(
+    runtime.registry.list().length,
+    0,
+    "no token may be minted on a non-loopback host",
+  );
+  const toolBlocked = await post("/_agentkit/console/tool-approval", {});
+  assert.equal(toolBlocked.handled, true);
+  assert.equal(
+    runtime.state
+      .snapshot()
+      .observations.some((o) => o.kind === "offer.enqueued"),
+    false,
+    "no approval offer may be enqueued on a non-loopback host",
+  );
+
+  // Loopback host (warning null): the endpoints run their handlers again.
+  runtime.stream.hostWarning = null;
+  const approveOpen = await post("/_agentkit/login/approve", {});
+  assert.equal(approveOpen.handled, true);
+  assert.equal(
+    runtime.registry.list().length,
+    0,
+    "an invalid approve body still mints nothing but must reach the handler",
+  );
 });

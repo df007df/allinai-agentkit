@@ -37,10 +37,6 @@ export {
   LOGIN_DENY_PATH,
   CONSOLE_PATH_PREFIX,
   CONSOLE_OBSERVE_PATH,
-  CONSOLE_OFFERS_PATH,
-  CONSOLE_PLUGIN_SYNC_PATH,
-  CONSOLE_INVENTORY_PATH,
-  CONSOLE_INVENTORY_QUERY_PATH,
   RESERVED_AGENTKIT_SEGMENTS,
 } from "./routes.js";
 // Production Hub port only. Volatile memory helpers remain on /hub/testkit.

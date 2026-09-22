@@ -1,7 +1,6 @@
 import { readFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { STATIC_PATH_PREFIX } from "../routes.js";
 
 const CONTENT_TYPES: Readonly<Record<string, string>> = {
@@ -12,14 +11,6 @@ const CONTENT_TYPES: Readonly<Record<string, string>> = {
   ".png": "image/png",
   ".ico": "image/x-icon",
 };
-
-/** src/console/*.ts 与 dist/console/*.js 到包根均为两级，两者解析到同一 web/。 */
-export function resolveWebRoot(): string {
-  return path.resolve(
-    path.dirname(fileURLToPath(import.meta.url)),
-    "../../web",
-  );
-}
 
 /** Read a candidate file, or null when it does not exist / is a directory. */
 async function tryRead(file: string): Promise<Buffer | null> {

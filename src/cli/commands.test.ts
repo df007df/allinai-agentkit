@@ -210,13 +210,13 @@ describe("web command", () => {
       write: () => undefined,
       startConsoleSite: async () => {
         throw new Error(
-          "Console UI not installed. Run: npm i @allinai/agentkit-web",
+          "Console UI not installed. Run: npm i @allin-ai/agentkit-web",
         );
       },
       webWaiter: async () => {},
     });
     assert.equal(result.exitCode, 1);
-    assert.match(result.output.join(""), /npm i @allinai\/agentkit-web/);
+    assert.match(result.output.join(""), /npm i @allin-ai\/agentkit-web/);
   });
 });
 

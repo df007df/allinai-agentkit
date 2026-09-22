@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactElement } from "react";
+import { useEffect, useRef, useState, type ReactElement } from "react";
 import type { ClientEvent } from "../protocol/index.js";
 import {
   CONSOLE_TOOL_APPROVAL_PATH,
@@ -18,6 +18,13 @@ export type ConsoleSnapshotFrame = {
   clients: Array<{ clientId: string; lastSeen: number }>;
   events: ClientEvent[];
   observations: unknown[];
+  pendingApprovals?: Array<{
+    clientId: string;
+    executionId: string;
+    requestId: string;
+    toolName: string;
+    toolInput: Record<string, unknown>;
+  }>;
   serverTime: number;
   warning: string | null;
 };
@@ -61,12 +68,34 @@ export function useAgentEvents(): {
   const [snapshot, setSnapshot] = useState<ConsoleSnapshotFrame | null>(null);
   const [status, setStatus] = useState<StreamStatus>("connecting");
   const [approvals, setApprovals] = useState<ToolApprovalView[]>([]);
+  // Approvals answered locally while the snapshot still lists them: the next
+  // snapshot reconciliation must not resurrect a card the operator dismissed.
+  const dismissedRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     const stream: AgentEventStream = connectAgentEvents({
       onSnapshot: (raw) => {
         const frame = raw as ConsoleSnapshotFrame;
-        if (frame && Array.isArray(frame.events)) setSnapshot(frame);
+        if (frame && Array.isArray(frame.events)) {
+          setSnapshot(frame);
+          // Approvals are derived server-side from hub observations, so every
+          // snapshot (including the post-reconnect one) rehydrates the cards a
+          // backgrounded mobile client dropped. Snapshot items come first,
+          // locally observed live additions stay after, deduped by requestId;
+          // locally answered cards are never resurrected.
+          setApprovals((live) => {
+            const byRequestId = new Map<string, ToolApprovalView>();
+            for (const approval of frame.pendingApprovals ?? []) {
+              if (dismissedRef.current.has(approval.requestId)) continue;
+              byRequestId.set(approval.requestId, approval);
+            }
+            for (const approval of live) {
+              if (byRequestId.has(approval.requestId)) continue;
+              byRequestId.set(approval.requestId, approval);
+            }
+            return [...byRequestId.values()];
+          });
+        }
       },
       onObservation: (raw) => {
         const observation = raw as ToolApprovalObservationFrame;
@@ -98,6 +127,7 @@ export function useAgentEvents(): {
   }, []);
 
   const dismissApproval = (requestId: string): void => {
+    dismissedRef.current.add(requestId);
     setApprovals((pending) =>
       pending.filter((p) => p.requestId !== requestId),
     );

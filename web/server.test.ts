@@ -75,3 +75,22 @@ test("startWebHost reports a path-carrying hubUrl and closes cleanly", async () 
     await site.close();
   }
 });
+
+test("close() settles while an SSE subscriber is attached", async () => {
+  const site = await startWebHost({ port: 0, dev: false });
+  const response = await fetch(`${site.url}/_agentkit/console/observe`);
+  assert.equal(response.status, 200);
+  // Hold the stream open (a backgrounded mobile client); close must still
+  // finish rather than hang on the live subscriber socket.
+  const closing = site.close();
+  const finished = await Promise.race([
+    closing.then(() => "closed" as const),
+    new Promise<never>((_, reject) =>
+      setTimeout(
+        () => reject(new Error("close() hung with a live SSE subscriber")),
+        5_000,
+      ),
+    ),
+  ]);
+  assert.equal(finished, "closed");
+});

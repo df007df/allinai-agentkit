@@ -15,6 +15,7 @@ export {
   CONSOLE_EVENT_BUFFER_LIMIT,
   CONSOLE_OBSERVATION_BUFFER_LIMIT,
   type ConsoleClientView,
+  type ConsolePendingApproval,
   type ConsoleSnapshot,
 } from "./state.js";
 export {
@@ -28,7 +29,7 @@ export {
   isLoopbackRedirect,
 } from "./login-bridge.js";
 export { handleConsoleToolApproval } from "./tool-approval.js";
-export { createStaticHandler, resolveWebRoot } from "./static.js";
+export { createStaticHandler } from "./static.js";
 export {
   createConsoleRuntime,
   createConsoleRouter,
