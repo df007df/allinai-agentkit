@@ -155,10 +155,10 @@
   },
   "files": [
     "bin",
-    "dist",
-    "web"
+    "dist"
   ],
   "scripts": {
+    "web": "node bin/allinai-agentkit web",
     "build": "node scripts/build.mjs",
     "test": "tsx --tsconfig ./tsconfig.json --test 'src/**/*.test.ts'",
     "typecheck": "tsc --noEmit",

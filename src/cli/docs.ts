@@ -2,7 +2,7 @@
  * The CLI usage manual as one typed data structure with two renderings:
  * `docs` prints Markdown for humans and LLM agents; `docs --json` prints the
  * structure itself for agents that parse strictly. Content is embedded in
- * code because the npm tarball ships only `bin/`, `dist/` and `web/`.
+ * code because the npm tarball ships only `bin/` and `dist/`.
  *
  * Keep this in lockstep with COMMAND_OPTIONS in commands.ts — docs.test.ts
  * fails if a command is accepted but undocumented, or documented but
