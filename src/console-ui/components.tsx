@@ -5,6 +5,7 @@ import type { ClientEvent } from "../protocol/index.js";
 import {
   CONSOLE_POLICY_APPROVAL_PATH,
   CONSOLE_RUNS_PATH,
+  CONSOLE_SNAPSHOT_PATH,
   CONSOLE_TOOL_APPROVAL_PATH,
   LOGIN_APPROVE_PATH,
   LOGIN_DENY_PATH,
@@ -195,6 +196,18 @@ export function useAgentEvents(): {
                   },
                 ],
           );
+        }
+        // Timeline data lives in the snapshot; a fresh ingested batch means
+        // the server has events the current snapshot predates. Refetch so the
+        // list updates live instead of on manual reload.
+        const anyObservation = raw as { kind?: string };
+        if (anyObservation && anyObservation.kind === "events.ingested") {
+          fetch(CONSOLE_SNAPSHOT_PATH)
+            .then((response) => (response.ok ? response.json() : null))
+            .then((frame) => {
+              if (frame && Array.isArray(frame.events)) setSnapshot(frame);
+            })
+            .catch(() => undefined);
         }
       },
       onStatus: setStatus,

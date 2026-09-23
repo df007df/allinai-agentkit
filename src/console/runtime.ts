@@ -25,6 +25,7 @@ import { handleConsoleRun } from "./runs.js";
 import { createStaticHandler } from "./static.js";
 import {
   CONSOLE_OBSERVE_PATH,
+  CONSOLE_SNAPSHOT_PATH,
   CONSOLE_RUNS_PATH,
   CONSOLE_TOOL_APPROVAL_PATH,
   CONSOLE_POLICY_APPROVAL_PATH,
@@ -90,6 +91,17 @@ export function createConsoleRouter(
     const url = new URL(request.url ?? "/", "http://console.invalid");
     if (request.method === "GET" && url.pathname === CONSOLE_OBSERVE_PATH) {
       handleConsoleObserve(runtime.stream, request, response);
+      return true;
+    }
+    if (request.method === "GET" && url.pathname === CONSOLE_SNAPSHOT_PATH) {
+      const snapshot = runtime.state.snapshot();
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(
+        JSON.stringify({
+          ...snapshot,
+          warning: runtime.stream.hostWarning,
+        }),
+      );
       return true;
     }
     // The console write endpoints are unauthenticated by design: their only

@@ -19,6 +19,8 @@ export const LOGIN_DENY_PATH = `${LOGIN_PATH}/deny`;
 /** Console control-plane endpoints. */
 export const CONSOLE_PATH_PREFIX = `${AGENTKIT_ROOT_PREFIX}/console`;
 export const CONSOLE_OBSERVE_PATH = `${CONSOLE_PATH_PREFIX}/observe`;
+/** One-shot JSON snapshot of the console state (SSE-free polling fallback). */
+export const CONSOLE_SNAPSHOT_PATH = `${CONSOLE_PATH_PREFIX}/snapshot`;
 /** In-flight tool-approval decisions from an approver UI. */
 export const CONSOLE_TOOL_APPROVAL_PATH = `${CONSOLE_PATH_PREFIX}/tool-approval`;
 /** Execution-level (local policy) approval decisions from an approver UI. */
