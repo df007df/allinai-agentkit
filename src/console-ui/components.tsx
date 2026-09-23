@@ -288,7 +288,11 @@ function statusLabel(status: StreamStatus): string {
 
 function formatTime(iso: string): string {
   const parsed = new Date(iso);
-  return Number.isNaN(parsed.getTime()) ? iso : parsed.toLocaleTimeString();
+  if (Number.isNaN(parsed.getTime())) return iso;
+  const pad = (value: number): string => String(value).padStart(2, "0");
+  return `${pad(parsed.getHours())}:${pad(parsed.getMinutes())}:${pad(
+    parsed.getSeconds(),
+  )}`;
 }
 
 const TERMINAL_STATES = new Set(["done", "failed", "cancelled", "rejected"]);
