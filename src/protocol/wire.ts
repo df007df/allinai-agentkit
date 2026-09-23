@@ -255,6 +255,8 @@ export type ClientHello = {
   type: "client.hello";
   protocolVersion: typeof AGENT_CLIENT_PROTOCOL_VERSION;
   clientId: string;
+  /** Optional human-readable display name; absent means "show clientId". */
+  name?: string;
 };
 export type HubEventAcknowledgement = {
   type: "event.ack";
@@ -401,24 +403,31 @@ export function encodePluginSyncAcknowledgement(
 export function parseClientHello(value: unknown): ClientHello | null {
   if (
     !isPlainObject(value) ||
-    !hasOnlyKeys(value, ["type", "protocolVersion", "clientId"]) ||
+    !hasOnlyKeys(value, ["type", "protocolVersion", "clientId", "name"]) ||
     value.type !== "client.hello" ||
     value.protocolVersion !== AGENT_CLIENT_PROTOCOL_VERSION ||
     !isNonEmptyString(value.clientId)
   )
     return null;
+  // A present-but-blank name is dropped rather than rejecting the hello: the
+  // identity fields are authoritative, the name is decorative.
   return {
     type: "client.hello",
     protocolVersion: AGENT_CLIENT_PROTOCOL_VERSION,
     clientId: value.clientId,
+    ...(isNonEmptyString(value.name) ? { name: value.name } : {}),
   };
 }
 
-export function encodeClientHello(clientId: string): ClientHello {
+export function encodeClientHello(
+  clientId: string,
+  name?: string,
+): ClientHello {
   const hello = parseClientHello({
     type: "client.hello",
     protocolVersion: AGENT_CLIENT_PROTOCOL_VERSION,
     clientId,
+    ...(name ? { name } : {}),
   });
   if (!hello) throw new TypeError("Client id must be a non-empty string");
   return hello;

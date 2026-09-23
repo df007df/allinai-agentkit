@@ -186,6 +186,7 @@ export function createAgentHub<Principal>(
               principal,
               clientId: hello.clientId,
               protocolVersion: hello.protocolVersion,
+              ...(hello.name ? { name: hello.name } : {}),
             });
           } catch {
             socket.close(1008, "client registration rejected");
@@ -210,6 +211,7 @@ export function createAgentHub<Principal>(
             connectionKey: record.connectionKey,
             principal,
             socket,
+            ...(hello.name ? { name: hello.name } : {}),
           };
           sockets.set(record.connectionKey, connection);
           prior?.socket.close(1000, "superseded connection");
@@ -264,7 +266,11 @@ export function createAgentHub<Principal>(
           socket.close(1008, "client.hello required");
           return;
         }
-        await store.heartbeat({ principal, clientId: connection.clientId });
+        await store.heartbeat({
+          principal,
+          clientId: connection.clientId,
+          ...(connection.name ? { name: connection.name } : {}),
+        });
       });
     }
     socket.on("ping", heartbeat);

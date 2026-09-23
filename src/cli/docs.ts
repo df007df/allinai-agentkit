@@ -86,6 +86,7 @@ export function cliManual(): CliManual {
         options: [
           { flag: "hub", description: "Hub base URL", required: true },
           { flag: "client", description: "Client ID (defaults to existing config or a fresh UUID)" },
+          { flag: "name", description: "Display name shown on the authorize page and console" },
           { flag: "no-browser", description: "Print the authorize URL without opening a browser" },
         ],
         example: "allinai-agentkit login --hub http://127.0.0.1:4317 --no-browser",

@@ -22,8 +22,8 @@ export type ToolApprovalObservation = {
 };
 
 export type HubObservation =
-  | { kind: "client.registered"; clientId: string; at: number }
-  | { kind: "client.heartbeat"; clientId: string; at: number }
+  | { kind: "client.registered"; clientId: string; name?: string; at: number }
+  | { kind: "client.heartbeat"; clientId: string; name?: string; at: number }
   | {
       kind: "offer.enqueued";
       offerId: string;
@@ -74,6 +74,7 @@ export class ObservableStore<Principal> implements HubStore<Principal> {
     this.notify({
       kind: "client.registered",
       clientId: input.clientId,
+      ...(input.name ? { name: input.name } : {}),
       at: Date.now(),
     });
     return record;
@@ -84,6 +85,7 @@ export class ObservableStore<Principal> implements HubStore<Principal> {
     this.notify({
       kind: "client.heartbeat",
       clientId: input.clientId,
+      ...(input.name ? { name: input.name } : {}),
       at: Date.now(),
     });
   }

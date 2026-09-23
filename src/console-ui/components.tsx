@@ -18,6 +18,7 @@ import { deriveExecutions, eventsForExecution, type ExecutionView } from "./exec
 export type ConsoleSnapshotFrame = {
   clients: Array<{
     clientId: string;
+    name?: string;
     lastSeen: number;
     projects?: string[];
   }>;
@@ -476,6 +477,11 @@ export function ConsoleApp(): ReactElement {
       )}
       <p className="console-clients">
         已接入 client：{snapshot?.clients.length ?? 0}
+        {snapshot?.clients.length
+          ? `（${snapshot.clients
+              .map((c) => c.name || c.clientId.slice(0, 8))
+              .join("、")}）`
+          : ""}
       </p>
     </section>
   );
@@ -483,6 +489,8 @@ export function ConsoleApp(): ReactElement {
 
 type AuthorizeParams = {
   clientId: string;
+  /** Human-readable client name from the login flow; shown in place of the id. */
+  name: string;
   state: string;
   redirectUri: string;
 };
@@ -491,6 +499,7 @@ function readAuthorizeParams(): AuthorizeParams {
   const params = new URLSearchParams(window.location.search);
   return {
     clientId: params.get("client_id") ?? "",
+    name: params.get("name") ?? "",
     state: params.get("state") ?? "",
     redirectUri: params.get("redirect_uri") ?? "",
   };
@@ -541,11 +550,11 @@ export function AuthorizeCard(): ReactElement {
       <h1>登录授权</h1>
       <p className="console-subtext">
         {params.clientId
-          ? `应用 ${params.clientId} 请求接入本机 Agent。`
+          ? `应用 ${params.name || params.clientId} 请求接入本机 Agent。`
           : "缺少授权参数（client_id / state / redirect_uri）。"}
       </p>
       <div className="console-login-client">
-        <code>{params.clientId || "—"}</code>
+        <code>{params.name || params.clientId || "—"}</code>
       </div>
       {error ? <p className="console-error">{error}</p> : null}
       <div className="console-cta-row">

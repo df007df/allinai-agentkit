@@ -35,6 +35,8 @@ export type WsClientTransportOptions = {
   pathPrefix?: string;
   token: string;
   clientId: string;
+  /** Optional display name sent in client.hello for authorize/console UIs. */
+  name?: string;
   WebSocketImpl?: new (url: string) => ClientWebSocketLike;
   reconnectBaseMs?: number;
   reconnectMaxMs?: number;
@@ -198,7 +200,11 @@ export class WsClientTransport implements ClientTransport {
     socket.onopen = () => {
       if (this.socket !== socket || this.stopped) return;
       try {
-        socket.send(JSON.stringify(encodeClientHello(this.options.clientId)));
+        socket.send(
+          JSON.stringify(
+            encodeClientHello(this.options.clientId, this.options.name),
+          ),
+        );
         this.reconnectAttempt = 0;
         void this.notifyConnected();
       } catch (error) {

@@ -88,16 +88,22 @@ export class MemoryHubStore<Principal> implements HubStore<Principal> {
     };
     client.protocolVersion = input.protocolVersion;
     client.lastSeen = Date.now();
+    if (input.name) client.name = input.name;
     this.clients.set(input.clientId, client);
     bridgeLog.info("memory-hub", "test client registered", {
       clientId: input.clientId,
     });
-    return { clientId: client.clientId, connectionKey: client.connectionKey };
+    return {
+      clientId: client.clientId,
+      connectionKey: client.connectionKey,
+      ...(client.name ? { name: client.name } : {}),
+    };
   }
 
   async heartbeat(input: HubHeartbeat<Principal>): Promise<void> {
     const client = this.assertClient(input.principal, input.clientId);
     client.lastSeen = Date.now();
+    if (input.name) client.name = input.name;
   }
 
   async listPendingOffers(

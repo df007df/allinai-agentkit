@@ -26,6 +26,8 @@ export type AgentProject = {
 export type AgentConfig = {
   hubBaseUrl: string;
   clientId: string;
+  /** Human-readable display name; shown on authorize pages and consoles. */
+  name?: string;
   maxConcurrentRuns: number;
   policy: AgentLocalPolicy;
   /** Locally owned project registry; Hub payloads select a project by name. */
@@ -202,6 +204,7 @@ export function parseAgentConfig(value: unknown): AgentConfig {
   const allowed = new Set([
     "hubBaseUrl",
     "clientId",
+    "name",
     "maxConcurrentRuns",
     "policy",
     "projects",
@@ -222,9 +225,12 @@ export function parseAgentConfig(value: unknown): AgentConfig {
       "maxConcurrentRuns must be an integer between 1 and 32",
     );
   }
+  const name =
+    value.name === undefined ? undefined : requireString(value.name, "name");
   return {
     hubBaseUrl: parseHubBaseUrl(value.hubBaseUrl),
     clientId: requireString(value.clientId, "clientId"),
+    ...(name ? { name } : {}),
     maxConcurrentRuns: maxConcurrentRuns as number,
     policy: parsePolicy(value.policy),
     projects: parseProjects(value.projects),

@@ -184,7 +184,10 @@ type CommandOptionSpec = {
  */
 export const COMMAND_OPTIONS: Readonly<Record<string, CommandOptionSpec>> = {
   init: { values: ["hub", "client", "token", "config-dir"] },
-  login: { values: ["hub", "client", "config-dir"], booleans: ["no-browser"] },
+  login: {
+    values: ["hub", "client", "name", "config-dir"],
+    booleans: ["no-browser"],
+  },
   web: { values: ["port", "host", "config-dir"] },
   daemon: { values: ["config-dir"] },
   install: { values: ["config-dir"] },
@@ -508,14 +511,18 @@ export async function runCli(
         throw new Error("login requires --hub http://127.0.0.1:4317");
       const noBrowser = parsed.flags.get("no-browser") === true;
       const existing = await readConfigIfExists(paths.configFile);
+      // The client owns its identity: an explicit --client overrides, else the
+      // persisted one stands, else it is generated here once and saved with the
+      // config so every later command and the daemon reuse the same id.
       const clientId =
-        flagValue(parsed.flags, "client") ??
-        existing?.clientId ??
-        randomUUID();
+        flagValue(parsed.flags, "client") ?? existing?.clientId ?? randomUUID();
+      // --name names the client for humans (authorize page, console list).
+      const name = flagValue(parsed.flags, "name");
       await mkdir(paths.home, { recursive: true });
       const result = await runLoginFlow({
         hubBaseUrl,
         clientId,
+        ...(name ? { name } : {}),
         credentials:
           scopedOptions.credentials ?? createCredentialStore({ paths }),
         saveConfig: async (input) => {
@@ -523,6 +530,7 @@ export async function runCli(
             ...(existing ?? defaultAgentConfig()),
             hubBaseUrl: input.hubBaseUrl,
             clientId: input.clientId,
+            ...(name ? { name } : existing?.name ? { name: existing.name } : {}),
           });
           await writeFile(
             paths.configFile,
@@ -1158,6 +1166,7 @@ export async function createLocalAgentDaemon(
             hubBaseUrl: config.hubBaseUrl,
             token,
             clientId: config.clientId,
+            ...(config.name ? { name: config.name } : {}),
           }),
           () => {
             state = "ok";

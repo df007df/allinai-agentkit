@@ -30,6 +30,15 @@ test("ingested events land in snapshot and ring is trimmed", () => {
   assert.equal(snap.events[0].executionId, "exec-2");
 });
 
+test("registered clients expose their display name in the snapshot", () => {
+  const state = new ConsoleState();
+  state.apply({ kind: "client.registered", clientId: "c1", name: "MacBook Pro", at: 10 });
+  state.apply({ kind: "client.heartbeat", clientId: "c2", at: 11 });
+  const snap = state.snapshot();
+  assert.equal(snap.clients.find((c) => c.clientId === "c1")?.name, "MacBook Pro");
+  assert.equal(snap.clients.find((c) => c.clientId === "c2")?.name, undefined);
+});
+
 test("heartbeat upserts client lastSeen; snapshot sorts events by occurredAt", () => {
   const state = new ConsoleState();
   state.apply({ kind: "client.heartbeat", clientId: "c1", at: 11 });

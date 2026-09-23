@@ -8,6 +8,8 @@ import { LOGIN_PATH } from "./routes.js";
 export type LoginFlowOptions = {
   hubBaseUrl: string;
   clientId: string;
+  /** Optional display name carried to the authorize page via the URL. */
+  name?: string;
   credentials: CredentialStore;
   saveConfig: (input: { hubBaseUrl: string; clientId: string }) => Promise<void>;
   open?: (url: string) => Promise<void>;
@@ -90,7 +92,7 @@ export async function runLoginFlow(
   const redirectUri = `http://127.0.0.1:${address.port}/callback`;
   const authorizeUrl = `${options.hubBaseUrl}${LOGIN_PATH}?client_id=${encodeURIComponent(
     options.clientId,
-  )}&state=${encodeURIComponent(state)}&redirect_uri=${encodeURIComponent(redirectUri)}`;
+  )}${options.name ? `&name=${encodeURIComponent(options.name)}` : ""}&state=${encodeURIComponent(state)}&redirect_uri=${encodeURIComponent(redirectUri)}`;
 
   try {
     options.onAuthorizeUrl?.(authorizeUrl);

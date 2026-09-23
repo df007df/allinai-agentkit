@@ -19,15 +19,20 @@ export interface HubClientRegistration<Principal> {
   principal: Principal;
   clientId: ClientHello["clientId"];
   protocolVersion: ClientHello["protocolVersion"];
+  /** Optional display name from client.hello; absent means "show clientId". */
+  name?: ClientHello["name"];
 }
 export interface HubClientRecord {
   clientId: string;
+  /** Latest display name reported by the client, when it provided one. */
+  name?: string;
   /** Host-issued stable opaque key, unique per authorized owner/client pair. Never on wire. */
   connectionKey: string;
 }
 export interface HubHeartbeat<Principal> {
   principal: Principal;
   clientId: string;
+  name?: string;
 }
 export interface HubOfferInput<Principal> {
   principal: Principal;

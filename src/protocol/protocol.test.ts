@@ -44,6 +44,43 @@ describe("agent-client protocol export boundary", () => {
       },
     );
     assert.deepEqual(
+      parseClientHello({
+        type: "client.hello",
+        protocolVersion: 2,
+        clientId: "client-1",
+        name: "MacBook Pro",
+      }),
+      {
+        type: "client.hello",
+        protocolVersion: 2,
+        clientId: "client-1",
+        name: "MacBook Pro",
+      },
+    );
+    // A blank name is dropped, not rejected — older strictness stays intact.
+    assert.deepEqual(
+      parseClientHello({
+        type: "client.hello",
+        protocolVersion: 2,
+        clientId: "client-1",
+        name: "  ",
+      }),
+      {
+        type: "client.hello",
+        protocolVersion: 2,
+        clientId: "client-1",
+      },
+    );
+    assert.equal(
+      parseClientHello({
+        type: "client.hello",
+        protocolVersion: 2,
+        clientId: "client-1",
+        nickname: "nope",
+      }),
+      null,
+    );
+    assert.deepEqual(
       parseHubDownlink({ type: "task.offer", command: agentRunCommand }),
       {
         type: "task.offer",

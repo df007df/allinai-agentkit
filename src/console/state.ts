@@ -6,6 +6,8 @@ export const CONSOLE_OBSERVATION_BUFFER_LIMIT = 200;
 
 export type ConsoleClientView = {
   clientId: string;
+  /** Display name from client.hello, when the client provided one. */
+  name?: string;
   lastSeen: number;
   /** Project names from the client's latest inventory report. */
   projects: string[];
@@ -58,6 +60,11 @@ export class ConsoleState {
         const existing = this.clients.get(observation.clientId);
         this.clients.set(observation.clientId, {
           clientId: observation.clientId,
+          ...(observation.name
+            ? { name: observation.name }
+            : existing?.name
+              ? { name: existing.name }
+              : {}),
           lastSeen: observation.at,
           projects: existing?.projects ?? [],
         });
