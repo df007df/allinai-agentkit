@@ -19,7 +19,11 @@ import next from "next";
  * isolation for free.
  */
 
-import { AGENTKIT_ROOT_PREFIX, DEFAULT_HUB_WS_PATH } from "@allin-ai/agentkit/routes";
+import {
+  AGENTKIT_ROOT_PREFIX,
+  DEFAULT_HUB_WS_PATH,
+  LOGIN_PATH,
+} from "@allin-ai/agentkit/routes";
 import {
   createConsoleRuntime,
   createConsoleRouter,
@@ -50,6 +54,14 @@ export function createAgentkitFallback(params: {
         request.url ?? "/",
         "http://web.invalid",
       ).pathname;
+      // The CLI login flow opens GET ${hub}/_agentkit/login (LOGIN_PATH) in a
+      // browser; that page renders in Next (app/_agentkit/login). It must pass
+      // through to Next instead of the console router, which only owns the
+      // approve/deny POST endpoints under the same prefix.
+      if (pathname === LOGIN_PATH && request.method === "GET") {
+        params.nextHandler(request, response);
+        return;
+      }
       if (
         pathname === AGENTKIT_ROOT_PREFIX ||
         pathname.startsWith(`${AGENTKIT_ROOT_PREFIX}/`)

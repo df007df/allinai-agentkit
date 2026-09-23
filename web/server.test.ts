@@ -41,6 +41,24 @@ test("agentkit-prefixed requests go to the console router, others to next", asyn
   assert.equal(nextHit, true);
 });
 
+test("GET /_agentkit/login passes through to Next for the authorize page", async () => {
+  let routerHit = false;
+  let nextHit = false;
+  const fallback = createAgentkitFallback({
+    router: async () => {
+      routerHit = true;
+      return true;
+    },
+    nextHandler: () => {
+      nextHit = true;
+    },
+  });
+  fallback({ url: "/_agentkit/login?client_id=c&state=s", method: "GET" } as never, res());
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(nextHit, true);
+  assert.equal(routerHit, false);
+});
+
 test("unhandled agentkit paths answer a JSON 404 from the fallback", async () => {
   const fallback = createAgentkitFallback({
     router: async () => false,
