@@ -628,25 +628,33 @@ export function ConsoleApp(): ReactElement {
         approvals={executionApprovals}
         onRespond={respondExecutionApproval}
       />
-      <RunForm clients={snapshot?.clients ?? []} />
-      {selected === null ? (
-        <ExecutionList
-          executions={executions}
-          onSelect={setSelectedExecutionId}
-        />
-      ) : (
-        <div className="console-detail">
-          <button
-            type="button"
-            className="console-btn console-btn-ghost"
-            onClick={() => setSelectedExecutionId(null)}
-          >
-            ← 返回列表
-          </button>
-          <h3 className="console-detail-title">{selectedExecutionId}</h3>
-          <ExecutionDetail events={selected} />
-        </div>
-      )}
+      <div className="console-grid">
+        <section className="console-panel">
+          <h3 className="console-panel-title">发起执行</h3>
+          <RunForm clients={snapshot?.clients ?? []} />
+        </section>
+        <section className="console-panel console-panel-history">
+          <h3 className="console-panel-title">历史会话</h3>
+          {selected === null ? (
+            <ExecutionList
+              executions={executions}
+              onSelect={setSelectedExecutionId}
+            />
+          ) : (
+            <div className="console-detail">
+              <button
+                type="button"
+                className="console-btn console-btn-ghost"
+                onClick={() => setSelectedExecutionId(null)}
+              >
+                ← 返回列表
+              </button>
+              <h3 className="console-detail-title">{selectedExecutionId}</h3>
+              <ExecutionDetail events={selected} />
+            </div>
+          )}
+        </section>
+      </div>
       <p className="console-clients">
         已接入 client：{snapshot?.clients.length ?? 0}
         {snapshot?.clients.length

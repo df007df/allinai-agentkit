@@ -30,7 +30,50 @@
 .console-app *,
 .console-card * { box-sizing: border-box; }
 
-/* ---------- head / status ---------- */
+/* ---------- page shell: fixed-width, centered ---------- */
+
+.console-app {
+  max-width: 1080px;
+  margin-inline: auto;
+  padding: 2rem 1.25rem 3rem;
+}
+
+/* ---------- two-card layout: left = run form, right = history ---------- */
+
+.console-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  gap: 1rem;
+  margin-top: 1rem;
+  align-items: start;
+}
+
+.console-panel {
+  border: 1px solid var(--console-border);
+  border-radius: var(--console-radius);
+  background: var(--console-bg-raised);
+  padding: 1rem;
+  display: grid;
+  gap: 0.75rem;
+  align-content: start;
+}
+
+.console-panel-title {
+  margin: 0;
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+  color: var(--console-text-dim);
+}
+
+/* History card scrolls internally so the page height stays constant. */
+.console-panel-history .console-exec-list,
+.console-panel-history .console-detail {
+  max-height: 24rem;
+  overflow-y: auto;
+  margin-top: 0;
+}
+
+/* head / status ---------- */
 
 .console-head {
   display: flex;
@@ -314,6 +357,9 @@
 @media (max-width: 880px) {
   .console-exec-row { grid-template-columns: 1fr auto; }
   .console-exec-time { display: none; }
+  .console-grid { grid-template-columns: 1fr; }
+  .console-panel-history .console-exec-list,
+  .console-panel-history .console-detail { max-height: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -362,6 +408,12 @@
   display: grid;
   gap: 0.6rem;
   background: var(--console-bg-tint);
+}
+/* Inside the layout card the form drops its own chrome (no card-in-card). */
+.console-panel .console-run-form {
+  border: 0;
+  background: transparent;
+  padding: 0;
 }
 .console-run-row {
   display: flex;
