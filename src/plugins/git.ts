@@ -67,14 +67,17 @@ export function isProductionGitUrl(value: string): boolean {
 }
 
 /**
- * Empty allowlists deny remote activation. Entries may be either a hostname
- * (`github.com`) or an exact Git authority (`ssh://git@github.com`).
+ * An empty allowlist trusts the production-URL gate alone: any HTTPS/SSH
+ * origin may sync, and post-clone manifest validation owns the rest. A
+ * non-empty allowlist is the operator's stricter mode — remote activation
+ * then requires an exact hostname or Git authority match.
  */
 export function isAllowedGitOrigin(
   value: string,
   allowedOrigins: readonly string[],
 ): boolean {
-  if (!isProductionGitUrl(value) || allowedOrigins.length === 0) return false;
+  if (!isProductionGitUrl(value)) return false;
+  if (allowedOrigins.length === 0) return true;
   const allowed = new Set(
     allowedOrigins.map((origin) => origin.trim().toLowerCase()),
   );

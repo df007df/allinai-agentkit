@@ -26,7 +26,7 @@ type ActivePointer = {
 export type PluginManagerOptions = {
   pluginsRoot: string;
   git?: GitClient;
-  /** Empty means no remote origin is trusted until the local config names one. */
+  /** Empty means any production HTTPS/SSH origin is trusted until tightened locally. */
   allowedGitOrigins?: readonly string[];
   /** Tests must inject this to use a local fixture repository. */
   validateGitUrl?: (gitUrl: string) => boolean;

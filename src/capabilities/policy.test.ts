@@ -73,7 +73,12 @@ describe("shell capability local policy", () => {
     );
     assert.deepEqual(
       decideCapability(
-        policy({ allowedGitOrigins: [], allowedWorkspaceRoots: [] }),
+        policy({
+          // An empty allowlist trusts the production-URL gate; a non-empty
+          // list that excludes this origin is what now denies it.
+          allowedGitOrigins: ["gitlab.com"],
+          allowedWorkspaceRoots: [],
+        }),
         plugin,
         networkCapability,
         "/outside",

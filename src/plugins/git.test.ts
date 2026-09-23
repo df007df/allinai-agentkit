@@ -25,9 +25,10 @@ describe("plugin git boundary", () => {
     }
   });
 
-  it("requires an explicit local origin allowlist before activating a remote plugin", () => {
+  it("an empty allowlist trusts the production-URL gate; entries tighten it", () => {
     const url = "https://github.com/allin-ai/demo.git";
-    assert.equal(isAllowedGitOrigin(url, []), false);
+    assert.equal(isAllowedGitOrigin(url, []), true);
+    assert.equal(isAllowedGitOrigin("/tmp/demo", []), false);
     assert.equal(isAllowedGitOrigin(url, ["gitlab.com"]), false);
     assert.equal(isAllowedGitOrigin(url, ["github.com"]), true);
     assert.equal(isAllowedGitOrigin(url, ["https://github.com"]), true);
