@@ -122,16 +122,17 @@ allinai-agentkit docs [--json]                          # 输出完整 CLI 使�
 
 ### 项目目录
 
-项目在 client 本地 config.json 的 `projects` 中注册（`project add` 即写入）。Hub 下发的 `agent.run` 可携带 `payload.project`：
+项目在 client 本地 config.json 的 `projects` 中注册（`project add` 即写入，同时生成持久化的会话记录后缀 `dir`）。Hub 下发的 `agent.run` 可携带 `payload.project`：
 
-- 不带 `project`（或名字未注册）：使用各 runtime 的默认工作目录；
-- 带 `project` 且已注册：在该目录中执行，同时把 `resolvedProjectPath` 附进执行上下文。
+- 不带 `project`（或名字未注册）：cwd 落在 `~/.allinai/agent/projects/default/runtime/<平台>/<executionId>/`（一次性 scratch，可按需清理），会话记录在 `~/.allinai/agent/projects/default/sessions/<executionId>/`；
+- 带 `project` 且已注册：cwd 就是注册的目录本身，会话记录在 `~/.allinai/agent/projects/<名称>-<dir>/sessions/<executionId>/`（`events.jsonl` 状态时间线 + `session.json` 终态摘要），不会写进项目目录本身。
 
-Hub 无法自选任意路径——只能从本地注册的目录里按名字挑选。
+Hub 无法自选任意路径——只能从本地注册的目录里按名字挑选。运行中的 daemon 会在下一条 `agent.run` 时重读项目注册（无需重启）。项目名单随 `inventory.report` 上报（仅名字），Console 的发起执行表单据此渲染项目下拉。
 
 ### 插件
 
-- Hub 主动推送：`hub.syncPlugins({ principal, targetClientId, revision, plugins })`（经已认证的 Hub WebSocket 下行 `plugin.sync` 下发；Console 的 HTTP 写端点只有回环地址可用的 tool-approval / login 授权中继）。
+- Hub 主动推送：`hub.syncPlugins({ principal, targetClientId, revision, plugins })`（经已认证的 Hub WebSocket 下行 `plugin.sync` 下发；Console 的 HTTP 写端点只有回环地址可用的 tool-approval / login 授权 / 发起执行中继）。
+- client 侧默认信任任何 HTTPS/SSH 仓库地址（`policy.allowedGitOrigins` 留空时）；填入主机名或 authority 即切换为白名单严格模式。克隆后仍强制 manifest 校验（id 匹配、capability schema），失败不上激活、保留旧版本继续运行。
 - client 收到后校验清单、克隆到不可变修订目录并原子激活，随后回 `plugin.sync.ack`（含每个插件的 resolvedCommit）。
 - 本地随时查看：`allinai-agentkit plugins`；重新上报：`allinai-agentkit plugins --refresh`。
 

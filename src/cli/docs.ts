@@ -219,16 +219,19 @@ export function cliManual(): CliManual {
         field: "policy.autoPermissions",
         description: "Pre-approved capability permissions (e.g. network, workspace:write)",
       },
-      { field: "policy.allowedGitOrigins", description: "Git origins plugins may be synced from" },
+      { field: "policy.allowedGitOrigins", description: "Optional stricter allowlist of Git origins; empty trusts any HTTPS/SSH URL (post-clone validation still applies)" },
       { field: "policy.deniedPluginIds", description: "Plugin IDs that must never activate" },
       { field: "policy.allowedWorkspaceRoots", description: "Roots capability invocations may use as workspace" },
-      { field: "projects", description: "Locally registered { name, path } working directories" },
+      { field: "projects", description: "Locally registered { name, path, dir } working directories; dir is the session-record suffix generated at registration" },
     ],
     filesystem: [
       { path: "~/.allinai/agent/config.json", description: "Client config (mode 0600)" },
       { path: "~/.allinai/agent/state.db", description: "SQLite execution state, survives restarts" },
       { path: "~/.allinai/agent/credentials/", description: "Token store: one mode-0600 file per clientId, identical on every platform" },
       { path: "~/.allinai/agent/plugins/", description: "Plugin revisions (immutable, per commit)" },
+      { path: "~/.allinai/agent/projects/default/runtime/<platform>/<executionId>/", description: "Disposable scratch cwd for runs without a bound project" },
+      { path: "~/.allinai/agent/projects/default/sessions/<executionId>/", description: "Session records (events.jsonl + session.json) for default runs" },
+      { path: "~/.allinai/agent/projects/<name>-<dir>/sessions/<executionId>/", description: "Session records for runs bound to a registered project (cwd stays the configured project path)" },
       { path: "~/.allinai/agent/logs/agent.log", description: "Rotating JSONL log, written verbatim" },
       { path: "~/.allinai/agent/control.sock", description: "Local control-plane Unix socket (also the single-instance lock)" },
     ],
@@ -254,11 +257,19 @@ export function cliManual(): CliManual {
       },
       {
         title: "Register a project directory for Hub runs",
-        description: "agent.run payloads may then select it via payload.project.",
+        description: "agent.run payloads may then select it via payload.project; the run's cwd is the configured path and its session records land under projects/<name>-<dir>/sessions/.",
         steps: [
           "allinai-agentkit project --name web --path /work/web",
           "allinai-agentkit projects",
           "allinai-agentkit restart   # optional; running daemons also pick it up on the next agent.run",
+        ],
+      },
+      {
+        title: "Trigger a run from the Console",
+        description: "The Console UI's run form posts to /_agentkit/console/runs, which enqueues an agent.run offer; the client's local policy still gates it.",
+        steps: [
+          "allinai-agentkit web",
+          "# open http://127.0.0.1:4317, pick a client, runtime and project, then submit a prompt",
         ],
       },
       {
