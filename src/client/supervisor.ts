@@ -421,6 +421,26 @@ export class ClientSupervisor {
       await this.cancelActiveExecution(command.executionId);
       return;
     }
+    if (command.kind === "respond_policy_approval") {
+      logExecution("info", "policy_approval_command", command.executionId, {
+        decision: command.decision,
+      });
+      const execution = this.options.store.getExecution(command.executionId);
+      if (!execution || execution.state !== "awaiting_approval") {
+        logExecution("warn", "policy_approval_unknown", command.executionId);
+        return;
+      }
+      if (command.decision === "deny") {
+        this.options.store.transition(command.executionId, "rejected", {
+          reason: command.reason ?? "local_policy_denied",
+        });
+        return;
+      }
+      // Allow: the persisted run start accepts awaiting_approval and resumes
+      // in place — no new execution is created.
+      await this.startPersistedAgentRun(execution);
+      return;
+    }
     if (command.kind === "respond_tool_approval") {
       logExecution("info", "tool_approval_command", command.executionId, {
         requestId: command.requestId,
@@ -467,6 +487,27 @@ export class ClientSupervisor {
       logExecution("info", "awaiting_approval", command.executionId);
       this.options.store.transition(command.executionId, "awaiting_approval", {
         reason: "local_policy_requires_approval",
+      });
+      // Surface the gate as an ingested event so approver UIs see it without
+      // polling (same channel tool approvals use). Deliver now: the state
+      // transition alone stays in the local outbox until the next flush.
+      this.options.store.appendEvent({
+        executionId: command.executionId,
+        type: "progress",
+        occurredAt: new Date().toISOString(),
+        payload: {
+          executionApproval: {
+            runtime: command.runtime,
+            prompt:
+              typeof command.payload.prompt === "string"
+                ? command.payload.prompt
+                : "",
+          },
+        },
+      });
+      const events = this.options.store.listUnackedEvents(command.executionId);
+      void this.deliver(events).catch(() => {
+        // Reconnect replay owns redelivery.
       });
       return;
     }

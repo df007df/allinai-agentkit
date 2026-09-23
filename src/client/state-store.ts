@@ -94,7 +94,9 @@ function now(): string {
 function commandAttempt(command: ClientCommand): number {
   // Cancel and approval decisions are run-scoped control frames, not new
   // attempts of a persisted execution, so they carry no attempt counter.
-  return command.kind === "cancel" || command.kind === "respond_tool_approval"
+  return command.kind === "cancel" ||
+    command.kind === "respond_tool_approval" ||
+    command.kind === "respond_policy_approval"
     ? 0
     : command.attempt;
 }

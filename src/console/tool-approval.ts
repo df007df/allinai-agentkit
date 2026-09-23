@@ -21,6 +21,58 @@ async function readJsonBody(
 }
 
 /**
+ * Relay a human execution-approval decision (local policy gate) through the
+ * same WS offer channel. The daemon's supervisor treats allow as "resume the
+ * awaiting run in place"; deny transitions it to rejected.
+ */
+export async function handleConsolePolicyApproval(
+  runtime: ConsoleRuntime,
+  request: IncomingMessage,
+  response: ServerResponse,
+): Promise<void> {
+  const body = await readJsonBody(request);
+  const clientId = typeof body.clientId === "string" ? body.clientId : "";
+  const executionId =
+    typeof body.executionId === "string" ? body.executionId : "";
+  const decision =
+    body.decision === "allow" || body.decision === "deny" ? body.decision : "";
+  const reason = typeof body.reason === "string" ? body.reason : undefined;
+  if (!clientId || !executionId || !decision) {
+    response.writeHead(400, { "content-type": "application/json" });
+    response.end(
+      JSON.stringify({
+        error: "invalid_policy_approval_request",
+        required: ["clientId", "executionId", "decision"],
+      }),
+    );
+    return;
+  }
+  try {
+    const offer = await runtime.hub.offer({
+      principal: CONSOLE_PRINCIPAL,
+      targetClientId: clientId,
+      command: {
+        kind: "respond_policy_approval",
+        commandId: randomUUID(),
+        executionId,
+        decision,
+        ...(reason ? { reason } : {}),
+      },
+    });
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ delivered: Boolean(offer.offerId) }));
+  } catch (error) {
+    response.writeHead(502, { "content-type": "application/json" });
+    response.end(
+      JSON.stringify({
+        error: "policy_approval_relay_failed",
+        message: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  }
+}
+
+/**
  * Relay a human tool-approval decision to the owning agent daemon through the
  * existing WS offer channel: the daemon receives task.offer and writes back to
  * its runner inside supervisor.handleCommand — no new execution is created.

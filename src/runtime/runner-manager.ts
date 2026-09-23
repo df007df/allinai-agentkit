@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { spawn as nodeSpawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { isTerminalPlatformEvent, platformErrorEvent } from "./events.js";
@@ -32,6 +33,11 @@ const STDERR_TAIL_BYTES = 16 * 1024;
 
 export const DEFAULT_RUNNER_CHILD_ENTRYPOINT = fileURLToPath(
   new URL("./runner-child.js", import.meta.url),
+);
+// tsx executes this module straight from src/, where the sibling is
+// runner-child.ts; the .js URL only exists in the built dist tree.
+const RUNNER_CHILD_SOURCE_ENTRYPOINT = fileURLToPath(
+  new URL("./runner-child.ts", import.meta.url),
 );
 
 export type RunnerChildProcess = {
@@ -228,7 +234,10 @@ export class IsolatedRunnerManager implements RunnerManager {
   constructor(options: RunnerManagerOptions = {}) {
     this.spawn = options.spawn ?? (nodeSpawn as unknown as RunnerSpawn);
     this.childEntrypoint =
-      options.childEntrypoint ?? DEFAULT_RUNNER_CHILD_ENTRYPOINT;
+      options.childEntrypoint ??
+      (existsSync(DEFAULT_RUNNER_CHILD_ENTRYPOINT)
+        ? DEFAULT_RUNNER_CHILD_ENTRYPOINT
+        : RUNNER_CHILD_SOURCE_ENTRYPOINT);
     this.stallTimeoutMs = options.stallTimeoutMs ?? DEFAULT_STALL_TIMEOUT_MS;
     this.totalTimeoutMs = options.totalTimeoutMs ?? DEFAULT_TOTAL_TIMEOUT_MS;
     this.firstEventTimeoutMs =
@@ -255,7 +264,23 @@ export class IsolatedRunnerManager implements RunnerManager {
     const events = new PlatformEventQueue();
     let child: RunnerChildProcess;
     try {
-      child = this.spawn(process.execPath, [this.childEntrypoint], {
+      // A .ts entrypoint means we are running from source (tsx wraps this
+      // parent but the child needs the loader too); dist ships .js and runs
+      // on plain node.
+      const isSourceMode = this.childEntrypoint.endsWith(".ts");
+      const execArgs = isSourceMode
+        ? [
+            "--import",
+            fileURLToPath(
+              new URL(
+                "../../node_modules/tsx/dist/loader.mjs",
+                import.meta.url,
+              ),
+            ),
+            this.childEntrypoint,
+          ]
+        : [this.childEntrypoint];
+      child = this.spawn(process.execPath, execArgs, {
         cwd: undefined,
         env: undefined,
         shell: false,

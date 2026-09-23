@@ -32,6 +32,14 @@ export type ClientCommand =
       requestId: string;
       decision: "allow" | "deny";
       reason?: string;
+    }
+  | {
+      /** Approver UI verdict on a locally policy-gated execution. */
+      kind: "respond_policy_approval";
+      commandId: string;
+      executionId: string;
+      decision: "allow" | "deny";
+      reason?: string;
     };
 
 export const CLIENT_EVENT_TYPES = [

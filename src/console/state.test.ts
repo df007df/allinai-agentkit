@@ -108,3 +108,33 @@ test("pending approvals survive observation ring trimming", () => {
   // mobile client relies on the snapshot to redraw it.
   assert.equal(state.snapshot().pendingApprovals.length, 1);
 });
+
+test("policy-gated executions become pending cards and clear on respond offers", () => {
+  const state = new ConsoleState();
+  state.apply({
+    kind: "execution_approval.requested",
+    clientId: "c1",
+    approval: { executionId: "exec-9", runtime: "codex", prompt: "写首诗" },
+    at: 1,
+  });
+  state.apply({
+    kind: "client.heartbeat",
+    clientId: "c1",
+    at: 2,
+  });
+  let snap = state.snapshot();
+  assert.equal(snap.pendingExecutionApprovals.length, 1);
+  assert.equal(snap.pendingExecutionApprovals[0].runtime, "codex");
+  assert.equal(snap.pendingExecutionApprovals[0].prompt, "写首诗");
+  // A respond_policy_approval offer for that execution clears the card.
+  state.apply({
+    kind: "offer.enqueued",
+    offerId: "offer-1",
+    targetClientId: "c1",
+    commandKind: "respond_policy_approval",
+    approvalExecutionId: "exec-9",
+    at: 3,
+  });
+  snap = state.snapshot();
+  assert.equal(snap.pendingExecutionApprovals.length, 0);
+});

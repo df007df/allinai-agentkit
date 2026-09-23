@@ -163,6 +163,29 @@ export function parseClientCommand(value: unknown): ClientCommand | null {
       executionId: value.executionId,
     };
   }
+  if (value.kind === "respond_policy_approval") {
+    if (
+      !hasOnlyKeys(value, [
+        "kind",
+        "commandId",
+        "executionId",
+        "decision",
+        "reason",
+      ]) ||
+      !isNonEmptyString(value.commandId) ||
+      !isNonEmptyString(value.executionId) ||
+      (value.decision !== "allow" && value.decision !== "deny") ||
+      (value.reason !== undefined && !isNonEmptyString(value.reason))
+    )
+      return null;
+    return {
+      kind: "respond_policy_approval",
+      commandId: value.commandId,
+      executionId: value.executionId,
+      decision: value.decision,
+      ...(value.reason !== undefined ? { reason: value.reason } : {}),
+    };
+  }
   if (value.kind === "respond_tool_approval") {
     if (
       !hasOnlyKeys(value, [

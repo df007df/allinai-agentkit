@@ -9,6 +9,7 @@ export {
   type HubObservation,
   type HubObservationSink,
   type ToolApprovalObservation,
+  type ExecutionApprovalObservation,
 } from "./observable-store.js";
 export {
   ConsoleState,
@@ -28,7 +29,10 @@ export {
   handleConsoleLoginDeny,
   isLoopbackRedirect,
 } from "./login-bridge.js";
-export { handleConsoleToolApproval } from "./tool-approval.js";
+export {
+  handleConsoleToolApproval,
+  handleConsolePolicyApproval,
+} from "./tool-approval.js";
 export { handleConsoleRun } from "./runs.js";
 export { createStaticHandler } from "./static.js";
 export {

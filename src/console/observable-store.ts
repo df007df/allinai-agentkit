@@ -13,6 +13,13 @@ import type {
 } from "../hub/index.js";
 import type { ClientEvent, InventoryReport } from "../protocol/index.js";
 
+/** A locally policy-gated execution surfaced for approver UIs. */
+export type ExecutionApprovalObservation = {
+  executionId: string;
+  runtime: string;
+  prompt: string;
+};
+
 /** A tool-approval request surfaced from a progress event, for approver UIs. */
 export type ToolApprovalObservation = {
   executionId: string;
@@ -31,6 +38,8 @@ export type HubObservation =
       commandKind: string;
       /** Set only for respond_tool_approval offers: the requestId being answered. */
       approvalRequestId?: string;
+      /** Set only for respond_policy_approval offers: the execution being answered. */
+      approvalExecutionId?: string;
       at: number;
     }
   | { kind: "offers.delivered"; clientId: string; count: number; at: number }
@@ -46,6 +55,12 @@ export type HubObservation =
       kind: "tool_approval.requested";
       clientId: string;
       approval: ToolApprovalObservation;
+      at: number;
+    }
+  | {
+      kind: "execution_approval.requested";
+      clientId: string;
+      approval: ExecutionApprovalObservation;
       at: number;
     };
 
@@ -118,6 +133,9 @@ export class ObservableStore<Principal> implements HubStore<Principal> {
       ...(command.kind === "respond_tool_approval"
         ? { approvalRequestId: command.requestId }
         : {}),
+      ...(command.kind === "respond_policy_approval"
+        ? { approvalExecutionId: command.executionId }
+        : {}),
       at: Date.now(),
     });
     return offer;
@@ -136,6 +154,28 @@ export class ObservableStore<Principal> implements HubStore<Principal> {
     });
     // Surface tool-approval asks so an approver UI can act without polling.
     for (const event of input.events) {
+      const executionApproval = event.payload?.executionApproval as
+        | { runtime?: unknown; prompt?: unknown }
+        | undefined;
+      if (event.type === "progress" && executionApproval) {
+        this.notify({
+          kind: "execution_approval.requested",
+          clientId: input.clientId,
+          approval: {
+            executionId: event.executionId,
+            runtime:
+              typeof executionApproval.runtime === "string"
+                ? executionApproval.runtime
+                : "",
+            prompt:
+              typeof executionApproval.prompt === "string"
+                ? executionApproval.prompt
+                : "",
+          },
+          at: Date.now(),
+        });
+        continue;
+      }
       const approval = event.payload?.toolApproval as
         | ToolApprovalObservation
         | undefined;

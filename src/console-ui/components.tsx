@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type ReactElement } from "react";
 import type { ClientEvent } from "../protocol/index.js";
 import {
+  CONSOLE_POLICY_APPROVAL_PATH,
   CONSOLE_RUNS_PATH,
   CONSOLE_TOOL_APPROVAL_PATH,
   LOGIN_APPROVE_PATH,
@@ -31,8 +32,34 @@ export type ConsoleSnapshotFrame = {
     toolName: string;
     toolInput: Record<string, unknown>;
   }>;
+  pendingExecutionApprovals?: Array<{
+    clientId: string;
+    executionId: string;
+    runtime: string;
+    prompt: string;
+  }>;
   serverTime: number;
   warning: string | null;
+};
+
+/** A locally policy-gated execution awaiting a human allow/deny decision. */
+export type ExecutionApprovalView = {
+  clientId: string;
+  executionId: string;
+  runtime: string;
+  prompt: string;
+};
+
+/** Live observation frame for execution_approval.requested. */
+export type ExecutionApprovalObservationFrame = {
+  kind: "execution_approval.requested";
+  clientId: string;
+  approval: {
+    executionId: string;
+    runtime: string;
+    prompt: string;
+  };
+  at: number;
 };
 
 /** One pending tool call awaiting a human allow/deny decision. */
@@ -65,6 +92,11 @@ export function useAgentEvents(): {
   snapshot: ConsoleSnapshotFrame | null;
   status: StreamStatus;
   approvals: ToolApprovalView[];
+  executionApprovals: ExecutionApprovalView[];
+  respondExecutionApproval(
+    approval: ExecutionApprovalView,
+    decision: "allow" | "deny",
+  ): Promise<void>;
   dismissApproval(requestId: string): void;
   respondApproval(
     approval: ToolApprovalView,
@@ -74,9 +106,13 @@ export function useAgentEvents(): {
   const [snapshot, setSnapshot] = useState<ConsoleSnapshotFrame | null>(null);
   const [status, setStatus] = useState<StreamStatus>("connecting");
   const [approvals, setApprovals] = useState<ToolApprovalView[]>([]);
+  const [executionApprovals, setExecutionApprovals] = useState<
+    ExecutionApprovalView[]
+  >([]);
   // Approvals answered locally while the snapshot still lists them: the next
   // snapshot reconciliation must not resurrect a card the operator dismissed.
   const dismissedRef = useRef<Set<string>>(new Set());
+  const dismissedExecutionsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     const stream: AgentEventStream = connectAgentEvents({
@@ -101,6 +137,19 @@ export function useAgentEvents(): {
             }
             return [...byRequestId.values()];
           });
+          setExecutionApprovals((live) => {
+            const byExecutionId = new Map<string, ExecutionApprovalView>();
+            for (const approval of frame.pendingExecutionApprovals ?? []) {
+              if (dismissedExecutionsRef.current.has(approval.executionId))
+                continue;
+              byExecutionId.set(approval.executionId, approval);
+            }
+            for (const approval of live) {
+              if (byExecutionId.has(approval.executionId)) continue;
+              byExecutionId.set(approval.executionId, approval);
+            }
+            return [...byExecutionId.values()];
+          });
         }
       },
       onObservation: (raw) => {
@@ -122,6 +171,27 @@ export function useAgentEvents(): {
                     requestId: approval.requestId,
                     toolName: approval.toolName,
                     toolInput: approval.toolInput,
+                  },
+                ],
+          );
+        }
+        const execObservation = raw as ExecutionApprovalObservationFrame;
+        if (
+          execObservation &&
+          execObservation.kind === "execution_approval.requested" &&
+          execObservation.approval
+        ) {
+          const approval = execObservation.approval;
+          setExecutionApprovals((pending) =>
+            pending.some((p) => p.executionId === approval.executionId)
+              ? pending
+              : [
+                  ...pending,
+                  {
+                    clientId: execObservation.clientId,
+                    executionId: approval.executionId,
+                    runtime: approval.runtime,
+                    prompt: approval.prompt,
                   },
                 ],
           );
@@ -159,7 +229,37 @@ export function useAgentEvents(): {
     }
   };
 
-  return { snapshot, status, approvals, dismissApproval, respondApproval };
+  const respondExecutionApproval = async (
+    approval: ExecutionApprovalView,
+    decision: "allow" | "deny",
+  ): Promise<void> => {
+    try {
+      await fetch(CONSOLE_POLICY_APPROVAL_PATH, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          clientId: approval.clientId,
+          executionId: approval.executionId,
+          decision,
+        }),
+      });
+    } finally {
+      dismissedExecutionsRef.current.add(approval.executionId);
+      setExecutionApprovals((pending) =>
+        pending.filter((p) => p.executionId !== approval.executionId),
+      );
+    }
+  };
+
+  return {
+    snapshot,
+    status,
+    approvals,
+    executionApprovals,
+    respondExecutionApproval,
+    dismissApproval,
+    respondApproval,
+  };
 }
 
 function statusLabel(status: StreamStatus): string {
@@ -240,6 +340,54 @@ export function ExecutionDetail(props: {
         </li>
       ))}
     </ol>
+  );
+}
+
+/** Pending policy-gated execution cards: allow resumes the run in place. */
+export function ExecutionApprovalList(props: {
+  approvals: ExecutionApprovalView[];
+  onRespond(
+    approval: ExecutionApprovalView,
+    decision: "allow" | "deny",
+  ): Promise<void>;
+}): ReactElement {
+  if (props.approvals.length === 0) return <></>;
+  return (
+    <ul className="console-approvals">
+      {props.approvals.map((approval) => (
+        <li
+          key={approval.executionId}
+          className="console-approval-card"
+          data-kind="execution"
+        >
+          <div className="console-approval-head">
+            <strong>{`执行审批 · ${approval.runtime}`}</strong>
+            <span className="t">
+              {` · ${approval.clientId.slice(0, 8)} · ${approval.executionId.slice(0, 8)}`}
+            </span>
+          </div>
+          <pre className="console-approval-input">
+            {approval.prompt || "（无提示词）"}
+          </pre>
+          <div className="console-approval-actions">
+            <button
+              type="button"
+              className="console-btn"
+              onClick={() => void props.onRespond(approval, "allow")}
+            >
+              允许执行
+            </button>
+            <button
+              type="button"
+              className="console-btn console-btn-ghost"
+              onClick={() => void props.onRespond(approval, "deny")}
+            >
+              拒绝
+            </button>
+          </div>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -432,7 +580,14 @@ export function RunForm(props: {
 }
 
 export function ConsoleApp(): ReactElement {
-  const { snapshot, status, approvals, respondApproval } = useAgentEvents();
+  const {
+    snapshot,
+    status,
+    approvals,
+    executionApprovals,
+    respondExecutionApproval,
+    respondApproval,
+  } = useAgentEvents();
   const [selectedExecutionId, setSelectedExecutionId] = useState<
     string | null
   >(null);
@@ -456,6 +611,10 @@ export function ConsoleApp(): ReactElement {
         <p className="console-warning">{snapshot.warning}</p>
       ) : null}
       <ApprovalList approvals={approvals} onRespond={respondApproval} />
+      <ExecutionApprovalList
+        approvals={executionApprovals}
+        onRespond={respondExecutionApproval}
+      />
       <RunForm clients={snapshot?.clients ?? []} />
       {selected === null ? (
         <ExecutionList

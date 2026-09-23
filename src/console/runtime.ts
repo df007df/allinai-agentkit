@@ -17,13 +17,17 @@ import {
   handleConsoleLoginApprove,
   handleConsoleLoginDeny,
 } from "./login-bridge.js";
-import { handleConsoleToolApproval } from "./tool-approval.js";
+import {
+  handleConsoleToolApproval,
+  handleConsolePolicyApproval,
+} from "./tool-approval.js";
 import { handleConsoleRun } from "./runs.js";
 import { createStaticHandler } from "./static.js";
 import {
   CONSOLE_OBSERVE_PATH,
   CONSOLE_RUNS_PATH,
   CONSOLE_TOOL_APPROVAL_PATH,
+  CONSOLE_POLICY_APPROVAL_PATH,
   LOGIN_APPROVE_PATH,
   LOGIN_DENY_PATH,
 } from "../routes.js";
@@ -98,6 +102,7 @@ export function createConsoleRouter(
       (url.pathname === LOGIN_APPROVE_PATH ||
         url.pathname === LOGIN_DENY_PATH ||
         url.pathname === CONSOLE_TOOL_APPROVAL_PATH ||
+        url.pathname === CONSOLE_POLICY_APPROVAL_PATH ||
         url.pathname === CONSOLE_RUNS_PATH)
     ) {
       response.writeHead(403, { "content-type": "application/json" });
@@ -114,6 +119,10 @@ export function createConsoleRouter(
     }
     if (request.method === "POST" && url.pathname === CONSOLE_TOOL_APPROVAL_PATH) {
       await handleConsoleToolApproval(runtime, request, response);
+      return true;
+    }
+    if (request.method === "POST" && url.pathname === CONSOLE_POLICY_APPROVAL_PATH) {
+      await handleConsolePolicyApproval(runtime, request, response);
       return true;
     }
     if (request.method === "POST" && url.pathname === CONSOLE_RUNS_PATH) {

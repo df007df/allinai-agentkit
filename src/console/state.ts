@@ -31,13 +31,25 @@ export type ConsoleSnapshot = {
   events: ClientEvent[];
   observations: HubObservation[];
   pendingApprovals: ConsolePendingApproval[];
+  pendingExecutionApprovals: ConsoleExecutionApproval[];
   serverTime: number;
+};
+
+export type ConsoleExecutionApproval = {
+  clientId: string;
+  executionId: string;
+  runtime: string;
+  prompt: string;
 };
 
 export class ConsoleState {
   private readonly clients = new Map<string, ConsoleClientView>();
   private events: ClientEvent[] = [];
   private observations: HubObservation[] = [];
+  private readonly pendingExecutionApprovals = new Map<
+    string,
+    ConsoleExecutionApproval
+  >();
   /**
    * Requested approvals keyed by requestId. This is deliberately separate
    * from the observation ring: the ring trims (heartbeats alone evict a card),
@@ -97,12 +109,28 @@ export class ConsoleState {
           toolInput: observation.approval.toolInput,
         });
         break;
+      case "execution_approval.requested":
+        this.pendingExecutionApprovals.set(observation.approval.executionId, {
+          clientId: observation.clientId,
+          executionId: observation.approval.executionId,
+          runtime: observation.approval.runtime,
+          prompt: observation.approval.prompt,
+        });
+        break;
       case "offer.enqueued":
         if (
           observation.commandKind === "respond_tool_approval" &&
           observation.approvalRequestId
         ) {
           this.pendingApprovals.delete(observation.approvalRequestId);
+        }
+        if (
+          observation.commandKind === "respond_policy_approval" &&
+          observation.approvalExecutionId
+        ) {
+          this.pendingExecutionApprovals.delete(
+            observation.approvalExecutionId,
+          );
         }
         break;
     }
@@ -122,6 +150,9 @@ export class ConsoleState {
       ),
       observations: [...this.observations],
       pendingApprovals: [...this.pendingApprovals.values()],
+      pendingExecutionApprovals: [
+        ...this.pendingExecutionApprovals.values(),
+      ],
       serverTime: Date.now(),
     };
   }
