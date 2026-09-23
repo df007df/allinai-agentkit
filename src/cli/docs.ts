@@ -215,8 +215,8 @@ export function cliManual(): CliManual {
       { field: "proxy", description: "Optional http(s) proxy URL forwarded to agent runtimes (e.g. http://127.0.0.1:7900)" },
       { field: "maxConcurrentRuns", description: "Parallel agent.run executions, integer 1-32, default 1" },
       {
-        field: "policy.autoRuntimes",
-        description: "Runtime names that execute without approval; everything else requires approval",
+        field: "policy.requireRunApproval",
+        description: "When true every agent run waits for local execution approval; default false (runs start immediately)",
       },
       {
         field: "policy.autoPermissions",

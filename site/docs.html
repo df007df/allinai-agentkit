@@ -283,7 +283,7 @@ node bin/allinai-agentkit --help</code></pre>
           <h3 id="features-security">5.5 凭据与安全</h3>
           <ul>
             <li>token 存本机 Agent home 下的 0600 文件（每 clientId 一个，全平台一致）；</li>
-            <li>config.json 以 0600 权限写入，含本地策略（autoRuntimes、allowedGitOrigins、deniedPluginIds 等）；</li>
+            <li>config.json 以 0600 权限写入，含本地策略（requireRunApproval、allowedGitOrigins、deniedPluginIds 等）；</li>
             <li>日志为滚动 JSONL，原文写盘不脱敏，<code>logs</code> 输出亦为原样；</li>
             <li>每条命令先过本地策略门控，Hub 不能绕过本地权限执行任意路径或任意来源插件。</li>
           </ul>

@@ -93,7 +93,7 @@ describe("local agent daemon composition", () => {
         clientId: "test-client",
         maxConcurrentRuns: 1,
         policy: {
-          autoRuntimes: [],
+          requireRunApproval: false,
           autoPermissions: [],
           allowedGitOrigins: [],
           deniedPluginIds: [],
@@ -165,7 +165,7 @@ describe("local agent daemon composition", () => {
         clientId: "test-client",
         maxConcurrentRuns: 1,
         policy: {
-          autoRuntimes: [],
+          requireRunApproval: false,
           autoPermissions: [],
           allowedGitOrigins: [],
           deniedPluginIds: [],
@@ -207,7 +207,7 @@ describe("local agent daemon composition", () => {
         clientId: "test-client",
         maxConcurrentRuns: 1,
         policy: {
-          autoRuntimes: [],
+          requireRunApproval: false,
           autoPermissions: [],
           allowedGitOrigins: ["fixture.test"],
           deniedPluginIds: [],
@@ -319,7 +319,7 @@ describe("local agent daemon composition", () => {
         clientId: "test-client",
         maxConcurrentRuns: 1,
         policy: {
-          autoRuntimes: [],
+          requireRunApproval: false,
           autoPermissions: [],
           allowedGitOrigins: ["fixture.test"],
           deniedPluginIds: [],
@@ -405,7 +405,7 @@ describe("local agent daemon composition", () => {
         clientId: "test-client",
         maxConcurrentRuns: 1,
         policy: {
-          autoRuntimes: [],
+          requireRunApproval: false,
           autoPermissions: [],
           allowedGitOrigins: [],
           deniedPluginIds: [],
@@ -454,7 +454,7 @@ describe("local agent daemon composition", () => {
         clientId: "test-client",
         maxConcurrentRuns: 1,
         policy: {
-          autoRuntimes: [],
+          requireRunApproval: false,
           autoPermissions: [],
           allowedGitOrigins: [],
           deniedPluginIds: [],

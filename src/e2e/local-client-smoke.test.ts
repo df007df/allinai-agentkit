@@ -355,7 +355,7 @@ describe("local Agent Client smoke", () => {
         clientId: CLIENT_ID,
         maxConcurrentRuns: 2,
         policy: {
-          autoRuntimes: ["codex"],
+          requireRunApproval: false,
           autoPermissions: [],
           allowedGitOrigins: ["fixture.test"],
           deniedPluginIds: [],

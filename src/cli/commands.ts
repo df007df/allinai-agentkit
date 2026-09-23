@@ -597,7 +597,7 @@ export async function runCli(
         clientId,
         maxConcurrentRuns: 1,
         policy: {
-          autoRuntimes: [],
+          requireRunApproval: false,
           autoPermissions: [],
           allowedGitOrigins: [],
           deniedPluginIds: [],
@@ -1288,10 +1288,8 @@ export async function createLocalAgentDaemon(
         options.readPluginManifest ?? ((file) => readFile(file, "utf8")),
       ),
       capabilityPolicy: localCapabilityPolicy,
-      policy: async (command) =>
-        config.policy.autoRuntimes.includes(command.runtime)
-          ? "auto"
-          : "approval",
+      policy: async () =>
+        config.policy.requireRunApproval ? "approval" : "auto",
       // The Hub never chooses cwd. A single locally configured workspace root
       // is the only unambiguous local context available to this standalone CLI.
       capabilityContext: () => ({

@@ -94,7 +94,7 @@ describe("agent config", () => {
       maxConcurrentRuns: 2,
       projects: [],
       policy: {
-        autoRuntimes: ["codex"],
+        requireRunApproval: true,
         autoPermissions: [],
         allowedGitOrigins: [],
         deniedPluginIds: [],
@@ -107,7 +107,7 @@ describe("agent config", () => {
       clientId: "client-1",
       maxConcurrentRuns: 2,
       policy: {
-        autoRuntimes: ["codex"],
+        requireRunApproval: true,
         autoPermissions: [],
         allowedGitOrigins: [],
         deniedPluginIds: [],

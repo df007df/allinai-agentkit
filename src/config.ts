@@ -4,7 +4,11 @@ import path from "node:path";
 import type { AgentPaths } from "./paths.js";
 
 export type AgentLocalPolicy = {
-  autoRuntimes: string[];
+  /**
+   * When true every agent run waits for a local execution approval; false
+   * (the default) lets runs start immediately.
+   */
+  requireRunApproval: boolean;
   autoPermissions: string[];
   allowedGitOrigins: string[];
   deniedPluginIds: string[];
@@ -54,7 +58,7 @@ export type ConfigWriter = {
 };
 
 const DEFAULT_POLICY: Readonly<AgentLocalPolicy> = Object.freeze({
-  autoRuntimes: [],
+  requireRunApproval: false,
   autoPermissions: [],
   allowedGitOrigins: [],
   deniedPluginIds: [],
@@ -63,7 +67,7 @@ const DEFAULT_POLICY: Readonly<AgentLocalPolicy> = Object.freeze({
 
 function clonePolicy(policy = DEFAULT_POLICY): AgentLocalPolicy {
   return {
-    autoRuntimes: [...policy.autoRuntimes],
+    requireRunApproval: policy.requireRunApproval,
     autoPermissions: [...policy.autoPermissions],
     allowedGitOrigins: [...policy.allowedGitOrigins],
     deniedPluginIds: [...policy.deniedPluginIds],
@@ -125,6 +129,17 @@ function stringArray(
   return [...new Set(value.map((item) => item.trim()))];
 }
 
+function parseBooleanFlag(
+  value: unknown,
+  name: string,
+  fallback: boolean,
+): boolean {
+  if (value === undefined) return fallback;
+  if (typeof value !== "boolean")
+    throw new TypeError(`${name} must be a boolean`);
+  return value;
+}
+
 function parsePolicy(value: unknown): AgentLocalPolicy {
   if (value === undefined) return clonePolicy();
   if (!isRecord(value)) throw new TypeError("policy must be an object");
@@ -134,7 +149,11 @@ function parsePolicy(value: unknown): AgentLocalPolicy {
       throw new TypeError(`policy.${key} is not supported`);
   }
   return {
-    autoRuntimes: stringArray(value.autoRuntimes, "policy.autoRuntimes", []),
+    requireRunApproval: parseBooleanFlag(
+      value.requireRunApproval,
+      "policy.requireRunApproval",
+      DEFAULT_POLICY.requireRunApproval,
+    ),
     autoPermissions: stringArray(
       value.autoPermissions,
       "policy.autoPermissions",
