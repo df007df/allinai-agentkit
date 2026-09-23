@@ -15,7 +15,14 @@ export const viewport = {
   themeColor: "#0b0f14",
 };
 
-const SW_REGISTER = `if ("serviceWorker" in navigator) { window.addEventListener("load", function () { navigator.serviceWorker.register("/sw.js").catch(function () {}); }); }`;
+// The console is served fresh from a local server, so the service worker is
+// only useful in a production build (installable PWA, offline shell). In dev
+// it would pin stale JS chunks ahead of each rebuild — never register there,
+// and actively unregister any worker a previous visit left behind.
+const SW_REGISTER =
+  process.env.NODE_ENV === "production"
+    ? `if ("serviceWorker" in navigator) { window.addEventListener("load", function () { navigator.serviceWorker.register("/sw.js").catch(function () {}); }); }`
+    : `if ("serviceWorker" in navigator) { navigator.serviceWorker.getRegistrations().then(function (items) { items.forEach(function (item) { item.unregister(); }); }); }`;
 
 export default function RootLayout({
   children,

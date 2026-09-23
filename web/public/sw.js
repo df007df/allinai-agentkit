@@ -1,6 +1,8 @@
-/* agentkit console service worker: precache the app shell, serve navigations
-   network-first with a cached offline fallback. */
-const CACHE = "agentkit-console-v1";
+/* agentkit console service worker: keep the app installable and give
+   navigations an offline fallback. Everything the server can answer is
+   served network-first — the console is a local app that changes with every
+   build, so a cache-first asset would pin stale JS ahead of the server. */
+const CACHE = "agentkit-console-v2";
 const SHELL = ["/", "/manifest.webmanifest", "/icon.svg"];
 
 self.addEventListener("install", (event) => {
@@ -46,17 +48,19 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // Network-first for every asset: fresh code always wins while the local
+  // server is up; the cache is only the offline fallback.
   event.respondWith(
-    caches.match(request).then(
-      (hit) =>
-        hit ??
-        fetch(request).then((response) => {
-          if (response.ok && response.type === "basic") {
-            const copy = response.clone();
-            caches.open(CACHE).then((cache) => cache.put(request, copy));
-          }
-          return response;
-        }),
-    ),
+    fetch(request)
+      .then((response) => {
+        if (response.ok && response.type === "basic") {
+          const copy = response.clone();
+          caches.open(CACHE).then((cache) => cache.put(request, copy));
+        }
+        return response;
+      })
+      .catch(() =>
+        caches.match(request).then((hit) => hit ?? Response.error()),
+      ),
   );
 });
