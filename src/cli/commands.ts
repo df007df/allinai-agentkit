@@ -78,6 +78,12 @@ export type RuntimeProbeResult = {
 
 export type LocalAgentDaemon = {
   health(): Promise<{ status: "ok" | "degraded" | "unpaired" }>;
+  /**
+   * Resolves once the first Hub connection attempt has settled (connected or
+   * failed), or immediately when unpaired. Bounded by an internal cap so a
+   * hub that never answers cannot hang a caller.
+   */
+  settled(): Promise<void>;
   status(): Promise<Record<string, unknown>>;
   sync(): Promise<void>;
   close(): Promise<void>;
@@ -627,6 +633,9 @@ export async function runCli(
       )({
         ...scopedOptions,
       });
+      // Print after the first connection settles, so the line reports the
+      // real state instead of the boot-time "starting" snapshot.
+      await daemon.settled();
       emit(output, write, await daemon.health());
       try {
         await daemon.wait();
@@ -1088,6 +1097,8 @@ export async function createLocalAgentDaemon(
   let logging: Promise<void> = Promise.resolve();
   let closed = false;
   let resolveShutdown: (() => void) | null = null;
+  let markSettled: (() => void) | null = null;
+  let settledOnce: Promise<void> = Promise.resolve();
   const shutdown = new Promise<void>((resolve) => {
     resolveShutdown = resolve;
   });
@@ -1158,6 +1169,15 @@ export async function createLocalAgentDaemon(
     const token = await (
       options.credentials ?? createCredentialStore({ paths })
     ).load(config.clientId);
+    settledOnce = token
+      ? new Promise<void>((resolve) => {
+          markSettled = resolve;
+        })
+      : Promise.resolve();
+    const settle = () => {
+      markSettled?.();
+      markSettled = null;
+    };
     const transport: ClientTransport = token
       ? observeTransport(
           (
@@ -1170,9 +1190,11 @@ export async function createLocalAgentDaemon(
           }),
           () => {
             state = "ok";
+            settle();
           },
           () => {
             if (!closed) state = "degraded";
+            settle();
           },
         )
       : unpairedTransport();
@@ -1325,6 +1347,14 @@ export async function createLocalAgentDaemon(
   return {
     async health() {
       return { status: state === "starting" ? "degraded" : state };
+    },
+    async settled() {
+      const cap = new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, 5_000);
+        // Never let the cap alone keep the process alive.
+        timer.unref?.();
+      });
+      await Promise.race([settledOnce, cap]);
     },
     async status() {
       return {

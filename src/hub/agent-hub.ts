@@ -29,6 +29,8 @@ type ConnectedSocket<Principal> = HubClientRecord & {
 };
 
 /** Protocol orchestration only: durable state and ownership belong to the host Store. */
+const DEFAULT_HEARTBEAT_INTERVAL_MS = 30_000;
+
 export function createAgentHub<Principal>(
   options: AgentHubOptions<Principal>,
 ): AgentHub<Principal> {
@@ -47,6 +49,8 @@ export function createAgentHub<Principal>(
   const store = options.store;
   // Keys are issued by the host; Principal stays opaque even for routing.
   const sockets = new Map<string, ConnectedSocket<Principal>>();
+  const heartbeatIntervalMs =
+    options.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS;
   // Transport resources only; these sockets are not yet owned by WebSocketServer.
   const pendingUpgrades = new Set<Duplex>();
   const wss = new WebSocketServer({
@@ -147,6 +151,7 @@ export function createAgentHub<Principal>(
 
   function connect(socket: WebSocket, principal: Principal): void {
     let connection: ConnectedSocket<Principal> | undefined;
+    let keepaliveTimer: ReturnType<typeof setInterval> | null = null;
     // Only in-flight work is queued here; no event/offer history is retained.
     let tail = Promise.resolve();
     function queue(work: () => Promise<void>): void {
@@ -214,6 +219,16 @@ export function createAgentHub<Principal>(
             ...(hello.name ? { name: hello.name } : {}),
           };
           sockets.set(record.connectionKey, connection);
+          if (heartbeatIntervalMs > 0 && !keepaliveTimer) {
+            // The Hub drives keepalive: clients on the WHATWG WebSocket (the
+            // daemon's Node builtin) have no ping() call, but every compliant
+            // implementation auto-pongs. Each pong refreshes the store
+            // heartbeat, which keeps lastSeen live for console views.
+            keepaliveTimer = setInterval(() => {
+              if (socket.readyState === WebSocket.OPEN) socket.ping();
+            }, heartbeatIntervalMs);
+            keepaliveTimer.unref?.();
+          }
           prior?.socket.close(1000, "superseded connection");
           await deliver(connection);
           return;
@@ -277,6 +292,10 @@ export function createAgentHub<Principal>(
     socket.on("pong", heartbeat);
     socket.on("error", () => socket.terminate());
     socket.on("close", () => {
+      if (keepaliveTimer) {
+        clearInterval(keepaliveTimer);
+        keepaliveTimer = null;
+      }
       if (connection && sockets.get(connection.connectionKey) === connection)
         sockets.delete(connection.connectionKey);
     });

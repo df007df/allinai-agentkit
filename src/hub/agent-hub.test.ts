@@ -120,6 +120,10 @@ class RecordingStore implements HubStore<Principal> {
   }
 }
 
+async function sleep(ms: number) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function until(predicate: () => boolean) {
   const deadline = Date.now() + 2_000;
   while (!predicate()) {
@@ -350,6 +354,33 @@ test("persists plugin acknowledgements and WebSocket heartbeat with connection o
   assert.deepEqual(
     store.calls.find((call) => call.method === "heartbeat")!.input,
     { principal, clientId: "client-1" },
+  );
+});
+
+test("hub keepalive pings registered clients and refreshes the store heartbeat", async (t) => {
+  const { connect, store } = await setup(t, { heartbeatIntervalMs: 40 });
+  const { socket } = await connect();
+  socket.send(JSON.stringify(hello));
+  await until(() => store.calls.some((call) => call.method === "pending"));
+  // The Hub pings every 40ms; the ws client auto-pongs; each pong is a heartbeat.
+  await until(
+    () =>
+      store.calls.filter((call) => call.method === "heartbeat").length >= 3,
+  );
+  const beats = store.calls.filter((call) => call.method === "heartbeat");
+  assert.ok(beats.length >= 3, `expected repeated heartbeats, saw ${beats.length}`);
+});
+
+test("heartbeatIntervalMs: 0 disables keepalive pings", async (t) => {
+  const { connect, store } = await setup(t, { heartbeatIntervalMs: 0 });
+  const { socket } = await connect();
+  socket.send(JSON.stringify(hello));
+  await until(() => store.calls.some((call) => call.method === "pending"));
+  await sleep(120);
+  assert.equal(
+    store.calls.filter((call) => call.method === "heartbeat").length,
+    0,
+    "no heartbeat should arrive without keepalive",
   );
 });
 

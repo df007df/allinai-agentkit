@@ -105,6 +105,12 @@ export interface AgentHubOptions<Principal> {
   /** Default /_agentkit/hub/v2; absolute path without trailing slash. */
   pathPrefix?: string;
   maxPayloadBytes?: number;
+  /**
+   * Keepalive ping period for registered connections, in milliseconds.
+   * Ping frames refresh the store heartbeat (clients auto-pong; no client
+   * code needed). Defaults to 30000; 0 disables keepalive.
+   */
+  heartbeatIntervalMs?: number;
 }
 export interface HubAttachOptions {
   /** Supply the application's handler; attach to a server without request handlers. */

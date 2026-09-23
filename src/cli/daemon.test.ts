@@ -84,6 +84,68 @@ function probe(id: string, probeResult: PlatformProbe): RuntimeProbeResult {
 }
 
 describe("local agent daemon composition", () => {
+  it("resolves settled() only after the first connection outcome", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "allinai-agentkit-daemon-settled-"));
+    writeFileSync(
+      path.join(dir, "config.json"),
+      JSON.stringify({
+        hubBaseUrl: "https://hub.example.test",
+        clientId: "test-client",
+        maxConcurrentRuns: 1,
+        policy: {
+          autoRuntimes: [],
+          autoPermissions: [],
+          allowedGitOrigins: [],
+          deniedPluginIds: [],
+          allowedWorkspaceRoots: [],
+        },
+      }),
+    );
+    const credentials = {
+      load: async () => "settled-token",
+      save: async () => undefined,
+      clear: async () => undefined,
+    };
+    // A transport that records its handlers but never auto-connects: the test
+    // decides when the connection settles.
+    let fireConnected: (() => Promise<void>) | null = null;
+    const transport: ClientTransport = {
+      async connect(handlers) {
+        fireConnected = handlers.connected;
+      },
+      async push() {
+        return {};
+      },
+      async close() {},
+    };
+
+    const daemon = await createLocalAgentDaemon({
+      configDir: dir,
+      credentials,
+      createTransport: () => transport,
+    });
+    try {
+      assert.deepEqual(await daemon.health(), { status: "degraded" });
+      // Not settled yet: the printed status must wait. Assert via a race.
+      const early = await Promise.race([
+        daemon.settled().then(() => "settled"),
+        sleep(100).then(() => "pending"),
+      ]);
+      // Either it timed out on the 5s cap path (still pending here) or the hub
+      // never connected; the observable contract is that health stays degraded.
+      assert.equal(early, "pending");
+      await fireConnected!();
+      await daemon.settled();
+      assert.deepEqual(await daemon.health(), { status: "ok" });
+    } finally {
+      await daemon.close();
+    }
+  });
+
+  async function sleep(ms: number) {
+    await new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
   let dir = "";
   let close: (() => Promise<void>) | undefined;
 
