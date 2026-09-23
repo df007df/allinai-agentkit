@@ -7,6 +7,8 @@
 
   function guessName(pre) {
     var text = pre.textContent;
+    // JSON 事件样例：以 { 开头且含引号键
+    if (/^\s*\{/.test(text) && /"(type|payload|eventType)"\s*:/.test(text)) return "event.json";
     // shell 片段：命令行开头
     if (/^\s*(npx|npm|sh|git|node|allinai-agentkit)\b/.test(text) && !/[{;]/.test(text.split("\n")[0] + text.split("\n")[1])) {
       return "terminal.sh";

@@ -498,6 +498,65 @@ main {
 .ide-code .ide-str { color: var(--accent); }
 .ide-code .c { color: var(--text-dim); font-style: italic; }
 
+/* 事件模型图（7.2）：双列 SDK 对照 + 事件样例着色 */
+.evm-flow {
+  /* The JSON sample <pre> must not raise the track's min-content floor and
+     blow the card past the column — same grid-track trap as the module cards. */
+  grid-template-columns: minmax(0, 1fr);
+}
+.evm-flow .evm-sample { min-width: 0; }
+.evm-sample .kw, .code-block .kw { color: #c792ea; }
+.evm-sample .str, .code-block .str { color: var(--accent); }
+.evm-sample .c, .code-block .c { color: var(--text-dim); font-style: italic; }
+.table-scroll { overflow-x: auto; }
+.evm-cols {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+.evm-col {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  padding: 0.9rem 1.1rem 1rem;
+  min-width: 0;
+}
+.evm-col-head {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  margin: 0 0 0.6rem;
+}
+.evm-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--text);
+}
+.evm-list small {
+  color: var(--text-dim);
+  font-size: 0.72rem;
+  margin-left: 0.35rem;
+}
+.evm-col-foot {
+  margin: 0.7rem 0 0;
+  font-size: 0.76rem;
+  color: var(--text-dim);
+  line-height: 1.7;
+}
+.evm-sample { margin: 0.9rem 0 0; }
+.evm-sample .kw { color: #c792ea; }
+.evm-sample .str { color: var(--accent); }
+.evm-sample .c { color: var(--text-dim); font-style: italic; }
+@media (max-width: 880px) {
+  .evm-cols { grid-template-columns: 1fr; }
+}
+
 .exports-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -617,6 +676,13 @@ main {
 .doc-section h3 {
   font-size: 1.02rem;
   margin: 1.9rem 0 0.7rem;
+}
+.doc-section h4 {
+  font-size: 0.92rem;
+  font-family: var(--mono);
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  margin: 1.6rem 0 0.5rem;
 }
 .doc-section p { line-height: 1.85; }
 .doc-section ul { line-height: 1.85; padding-left: 1.2rem; }

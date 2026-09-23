@@ -15,7 +15,7 @@
     </script>
   </head>
   <body>
-    <script src="docs-ide.js"></script>
+    <script src="docs-ide.js?v=2"></script>
     <nav class="nav">
       <a class="brand" href="index.html">allinai-agentkit</a>
       <div class="nav-links">
@@ -52,6 +52,7 @@
         <a href="#integration-console" class="sub">Console 编程接入</a>
         <a href="#architecture">架构与模块</a>
         <a href="#architecture-wire" class="sub">wire 协议</a>
+        <a href="#architecture-events" class="sub">事件模型</a>
         <a href="#architecture-modules" class="sub">模块明细</a>
         <a href="#troubleshooting">排障</a>
       </aside>
@@ -546,7 +547,172 @@ await site.close();</code></pre>
             <code>encode*/parse*</code> 编解码与严格类型，是两侧共享的唯一消息定义。
           </p>
 
-          <h3 id="architecture-modules">7.2 模块明细</h3>
+          <h3 id="architecture-events">7.2 事件模型：平台事件如何收敛成协议事件</h3>
+          <p>
+            各 runtime SDK 的事件词汇互不相同（codex 是 ThreadEvent，claude 是
+            stream message）。agentkit 不把任何一家的事件原样上网，而是分三层收敛：
+            适配器先把 SDK 事件归一为 7 种 <code>PlatformEvent</code>（进程内），
+            supervisor 再把它们装进 9 种生命周期 <code>ClientEvent</code> 的信封里上报
+            Hub。两条正交维度：生命周期（<code>type</code>）回答「执行处于什么阶段」，
+            内容类型（<code>eventType</code>）回答「agent 此刻做了什么」。
+          </p>
+
+          <div class="arch evm-flow" aria-label="事件三层收敛流程图">
+            <div class="arch-card">
+              <div class="arch-title">第 1 层 · 平台 SDK 原生事件（daemon 进程内）</div>
+              <div class="evm-cols">
+                <div class="evm-col">
+                  <div class="evm-col-head">codex · ThreadEvent（8 种）</div>
+                  <ul class="evm-list">
+                    <li><code>thread.started</code></li>
+                    <li><code>turn.started</code></li>
+                    <li><code>item.started</code></li>
+                    <li><code>item.updated</code></li>
+                    <li><code>item.completed</code></li>
+                    <li><code>turn.completed</code> <small>{usage}</small></li>
+                    <li><code>turn.failed</code> <small>{error}</small></li>
+                    <li><code>error</code> <small>{message}</small></li>
+                  </ul>
+                  <p class="evm-col-foot">
+                    item 有 8 种：agent_message · reasoning · command_execution ·
+                    file_change · mcp_tool_call · web_search · todo_list · error
+                  </p>
+                </div>
+                <div class="evm-col">
+                  <div class="evm-col-head">claude · stream message</div>
+                  <ul class="evm-list">
+                    <li><code>system/init</code></li>
+                    <li><code>stream_event</code> <small>text_delta / thinking_delta</small></li>
+                    <li><code>assistant</code> <small>text / thinking 块</small></li>
+                    <li><code>user</code> <small>tool_result</small></li>
+                    <li><code>result</code> <small>is_error / subtype</small></li>
+                    <li><code>system</code> <small>其他 subtype</small></li>
+                  </ul>
+                  <p class="evm-col-foot">pi / zcode 各自的原生事件同样进入第 2 层归一。</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="arch-link">
+              <div class="arch-wire tall" aria-hidden="true"></div>
+              <div class="arch-link-badge">
+                <div class="arch-link-dir">适配器归一 · mapCodexEvent / mapClaudeMessage</div>
+                <div class="arch-link-sub">vendor 原名保留在 payload.vendorEventType，无损可查</div>
+              </div>
+              <div class="arch-wire tall" aria-hidden="true"></div>
+            </div>
+
+            <div class="arch-card">
+              <div class="arch-title">第 2 层 · PlatformEvent（7 种内容公约数，进程内）</div>
+              <div class="arch-row">
+                <span class="arch-chip mod">init<small>会话初始化（thread_id）</small></span>
+                <span class="arch-chip mod">text_delta<small>模型输出文本</small></span>
+                <span class="arch-chip mod">thinking_delta<small>推理 / 思考</small></span>
+                <span class="arch-chip mod">tool<small>命令 · 文件 · MCP · 搜索</small></span>
+                <span class="arch-chip">vendor<small>无精确对应物的杂项（仅本地调试）</small></span>
+                <span class="arch-chip">done / error<small>终态信号</small></span>
+              </div>
+            </div>
+
+            <div class="arch-link">
+              <div class="arch-wire tall" aria-hidden="true"></div>
+              <div class="arch-link-badge">
+                <div class="arch-link-dir">supervisor 装信封 · 状态机 + 去重 + 批量上行</div>
+                <div class="arch-link-sub">done/error → 终态；其余 → progress + 顶层 eventType</div>
+              </div>
+              <div class="arch-wire tall" aria-hidden="true"></div>
+            </div>
+
+            <div class="arch-card">
+              <div class="arch-title">第 3 层 · ClientEvent（9 种生命周期 × 5 种内容维度，wire 协议）</div>
+              <div class="arch-row">
+                <span class="arch-chip">received</span>
+                <span class="arch-chip">running</span>
+                <span class="arch-chip">awaiting_approval</span>
+                <span class="arch-chip mod">progress<small>× eventType: init · text_delta · thinking_delta · tool · vendor</small></span>
+                <span class="arch-chip">done</span>
+                <span class="arch-chip">failed</span>
+                <span class="arch-chip">cancelled</span>
+                <span class="arch-chip">rejected</span>
+                <span class="arch-chip">recovery_required</span>
+              </div>
+              <pre class="code-block evm-sample"><code>{
+  "executionId": "a746ecc6-…",
+  "eventSeq": 4,
+  "type": "progress",          <span class="c">// 维度一：生命周期（Hub 状态机、去重、重放都靠它）</span>
+  "eventType": "tool",         <span class="c">// 维度二：内容类型（仅 progress 携带）</span>
+  "occurredAt": "2026-09-23T22:41:50.102Z",
+  "payload": {
+    "vendorEventType": "item.completed",   <span class="c">// codex 原名，始终保留</span>
+    "item": { "id": "item_1", "type": "command_execution" }
+  }
+}</code></pre>
+            </div>
+          </div>
+
+          <h4>平台事件对照表</h4>
+          <div class="table-scroll">
+          <table class="doc-table">
+            <thead>
+              <tr><th>codex 原生</th><th>claude 原生</th><th>PlatformEvent</th><th>ClientEvent（上报格式）</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>thread.started</code></td>
+                <td><code>system/init</code></td>
+                <td><code>init</code></td>
+                <td><code>progress</code> · eventType=<code>init</code></td>
+              </tr>
+              <tr>
+                <td><code>item.completed</code> × agent_message</td>
+                <td><code>stream_event</code> text_delta / <code>assistant</code> 文本</td>
+                <td><code>text_delta</code></td>
+                <td><code>progress</code> · eventType=<code>text_delta</code></td>
+              </tr>
+              <tr>
+                <td><code>item.completed</code> × reasoning</td>
+                <td>thinking_delta / <code>assistant</code> thinking</td>
+                <td><code>thinking_delta</code></td>
+                <td><code>progress</code> · eventType=<code>thinking_delta</code></td>
+              </tr>
+              <tr>
+                <td><code>item.started/updated/completed</code> × command_execution、file_change、mcp_tool_call、web_search、todo_list</td>
+                <td><code>user</code> × tool_result</td>
+                <td><code>tool</code></td>
+                <td><code>progress</code> · eventType=<code>tool</code></td>
+              </tr>
+              <tr>
+                <td><code>turn.started</code> 等无对应物事件</td>
+                <td>其余 system subtype</td>
+                <td><code>vendor</code></td>
+                <td>仅本地调试，不上报 Hub</td>
+              </tr>
+              <tr>
+                <td><code>turn.completed</code> {usage}</td>
+                <td><code>result</code>（成功）</td>
+                <td><code>done</code></td>
+                <td><code>done</code></td>
+              </tr>
+              <tr>
+                <td><code>turn.failed</code> / <code>error</code></td>
+                <td><code>result</code>（is_error）</td>
+                <td><code>error</code></td>
+                <td><code>failed</code></td>
+              </tr>
+            </tbody>
+          </table>
+          </div>
+
+          <p class="doc-note">
+            为什么不直接透传平台事件：生命周期是 Hub 的公共契约（水位去重、断线重放、
+            offer 退休、执行分组都依赖 9 种稳定枚举）；内容公约数让 Console UI 对
+            <code>tool</code> / <code>text_delta</code> 编程一次、四个 runtime 全适用；
+            payload 里的 <code>vendorEventType</code> 与原始 item 保证零信息损失——
+            想看 codex 原名，展开 payload 即可。Console 时间线上每个事件显示为
+            <code>progress·tool</code> 这样的复合标签，两个维度一眼可读。
+          </p>
+
+          <h3 id="architecture-modules">7.3 模块明细</h3>
           <p class="export-hint">
             每个模块一张 IDE 风格卡片：标签栏是 import 路径，正文是模块说明。
           </p>
