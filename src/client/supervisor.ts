@@ -4,6 +4,7 @@ import {
   type StoredExecution,
 } from "./state-store.js";
 import { bridgeLog } from "../logger.js";
+import path from "node:path";
 import type { ClientCommand } from "./types.js";
 import type { PluginSyncAcknowledgement } from "./types.js";
 import type {
@@ -62,15 +63,34 @@ export type ClientSupervisorOptions = {
   plugins?: PluginManagerPort;
   /** Supplies the full local inventory for inventory reports; injected like plugins. */
   inventoryProvider?: () => Promise<InventoryReport>;
+  /**
+   * Supplies the locally registered project names for inventory reports and
+   * resolves a Hub-requested project name to its working directory. Read live
+   * (not captured at construction) so CLI-side project registration reaches a
+   * running daemon without a restart.
+   */
+  projectResolver?: ProjectDirectoryResolver;
+  /**
+   * Prepares the working directory for runs that select no (or an unknown)
+   * project. When absent, such runs keep the historical behavior: the runner
+   * adapter decides its own default cwd (typically the daemon process cwd).
+   */
+  defaultWorkspace?: DefaultWorkspacePort;
   capabilityHost?: CapabilityHostPort;
   capabilityPolicy?: CapabilityLocalPolicy;
   capabilityContext?: CapabilityContextResolver;
-  /**
-   * Resolves a Hub-requested project name to its locally registered working
-   * directory. Unknown or absent project names resolve to undefined; the
-   * runner adapter decides its own default cwd.
-   */
-  resolveProject?: ProjectResolver;
+};
+
+/**
+ * Prepares a run's cwd and its session-record directory before the runner
+ * child spawns. Implemented by the daemon's workspace module; kept async so
+ * directory creation stays on the caller's event loop.
+ */
+export type DefaultWorkspacePort = {
+  prepare(input: {
+    platform: AgentRunCommand["runtime"];
+    executionId: string;
+  }): Promise<{ cwd: string; sessionDir: string }>;
 };
 
 export type PluginManagerPort = {
@@ -113,12 +133,25 @@ export type CapabilityContextResolver = (
 export type ProjectDirectory = {
   name: string;
   path: string;
+  /** Record-root suffix (projects/<name>-<dir>); mirrors config.json. */
+  dir: string;
 };
 
-export type ProjectResolver = (
-  name: string | undefined,
-  runtime: AgentRunCommand["runtime"],
-) => string | undefined;
+/**
+ * Live view of the locally registered project registry: names for inventory,
+ * a path for each Hub-selected name. Both read at call time so CLI-side
+ * project registration reaches a running daemon without a restart. `recordDir`
+ * names where the session recorder mirrors a bound run's records
+ * (projects/<name>-<suffix>/sessions/<executionId>); hosts that do not record
+ * sessions may omit it.
+ */
+export type ProjectDirectoryResolver = {
+  list(): ProjectDirectory[];
+  resolve(
+    name: string | undefined,
+    runtime: AgentRunCommand["runtime"],
+  ): { path: string; recordDir?: string } | undefined;
+};
 
 const ACTIVE_STATES: readonly ExecutionState[] = [
   "received",
@@ -154,6 +187,8 @@ function logExecution(level: "debug" | "info" | "warn", event: string, execution
   bridgeLog[level]("execution", event, { executionId, ...meta });
 }
 
+type ProjectResolver = ProjectDirectoryResolver["resolve"];
+
 function platformRunInput(
   command: AgentRunCommand,
   resolveProject?: ProjectResolver,
@@ -167,18 +202,26 @@ function platformRunInput(
     typeof value === "string" && value.length > 0 ? value : undefined;
 
   const requestedProject = optionalString(command.payload.project);
-  const projectPath = resolveProject?.(requestedProject, command.runtime);
-  const cwd = optionalString(command.payload.cwd) ?? projectPath;
+  const resolved = resolveProject?.(requestedProject, command.runtime);
+  const cwd = optionalString(command.payload.cwd) ?? resolved?.path;
 
   return {
     platform: command.runtime,
     prompt,
     cwd,
+    // Bound runs record under the project's own record root; the daemon fills
+    // sessionDir for unbound runs through the default-workspace port.
+    ...(resolved?.recordDir && cwd
+      ? { sessionDir: path.join(resolved.recordDir, "sessions", command.executionId) }
+      : {}),
     sessionId: optionalString(command.payload.sessionId),
     model: optionalString(command.payload.model),
     context: {
       ...command.payload,
       ...(requestedProject ? { resolvedProjectPath: cwd } : {}),
+      ...(resolved?.recordDir
+        ? { projectRecordDir: resolved.recordDir }
+        : {}),
     },
   };
 }
@@ -822,19 +865,23 @@ export class ClientSupervisor {
     }
     let platforms: InventoryReport["platforms"] = [];
     let plugins: PluginInventoryEntry[] = [];
+    let projects: InventoryReport["projects"] = [];
     try {
       const report = await provider();
       platforms = report.platforms;
       plugins = report.plugins;
+      projects = report.projects;
     } catch {
       platforms = [];
     }
     plugins = this.pluginInventoryEntries();
+    projects = this.options.projectResolver?.list().map(({ name }) => ({ name })) ?? projects;
     return {
       type: "inventory.report",
       reportedAt: new Date().toISOString(),
       platforms,
       plugins,
+      projects,
     };
   }
 
@@ -917,6 +964,36 @@ export class ClientSupervisor {
       return;
     }
 
+    // The workspace is prepared BEFORE the running transition: once an
+    // execution reports running, the runner child is started in the same
+    // synchronous block, so downstream observers never see a "running"
+    // execution without a live child. Workspace failure rejects up front
+    // instead of dying mid-run.
+    let runInput: PlatformRunInput;
+    try {
+      runInput = platformRunInput(execution.command, (name, runtime) => {
+        const resolved = this.options.projectResolver?.resolve(name, runtime);
+        if (!resolved) return undefined;
+        return { path: resolved.path, recordDir: resolved.recordDir };
+      });
+      // An unbound run takes a managed scratch cwd when the host supplies a
+      // default-workspace port; otherwise the adapter default applies.
+      if (!runInput.cwd && this.options.defaultWorkspace) {
+        const workspace = await this.options.defaultWorkspace.prepare({
+          platform: execution.command.runtime,
+          executionId: execution.executionId,
+        });
+        runInput.cwd = workspace.cwd;
+        runInput.sessionDir = workspace.sessionDir;
+      }
+    } catch (error) {
+      this.options.store.transition(execution.executionId, "rejected", {
+        reason: "workspace_prepare_failed",
+        message: error instanceof Error ? error.message : String(error),
+      });
+      return;
+    }
+
     this.options.store.transition(execution.executionId, "running", {
       runtime: execution.command.runtime,
       pluginSnapshot: execution.pluginSnapshot,
@@ -924,7 +1001,7 @@ export class ClientSupervisor {
     try {
       const events = this.options.runner.start(
         execution.executionId,
-        platformRunInput(execution.command, this.options.resolveProject),
+        runInput,
       );
       this.trackConsumptionTask(
         this.runnerConsumptionTasks,

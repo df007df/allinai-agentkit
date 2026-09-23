@@ -1,4 +1,5 @@
 import { mkdir, readFile, watch, writeFile } from "node:fs/promises";
+import { readFileSync as readFileSyncText, statSync as statFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -30,10 +31,20 @@ import {
 } from "../control-http.js";
 import { PluginManager } from "../plugins/manager.js";
 import { parsePluginManifest } from "../plugins/manifest.js";
+import {
+  prepareExecutionWorkspace,
+  projectDirectorySuffix,
+  projectRecordDir,
+} from "../workspace/workspace.js";
+import { SessionRecorder } from "../workspace/session-recorder.js";
 import { ShellCapabilityHost } from "../capabilities/shell-host.js";
 import type { ShellCapability } from "../capabilities/types.js";
 import { ClientStateStore } from "../client/state-store.js";
 import { ClientSupervisor } from "../client/supervisor.js";
+import type {
+  ProjectDirectory,
+  ProjectDirectoryResolver,
+} from "../client/supervisor.js";
 import type { ClientTransport } from "../client/transport.js";
 import { WsClientTransport } from "../client/ws-transport.js";
 import type {
@@ -720,12 +731,21 @@ export async function runCli(
       const projects = existing.projects.filter(
         (project) => project.name !== name,
       );
+      let recordDir: string | undefined;
       if (!remove) {
         // Validate the raw operator input before any cwd-relative resolution
         // could silently turn a relative path into one inside the CLI process.
         if (!path.isAbsolute(projectPath!.trim()))
           throw new Error("--path must be an absolute directory");
-        projects.push({ name, path: path.resolve(projectPath!.trim()) });
+        // The suffix names the session-record root (projects/<name>-<dir>) and
+        // persists in config: re-registering the same name opens a new epoch
+        // instead of silently reusing the previous epoch's sessions.
+        recordDir = projectDirectorySuffix();
+        projects.push({
+          name,
+          path: path.resolve(projectPath!.trim()),
+          dir: recordDir,
+        });
       }
       const config = parseAgentConfig({ ...existing, projects });
       await mkdir(paths.home, { recursive: true });
@@ -737,6 +757,7 @@ export async function runCli(
         registered: !remove,
         removed: remove,
         name,
+        recordDir,
         projects: config.projects,
         restartHint: remove
           ? undefined
@@ -952,7 +973,81 @@ function createInventoryProvider(input: {
       reportedAt: new Date().toISOString(),
       platforms: probed.platforms,
       plugins: [],
+      // Live project names reach the report through the supervisor's
+      // projectResolver; this provider contract keeps the wire shape complete.
+      projects: [],
     };
+  };
+}
+
+/**
+ * Live view of the locally registered project registry. config.json is the
+ * source of truth: every read stats the file and re-parses only when it
+ * changed, so `project add` reaches a running daemon on its next agent.run or
+ * inventory report without a restart. A config file that disappears or turns
+ * invalid degrades to an empty registry (runs fall back to the default cwd)
+ * rather than crashing the daemon mid-flight.
+ */
+export function createLiveProjectResolver(
+  configFile: string,
+  io: {
+    loadConfig: (paths: Pick<AgentPaths, "configFile">) => AgentConfig;
+    statSync?: (file: string) => { mtimeMs: number };
+    readFileSync?: (file: string, encoding: "utf8") => string;
+  },
+  recordPaths?: AgentPaths,
+): ProjectDirectoryResolver {
+  const loadConfig = io.loadConfig;
+  const statSync =
+    io.statSync ?? ((file: string) => statFileSync(file) as { mtimeMs: number });
+  const readFileSync =
+    io.readFileSync ?? ((file: string, encoding: "utf8") => readFileSyncText(file, encoding));
+  let cache: { mtimeMs: number; projects: ProjectDirectory[] } | null = null;
+
+  const currentProjects = (): ProjectDirectory[] => {
+    try {
+      const { mtimeMs } = statSync(configFile);
+      if (cache && cache.mtimeMs === mtimeMs) return cache.projects;
+      // parseAgentConfig validates the whole document; project entries must be
+      // absolute, unique, and well-formed before they can be resolved.
+      const config = parseAgentConfig(JSON.parse(readFileSync(configFile, "utf8")));
+      const projects = config.projects.map(({ name, path, dir }) => ({
+        name,
+        path,
+        dir,
+      }));
+      cache = { mtimeMs, projects };
+      return projects;
+    } catch (error) {
+      // A missing or invalid config must not take the daemon down mid-run:
+      // fall back to the last good registry, else to empty (default cwd).
+      if (cache) return cache.projects;
+      bridgeLog.warn("daemon", "project_registry_unavailable", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return [];
+    }
+  };
+
+  return {
+    list() {
+      return currentProjects();
+    },
+    resolve(name) {
+      if (!name) return undefined;
+      const projects = currentProjects();
+      const project = projects.find((entry) => entry.name === name);
+      if (!project) {
+        bridgeLog.warn("daemon", "unknown project requested", { project: name });
+        return undefined;
+      }
+      return {
+        path: project.path,
+        recordDir: recordPaths
+          ? projectRecordDir(recordPaths, project)
+          : undefined,
+      };
+    },
   };
 }
 
@@ -1139,6 +1234,11 @@ export async function createLocalAgentDaemon(
         );
       };
     }
+    // Session records: every run whose PlatformRunInput carries a sessionDir
+    // mirrors its state timeline under projects/<project>/sessions/<id>.
+    // Wrapped after the approval relay so respondToolApproval stays intact.
+    const sessionRecorder = new SessionRecorder();
+    runner = sessionRecorder.wrapRunner(runner);
     supervisor = new ClientSupervisor({
       store,
       transport,
@@ -1169,16 +1269,16 @@ export async function createLocalAgentDaemon(
       }),
       // Projects are registered locally (CLI `project add`); a Hub run may
       // select one by name, and unknown names fall back to the runner default.
-      resolveProject: (name) => {
-        if (!name) return undefined;
-        const project = config.projects.find(
-          (entry) => entry.name === name,
-        );
-        if (!project) {
-          bridgeLog.warn("daemon", "unknown project requested", { project: name });
-          return undefined;
-        }
-        return project.path;
+      // The registry is re-read from config.json at each use (mtime-cached), so
+      // a running daemon picks up project registration without a restart.
+      projectResolver: createLiveProjectResolver(
+        paths.configFile,
+        { loadConfig },
+        paths,
+      ),
+      defaultWorkspace: {
+        prepare: async ({ platform, executionId }) =>
+          await prepareExecutionWorkspace({ paths, platform, executionId }),
       },
     });
     await supervisor.start();

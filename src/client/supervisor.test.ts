@@ -230,6 +230,7 @@ const inventoryReport = (): InventoryReport => ({
       installedAt: "2026-09-19T00:00:00.000Z",
     },
   ],
+  projects: [],
 });
 
 class FakeTransport implements ClientTransport {
@@ -1453,13 +1454,25 @@ describe("ClientSupervisor", () => {
       started.push(input);
       return original(executionId, input);
     };
+    // Registry is read at resolve time: project add lands without a restart.
+    const projects = new Map<string, string>([["web", "/work/web"]]);
     const supervisor = new ClientSupervisor({
       store,
       transport,
       runner,
       policy: () => "auto",
-      resolveProject: (name) =>
-        name === "web" ? "/work/web" : undefined,
+      projectResolver: {
+        list: () =>
+          [...projects.entries()].map(([name, path]) => ({
+            name,
+            path,
+            dir: "000000",
+          })),
+        resolve: (name) => {
+          const path = projects.get(name ?? "");
+          return path ? { path, recordDir: `/records/${name}` } : undefined;
+        },
+      },
     });
     await supervisor.start();
 
@@ -1648,6 +1661,7 @@ describe("ClientSupervisor", () => {
           installedAt: "2026-09-19T00:00:00.000Z",
         },
       ],
+      projects: [],
     });
     assert.notEqual(transport.inventoryReports[0]?.reportedAt, "");
   });

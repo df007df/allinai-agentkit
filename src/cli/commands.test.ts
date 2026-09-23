@@ -242,7 +242,12 @@ describe("project commands", () => {
       );
       assert.equal(added.exitCode, 0);
       const stored = JSON.parse(await import("node:fs/promises").then((fs) => fs.readFile(config, "utf8")));
-      assert.deepEqual(stored.projects, [{ name: "web", path: "/work/web" }]);
+      // The record suffix is generated at registration and persists so the
+      // session-record root stays stable across restarts.
+      assert.equal(stored.projects.length, 1);
+      assert.equal(stored.projects[0].name, "web");
+      assert.equal(stored.projects[0].path, "/work/web");
+      assert.match(stored.projects[0].dir, /^[0-9a-f]{6}$/);
 
       const list = await runCli(["projects"], {
         configDir,

@@ -6,12 +6,14 @@ export type PlatformId = (typeof PLATFORM_IDS)[number];
 /**
  * Vendor-neutral input for one platform run. Runtime adapters own any further
  * platform-specific validation; this transport never turns these values into
- * executable arguments.
+ * executable arguments. `sessionDir` is a host hint naming where the session
+ * recorder mirrors this run's records; adapters ignore it.
  */
 export type PlatformRunInput = {
   platform: PlatformId;
   prompt: string;
   cwd?: string;
+  sessionDir?: string;
   sessionId?: string;
   model?: string;
   context?: Record<string, unknown>;

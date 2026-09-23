@@ -9,6 +9,7 @@ import {
   type HubDownlink,
   type InventoryReport,
   type PlatformInventoryEntry,
+  type ProjectInventoryEntry,
   type PluginConfig,
   type PluginInventoryEntry,
   type PluginSyncAcknowledgement,
@@ -333,16 +334,22 @@ function isPluginInventoryEntry(value: unknown): value is PluginInventoryEntry {
   return value.lastError === undefined || isNonEmptyString(value.lastError);
 }
 
+function isProjectInventoryEntry(value: unknown): value is ProjectInventoryEntry {
+  return isPlainObject(value) && hasOnlyKeys(value, ["name"]) && isNonEmptyString(value.name);
+}
+
 export function parseInventoryReport(value: unknown): InventoryReport | null {
   if (
     !isPlainObject(value) ||
-    !hasOnlyKeys(value, ["type", "reportedAt", "platforms", "plugins"]) ||
+    !hasOnlyKeys(value, ["type", "reportedAt", "platforms", "plugins", "projects"]) ||
     value.type !== "inventory.report" ||
     !isNonEmptyString(value.reportedAt) ||
     !Array.isArray(value.platforms) ||
     !value.platforms.every(isPlatformInventoryEntry) ||
     !Array.isArray(value.plugins) ||
-    !value.plugins.every(isPluginInventoryEntry)
+    !value.plugins.every(isPluginInventoryEntry) ||
+    !Array.isArray(value.projects) ||
+    !value.projects.every(isProjectInventoryEntry)
   )
     return null;
   return {
@@ -350,6 +357,7 @@ export function parseInventoryReport(value: unknown): InventoryReport | null {
     reportedAt: value.reportedAt,
     platforms: value.platforms,
     plugins: value.plugins,
+    projects: value.projects,
   };
 }
 

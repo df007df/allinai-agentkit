@@ -684,6 +684,7 @@ test("forwards inventory reports to the store as ownership-scoped records", asyn
     reportedAt: "2026-09-19T00:00:00.000Z",
     platforms: [{ platform: "codex", installed: true, version: "1.2.3" }],
     plugins: [],
+    projects: [{ name: "web" }],
   };
   socket.send(JSON.stringify(report));
   await until(() => store.calls.some((call) => call.method === "inventory"));

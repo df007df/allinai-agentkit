@@ -155,6 +155,7 @@ describe("test-only memory hub", () => {
         reportedAt: "2026-09-19T00:00:00.000Z",
         platforms: [],
         plugins: [],
+        projects: [],
       };
       await hub.store.recordInventory({
         principal: "test-token",

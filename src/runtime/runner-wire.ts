@@ -60,6 +60,7 @@ function isRunInput(value: unknown): value is PlatformRunInput {
       "platform",
       "prompt",
       "cwd",
+      "sessionDir",
       "sessionId",
       "model",
       "context",
@@ -71,6 +72,7 @@ function isRunInput(value: unknown): value is PlatformRunInput {
   }
   return (
     (value.cwd === undefined || typeof value.cwd === "string") &&
+    (value.sessionDir === undefined || typeof value.sessionDir === "string") &&
     (value.sessionId === undefined || typeof value.sessionId === "string") &&
     (value.model === undefined || typeof value.model === "string") &&
     (value.context === undefined || isRecord(value.context))

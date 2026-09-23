@@ -176,6 +176,7 @@ describe("agent-client protocol export boundary", () => {
           lastError: "git clone failed",
         },
       ],
+      projects: [{ name: "web" }, { name: "api" }],
     };
     assert.deepEqual(parseInventoryReport(report), report);
   });
@@ -189,6 +190,28 @@ describe("agent-client protocol export boundary", () => {
         reportedAt: "2026-09-19T00:00:00.000Z",
         platforms: [{ platform: "nope", installed: true, version: null }],
         plugins: [],
+        projects: [],
+      }),
+      null,
+    );
+    // Missing or malformed projects reject: the field is mandatory so a Hub
+    // never has to distinguish pre-projects clients by shape sniffing.
+    assert.equal(
+      parseInventoryReport({
+        type: "inventory.report",
+        reportedAt: "2026-09-19T00:00:00.000Z",
+        platforms: [],
+        plugins: [],
+      }),
+      null,
+    );
+    assert.equal(
+      parseInventoryReport({
+        type: "inventory.report",
+        reportedAt: "2026-09-19T00:00:00.000Z",
+        platforms: [],
+        plugins: [],
+        projects: [{ name: "" }],
       }),
       null,
     );

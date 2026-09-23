@@ -94,13 +94,13 @@ describe("agent config", () => {
       hubBaseUrl: "https://hub.example.test",
       clientId: "client-1",
       projects: [
-        { name: "web", path: "/work/web" },
-        { name: "api", path: "/work/api/" },
+        { name: "web", path: "/work/web", dir: "a1b2c3" },
+        { name: "api", path: "/work/api/", dir: "d4e5f6" },
       ],
     });
     assert.deepEqual(config.projects, [
-      { name: "web", path: "/work/web" },
-      { name: "api", path: "/work/api" },
+      { name: "web", path: "/work/web", dir: "a1b2c3" },
+      { name: "api", path: "/work/api", dir: "d4e5f6" },
     ]);
 
     assert.throws(
@@ -109,8 +109,8 @@ describe("agent config", () => {
           hubBaseUrl: "https://hub.example.test",
           clientId: "client-1",
           projects: [
-            { name: "web", path: "/work/web" },
-            { name: "web", path: "/work/other" },
+            { name: "web", path: "/work/web", dir: "a1b2c3" },
+            { name: "web", path: "/work/other", dir: "b2c3d4" },
           ],
         }),
       /duplicated/,
@@ -120,9 +120,18 @@ describe("agent config", () => {
         parseAgentConfig({
           hubBaseUrl: "https://hub.example.test",
           clientId: "client-1",
-          projects: [{ name: "relative", path: "work/relative" }],
+          projects: [{ name: "relative", path: "work/relative", dir: "a1b2c3" }],
         }),
       /absolute/,
+    );
+    assert.throws(
+      () =>
+        parseAgentConfig({
+          hubBaseUrl: "https://hub.example.test",
+          clientId: "client-1",
+          projects: [{ name: "web", path: "/work/web" }],
+        }),
+      /dir suffix/,
     );
   });
 });

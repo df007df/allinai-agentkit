@@ -412,6 +412,8 @@ describe("local Agent Client smoke", () => {
         ),
       "one admitted agent command",
     );
+    // Running means the runner child is already started: the supervisor
+    // prepares the workspace BEFORE the running transition.
     assert.equal(runner.started.length, 1);
     assert.equal(runner.started[0]?.executionId, "agent-execution");
     await createAgentControlClient(controlSocket).sync?.();

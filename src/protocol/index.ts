@@ -33,5 +33,6 @@ export {
   type PluginInventoryEntry,
   type PluginSyncAcknowledgement,
   type PluginSyncStatus,
+  type ProjectInventoryEntry,
   type RuntimeId,
 } from "./types.js";

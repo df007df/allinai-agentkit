@@ -11,10 +11,16 @@ export type AgentLocalPolicy = {
   allowedWorkspaceRoots: string[];
 };
 
-/** A locally registered project name and its working directory. */
+/**
+ * A locally registered project name and its working directory. `dir` is the
+ * random suffix generated at registration time that names the project's
+ * session-record root (projects/<name>-<dir>) — stable across restarts, so
+ * re-registering the same name starts a new record epoch.
+ */
 export type AgentProject = {
   name: string;
   path: string;
+  dir: string;
 };
 
 export type AgentConfig = {
@@ -131,11 +137,13 @@ function parsePolicy(value: unknown): AgentLocalPolicy {
   };
 }
 
-/** Projects must be locally absolute directories with unique names. */
+const PROJECT_DIR_PATTERN = /^[0-9a-f]{6}$/;
+
+/** Projects must be locally absolute directories with unique names and a record suffix. */
 export function parseProjects(value: unknown): AgentProject[] {
   if (value === undefined) return [];
   if (!Array.isArray(value))
-    throw new TypeError("projects must be an array of { name, path }");
+    throw new TypeError("projects must be an array of { name, path, dir }");
   const names = new Set<string>();
   return value.map((entry) => {
     if (
@@ -143,10 +151,12 @@ export function parseProjects(value: unknown): AgentProject[] {
       typeof entry.name !== "string" ||
       entry.name.trim().length === 0 ||
       typeof entry.path !== "string" ||
-      entry.path.trim().length === 0
+      entry.path.trim().length === 0 ||
+      typeof entry.dir !== "string" ||
+      !PROJECT_DIR_PATTERN.test(entry.dir)
     ) {
       throw new TypeError(
-        "projects entries must be objects with nonempty name and path strings",
+        "projects entries must be objects with nonempty name and path strings and a 6-hex-char dir suffix",
       );
     }
     if (!path.isAbsolute(entry.path.trim())) {
@@ -159,7 +169,11 @@ export function parseProjects(value: unknown): AgentProject[] {
       throw new TypeError(`Project name ${name} is duplicated`);
     }
     names.add(name);
-    return { name, path: path.resolve(entry.path.trim()) };
+    return {
+      name,
+      path: path.resolve(entry.path.trim()),
+      dir: entry.dir,
+    };
   });
 }
 

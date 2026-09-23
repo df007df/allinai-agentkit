@@ -127,9 +127,18 @@ export type PluginInventoryEntry = {
   lastError?: string;
 };
 
+/**
+ * A locally registered project name as reported in inventory. Only the name
+ * crosses the wire: Hub selection is by name, and the path stays client-local.
+ */
+export type ProjectInventoryEntry = {
+  name: string;
+};
+
 export type InventoryReport = {
   type: "inventory.report";
   reportedAt: string;
   platforms: PlatformInventoryEntry[];
   plugins: PluginInventoryEntry[];
+  projects: ProjectInventoryEntry[];
 };
