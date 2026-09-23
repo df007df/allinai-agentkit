@@ -166,7 +166,7 @@
     "verify:artifact": "node scripts/publish-stage.mjs stage && node scripts/verify-package-artifact.mjs"
   },
   "dependencies": {
-    "@openai/codex": "^0.155.1",
+    "@openai/codex": "^0.156.1",
     "ws": "^8.18.0"
   },
   "peerDependencies": {
