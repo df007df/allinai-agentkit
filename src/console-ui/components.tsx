@@ -5,7 +5,6 @@ import type { ClientEvent } from "../protocol/index.js";
 import {
   CONSOLE_POLICY_APPROVAL_PATH,
   CONSOLE_RUNS_PATH,
-  CONSOLE_SNAPSHOT_PATH,
   CONSOLE_TOOL_APPROVAL_PATH,
   LOGIN_APPROVE_PATH,
   LOGIN_DENY_PATH,
@@ -15,6 +14,15 @@ import {
   type AgentEventStream,
 } from "./events.js";
 import { deriveExecutions, eventsForExecution, type ExecutionView } from "./executions.js";
+import { CONSOLE_EVENT_BUFFER_LIMIT } from "../console/state.js";
+
+const EMPTY_SNAPSHOT: ConsoleSnapshotFrame = {
+  clients: [],
+  events: [],
+  observations: [],
+  serverTime: 0,
+  warning: null,
+};
 
 /** Console snapshot frame payload: buffer + host warning. */
 export type ConsoleSnapshotFrame = {
@@ -197,20 +205,33 @@ export function useAgentEvents(): {
                 ],
           );
         }
-        // Timeline data lives in the snapshot; a fresh ingested batch means
-        // the server has events the current snapshot predates. Refetch so the
-        // list updates live instead of on manual reload.
-        const anyObservation = raw as { kind?: string };
-        if (anyObservation && anyObservation.kind === "events.ingested") {
-          // Bust any intermediary/proxy cache: the endpoint also answers
-          // no-store, but a stale cached frame is exactly the "frozen
-          // timeline" bug users report, so belt and braces.
-          fetch(`${CONSOLE_SNAPSHOT_PATH}?t=${Date.now()}`)
-            .then((response) => (response.ok ? response.json() : null))
-            .then((frame) => {
-              if (frame && Array.isArray(frame.events)) setSnapshot(frame);
-            })
-            .catch(() => undefined);
+        // events.ingested carries the full ClientEvent[] for the batch: merge
+        // it straight into the local timeline (dedup + 500-cap, mirroring
+        // ConsoleState) instead of refetching the whole snapshot.
+        const anyObservation = raw as {
+          kind?: string;
+          events?: ClientEvent[];
+        };
+        if (anyObservation.kind === "events.ingested" && Array.isArray(anyObservation.events)) {
+          const incoming = anyObservation.events;
+          setSnapshot((prev) => {
+            const base = prev ?? EMPTY_SNAPSHOT;
+            const byKey = new Map<string, ClientEvent>();
+            for (const event of base.events) {
+              byKey.set(`${event.executionId}:${event.eventSeq}`, event);
+            }
+            for (const event of incoming) {
+              byKey.set(`${event.executionId}:${event.eventSeq}`, event);
+            }
+            const events = [...byKey.values()]
+              .sort(
+                (a, b) =>
+                  a.occurredAt.localeCompare(b.occurredAt) ||
+                  a.eventSeq - b.eventSeq,
+              )
+              .slice(-CONSOLE_EVENT_BUFFER_LIMIT);
+            return { ...base, events };
+          });
         }
       },
       onStatus: setStatus,
