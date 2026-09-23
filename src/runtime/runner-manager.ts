@@ -65,7 +65,8 @@ export type RunnerChildProcess = {
 
 export type RunnerSpawnOptions = {
   cwd: undefined;
-  env: undefined;
+  /** Always a full environment; the daemon merges proxy vars over process.env. */
+  env: Record<string, string> | undefined;
   shell: false;
   detached: boolean;
   stdio: ["pipe", "pipe", "pipe"];
@@ -85,6 +86,12 @@ export type RunnerManagerOptions = {
   spawn?: RunnerSpawn;
   /** A local package-controlled path. Hub payloads never influence this value. */
   childEntrypoint?: string;
+  /**
+   * http(s) proxy endpoint forwarded to agent children as HTTPS_PROXY/HTTP_PROXY
+   * (plus NO_PROXY=localhost,127.0.0.1 so hub traffic stays direct). Platform
+   * SDKs read the standard env vars; absent means inherit the daemon env.
+   */
+  proxyUrl?: string;
   /** How long the event flow may stay silent before the run fails. Reset by every event. */
   stallTimeoutMs?: number;
   /** Absolute wall-clock ceiling for one execution, regardless of event flow. */
@@ -215,6 +222,7 @@ function validatePositiveTimeout(value: number, name: string): void {
 export class IsolatedRunnerManager implements RunnerManager {
   private readonly spawn: RunnerSpawn;
   private readonly childEntrypoint: string;
+  private readonly proxyUrl: string | undefined;
   private readonly stallTimeoutMs: number;
   private readonly totalTimeoutMs: number;
   private readonly firstEventTimeoutMs: number;
@@ -238,6 +246,7 @@ export class IsolatedRunnerManager implements RunnerManager {
       (existsSync(DEFAULT_RUNNER_CHILD_ENTRYPOINT)
         ? DEFAULT_RUNNER_CHILD_ENTRYPOINT
         : RUNNER_CHILD_SOURCE_ENTRYPOINT);
+    this.proxyUrl = options.proxyUrl;
     this.stallTimeoutMs = options.stallTimeoutMs ?? DEFAULT_STALL_TIMEOUT_MS;
     this.totalTimeoutMs = options.totalTimeoutMs ?? DEFAULT_TOTAL_TIMEOUT_MS;
     this.firstEventTimeoutMs =
@@ -280,9 +289,17 @@ export class IsolatedRunnerManager implements RunnerManager {
             this.childEntrypoint,
           ]
         : [this.childEntrypoint];
+      const proxyEnv: Record<string, string> =
+        this.proxyUrl !== undefined
+          ? {
+              HTTPS_PROXY: this.proxyUrl,
+              HTTP_PROXY: this.proxyUrl,
+              NO_PROXY: "localhost,127.0.0.1",
+            }
+          : {};
       child = this.spawn(process.execPath, execArgs, {
         cwd: undefined,
-        env: undefined,
+        env: { ...process.env, ...proxyEnv } as Record<string, string>,
         shell: false,
         detached: process.platform !== "win32",
         stdio: ["pipe", "pipe", "pipe"],

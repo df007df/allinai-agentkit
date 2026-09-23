@@ -211,6 +211,8 @@ export function cliManual(): CliManual {
     configFields: [
       { field: "hubBaseUrl", description: "Hub base URL (http/https, set by init/login)" },
       { field: "clientId", description: "Unique client identity used for pairing and credentials" },
+      { field: "name", description: "Optional display name shown on authorize pages and consoles" },
+      { field: "proxy", description: "Optional http(s) proxy URL forwarded to agent runtimes (e.g. http://127.0.0.1:7900)" },
       { field: "maxConcurrentRuns", description: "Parallel agent.run executions, integer 1-32, default 1" },
       {
         field: "policy.autoRuntimes",

@@ -28,6 +28,12 @@ export type AgentConfig = {
   clientId: string;
   /** Human-readable display name; shown on authorize pages and consoles. */
   name?: string;
+  /**
+   * Proxy URL (http(s)://host:port) forwarded to agent runtime children so
+   * platform SDKs reach their APIs through the same proxy as this shell.
+   * Absent means "inherit the daemon's environment as-is".
+   */
+  proxy?: string;
   maxConcurrentRuns: number;
   policy: AgentLocalPolicy;
   /** Locally owned project registry; Hub payloads select a project by name. */
@@ -75,6 +81,19 @@ export function defaultAgentConfig(): Pick<
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+const PROXY_URL_PATTERN = /^https?:\/\/[^\s/]+(:\d+)?$/;
+
+/** Validated http(s) proxy endpoint; no path, no query. */
+function parseProxyUrl(value: unknown): string {
+  const raw = requireString(value, "proxy");
+  if (!PROXY_URL_PATTERN.test(raw)) {
+    throw new TypeError(
+      "proxy must be an http(s) URL like http://127.0.0.1:7900 (host[:port] only)",
+    );
+  }
+  return raw;
 }
 
 function requireString(
@@ -205,6 +224,7 @@ export function parseAgentConfig(value: unknown): AgentConfig {
     "hubBaseUrl",
     "clientId",
     "name",
+    "proxy",
     "maxConcurrentRuns",
     "policy",
     "projects",
@@ -227,10 +247,13 @@ export function parseAgentConfig(value: unknown): AgentConfig {
   }
   const name =
     value.name === undefined ? undefined : requireString(value.name, "name");
+  const proxy =
+    value.proxy === undefined ? undefined : parseProxyUrl(value.proxy);
   return {
     hubBaseUrl: parseHubBaseUrl(value.hubBaseUrl),
     clientId: requireString(value.clientId, "clientId"),
     ...(name ? { name } : {}),
+    ...(proxy ? { proxy } : {}),
     maxConcurrentRuns: maxConcurrentRuns as number,
     policy: parsePolicy(value.policy),
     projects: parseProjects(value.projects),

@@ -29,6 +29,34 @@ describe("agent config", () => {
     assert.deepEqual(config.policy, defaultAgentConfig().policy);
   });
 
+  it("accepts an optional proxy URL and rejects malformed ones", () => {
+    const config = parseAgentConfig({
+      hubBaseUrl: "https://hub.example.test",
+      clientId: "client-1",
+      proxy: "http://127.0.0.1:7900",
+    });
+    assert.equal(config.proxy, "http://127.0.0.1:7900");
+
+    assert.throws(
+      () =>
+        parseAgentConfig({
+          hubBaseUrl: "https://hub.example.test",
+          clientId: "client-1",
+          proxy: "127.0.0.1:7900",
+        }),
+      /proxy must be an http\(s\) URL/,
+    );
+    assert.throws(
+      () =>
+        parseAgentConfig({
+          hubBaseUrl: "https://hub.example.test",
+          clientId: "client-1",
+          proxy: "ftp://127.0.0.1:7900",
+        }),
+      /proxy must be an http\(s\) URL/,
+    );
+  });
+
   it("rejects malformed JSON configuration instead of accepting a partial config", () => {
     assert.throws(
       () => parseAgentConfig({ hubBaseUrl: "not a url", clientId: "client-1" }),

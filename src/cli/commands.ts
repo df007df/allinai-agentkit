@@ -1165,7 +1165,9 @@ export async function createLocalAgentDaemon(
       allowedGitOrigins: config.policy.allowedGitOrigins,
       stateStore: store,
     });
-    runner = (options.createRunner ?? createRunnerManager)();
+    runner = (options.createRunner ?? createRunnerManager)({
+      ...(config.proxy ? { proxyUrl: config.proxy } : {}),
+    });
     const token = await (
       options.credentials ?? createCredentialStore({ paths })
     ).load(config.clientId);

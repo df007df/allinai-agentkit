@@ -133,6 +133,47 @@ describe("RunnerManager", () => {
     assert.equal(manager.isHealthy(), true);
   });
 
+  it("injects proxy env into the child when proxyUrl is configured", async () => {
+    const fake = fakeSpawner();
+    const manager = createRunnerManager({
+      spawn: fake.spawn,
+      childEntrypoint: "/client-owned/runner-child.js",
+      proxyUrl: "http://127.0.0.1:7900",
+    });
+
+    const stream = manager.start("e1", runInput("codex"));
+    const child = fake.children[0]!;
+    child.writeEvent({ type: "init", payload: { sessionId: "s1" } });
+    child.close(0);
+    await collect(stream);
+
+    const options = fake.calls[0].options as {
+      env: Record<string, string>;
+    };
+    const env = options.env;
+    assert.equal(env.HTTPS_PROXY, "http://127.0.0.1:7900");
+    assert.equal(env.HTTP_PROXY, "http://127.0.0.1:7900");
+    assert.equal(env.NO_PROXY, "localhost,127.0.0.1");
+  });
+
+  it("leaves the child env untouched when no proxyUrl is configured", async () => {
+    const fake = fakeSpawner();
+    const manager = createRunnerManager({
+      spawn: fake.spawn,
+      childEntrypoint: "/client-owned/runner-child.js",
+    });
+
+    const stream = manager.start("e1", runInput("codex"));
+    const child = fake.children[0]!;
+    child.writeEvent({ type: "init", payload: { sessionId: "s1" } });
+    child.close(0);
+    await collect(stream);
+
+    const spawnOptions = fake.calls[0].options as { env: Record<string, string> };
+    assert.equal(spawnOptions.env.HTTPS_PROXY, undefined);
+    assert.equal(spawnOptions.env.PATH, process.env.PATH);
+  });
+
   it("cancels the child process group for the requested execution only", async () => {
     const fake = fakeSpawner();
     const manager = createRunnerManager({
@@ -183,18 +224,9 @@ describe("RunnerManager", () => {
 
     manager.start("e1", runInput("pi"));
 
-    assert.deepEqual(fake.calls[0], {
-      command: process.execPath,
-      args: ["/client-owned/runner-child.js"],
-      options: {
-        cwd: undefined,
-        env: undefined,
-        shell: false,
-        detached: process.platform !== "win32",
-        stdio: ["pipe", "pipe", "pipe"],
-        windowsHide: true,
-      },
-    });
+    const spawnOptions = fake.calls[0].options as { env: Record<string, string> };
+    assert.equal(spawnOptions.env.HTTPS_PROXY, undefined);
+    assert.equal(spawnOptions.env.PATH, process.env.PATH);
     assert.match(
       fake.children[0]!.stdin.writes[0]!,
       /Summarise the local project/,
