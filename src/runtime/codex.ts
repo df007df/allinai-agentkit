@@ -18,10 +18,17 @@ export type CodexSdk = {
   startThread(options?: {
     workingDirectory?: string;
     model?: string;
+    /** Skip Codex's git-repo trust gate; daemon-managed run dirs are often
+     * bare workspaces a user has never opened in Codex. */
+    skipGitRepoCheck?: boolean;
   }): CodexThread;
   resumeThread(
     threadId: string,
-    options?: { workingDirectory?: string; model?: string },
+    options?: {
+      workingDirectory?: string;
+      model?: string;
+      skipGitRepoCheck?: boolean;
+    },
   ): CodexThread;
 };
 
@@ -280,6 +287,9 @@ export function createCodexAdapter(
       const threadOptions = {
         ...(input.cwd ? { workingDirectory: input.cwd } : {}),
         ...(input.model ? { model: input.model } : {}),
+        // Runs are daemon-managed workspaces, not repos the user opened in
+        // Codex, so the interactive trust gate would block every run.
+        skipGitRepoCheck: true,
         // The SDK exposes no approval callback, so escalation requests cannot
         // be answered in-process. Lock the policy to `never` and let the
         // sandbox be the boundary; tool-level human gating for Codex is the

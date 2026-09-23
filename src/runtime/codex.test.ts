@@ -59,6 +59,7 @@ describe("Codex adapter", () => {
             workingDirectory: "/work/project",
             model: "gpt-5.3-codex",
             approvalPolicy: "never",
+            skipGitRepoCheck: true,
           });
           return {
             async runStreamed(prompt) {
@@ -199,6 +200,7 @@ describe("Codex adapter", () => {
           assert.deepEqual(options, {
             workingDirectory: "/work/project",
             approvalPolicy: "never",
+            skipGitRepoCheck: true,
           });
           return {
             async runStreamed() {
