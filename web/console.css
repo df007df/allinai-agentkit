@@ -33,9 +33,6 @@ body {
   .console-exec-row {
     flex-wrap: wrap;
   }
-  .console-detail {
-    max-height: 60vh;
-  }
   .console-btn {
     padding: 10px 14px;
   }

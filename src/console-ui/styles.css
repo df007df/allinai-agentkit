@@ -65,14 +65,6 @@
   color: var(--console-text-dim);
 }
 
-/* History card scrolls internally so the page height stays constant. */
-.console-panel-history .console-exec-list,
-.console-panel-history .console-detail {
-  max-height: 24rem;
-  overflow-y: auto;
-  margin-top: 0;
-}
-
 /* head / status ---------- */
 
 .console-head {
@@ -123,10 +115,43 @@
 
 .console-exec-list {
   list-style: none;
-  margin: 1.25rem 0 0;
+  margin: 0;
   padding: 0;
   display: grid;
   gap: 0.6rem;
+}
+
+/* Accordion item: header row + collapsible timeline body. */
+.console-exec-item {
+  border: 1px solid var(--console-border);
+  border-radius: var(--console-radius);
+  background: var(--console-bg-raised);
+  overflow: hidden;
+}
+.console-exec-item[data-open="true"] {
+  border-color: rgba(52, 211, 153, 0.45);
+  background: var(--console-bg-tint);
+}
+
+.console-exec-caret {
+  font-size: 0.7rem;
+  color: var(--console-text-dim);
+  width: 1em;
+}
+.console-exec-item[data-open="true"] .console-exec-caret {
+  color: var(--console-accent);
+}
+
+/* Expanded body: the row keeps its own hover chrome, the body sits flush. */
+.console-exec-item .console-exec-row {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.console-exec-body {
+  padding: 0 1.1rem 0.9rem 2.1rem;
+  border-top: 1px dashed var(--console-border);
+  padding-top: 0.75rem;
 }
 
 .console-empty {
@@ -201,13 +226,6 @@
 
 /* ---------- detail / timeline ---------- */
 
-.console-detail {
-  margin-top: 1.25rem;
-  display: grid;
-  gap: 0.9rem;
-  align-content: start;
-}
-
 .console-btn {
   display: inline-flex;
   align-items: center;
@@ -236,14 +254,6 @@
   background: transparent;
 }
 .console-btn-ghost:hover { border-color: var(--console-accent); }
-
-.console-detail-title {
-  margin: 0;
-  font-family: var(--console-mono);
-  font-size: 1rem;
-  color: var(--console-accent);
-  word-break: break-all;
-}
 
 .console-timeline {
   list-style: none;
@@ -355,11 +365,9 @@
 /* ---------- responsive / motion ---------- */
 
 @media (max-width: 880px) {
-  .console-exec-row { grid-template-columns: 1fr auto; }
-  .console-exec-time { display: none; }
+  .console-exec-row { grid-template-columns: auto 1fr auto; }
+  .console-exec-time, .console-exec-count { display: none; }
   .console-grid { grid-template-columns: 1fr; }
-  .console-panel-history .console-exec-list,
-  .console-panel-history .console-detail { max-height: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

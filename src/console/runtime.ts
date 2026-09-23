@@ -95,7 +95,12 @@ export function createConsoleRouter(
     }
     if (request.method === "GET" && url.pathname === CONSOLE_SNAPSHOT_PATH) {
       const snapshot = runtime.state.snapshot();
-      response.writeHead(200, { "content-type": "application/json" });
+      // no-store: this is a live-data refetch endpoint; a heuristically cached
+      // response would make the console timeline look frozen after a run.
+      response.writeHead(200, {
+        "content-type": "application/json",
+        "cache-control": "no-store",
+      });
       response.end(
         JSON.stringify({
           ...snapshot,

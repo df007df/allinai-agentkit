@@ -202,7 +202,10 @@ export function useAgentEvents(): {
         // list updates live instead of on manual reload.
         const anyObservation = raw as { kind?: string };
         if (anyObservation && anyObservation.kind === "events.ingested") {
-          fetch(CONSOLE_SNAPSHOT_PATH)
+          // Bust any intermediary/proxy cache: the endpoint also answers
+          // no-store, but a stale cached frame is exactly the "frozen
+          // timeline" bug users report, so belt and braces.
+          fetch(`${CONSOLE_SNAPSHOT_PATH}?t=${Date.now()}`)
             .then((response) => (response.ok ? response.json() : null))
             .then((frame) => {
               if (frame && Array.isArray(frame.events)) setSnapshot(frame);
@@ -306,22 +309,39 @@ function stateBadgeClass(state: ClientEvent["type"]): string {
   return `${base} console-badge-active`;
 }
 
+/** Accordion row: one execution, expanding inline into its event timeline. */
 export function ExecutionList(props: {
   executions: ExecutionView[];
-  onSelect(id: string): void;
+  eventsFor(executionId: string): ClientEvent[];
+  selectedId: string | null;
+  onSelect(id: string | null): void;
 }): ReactElement {
+  if (props.executions.length === 0) {
+    return (
+      <ul className="console-exec-list">
+        <li className="console-empty">暂无执行记录。</li>
+      </ul>
+    );
+  }
   return (
     <ul className="console-exec-list">
-      {props.executions.length === 0 ? (
-        <li className="console-empty">暂无执行记录。</li>
-      ) : (
-        props.executions.map((view) => (
-          <li key={view.executionId}>
+      {props.executions.map((view) => {
+        const open = props.selectedId === view.executionId;
+        return (
+          <li
+            key={view.executionId}
+            className="console-exec-item"
+            data-open={open ? "true" : "false"}
+          >
             <button
               type="button"
               className="console-exec-row"
-              onClick={() => props.onSelect(view.executionId)}
+              aria-expanded={open}
+              onClick={() => props.onSelect(open ? null : view.executionId)}
             >
+              <span className="console-exec-caret" aria-hidden="true">
+                {open ? "▾" : "▸"}
+              </span>
               <span className="console-exec-id">{view.executionId}</span>
               <span className={stateBadgeClass(view.state)}>{view.state}</span>
               <span className="console-exec-time">
@@ -329,9 +349,14 @@ export function ExecutionList(props: {
               </span>
               <span className="console-exec-count">{view.eventCount} 事件</span>
             </button>
+            {open ? (
+              <div className="console-exec-body">
+                <ExecutionDetail events={props.eventsFor(view.executionId)} />
+              </div>
+            ) : null}
           </li>
-        ))
-      )}
+        );
+      })}
     </ul>
   );
 }
@@ -611,7 +636,7 @@ export function ConsoleApp(): ReactElement {
 
   const events = snapshot?.events ?? [];
   const executions = deriveExecutions(events);
-  const selected =
+  const selectedEvents =
     selectedExecutionId !== null
       ? eventsForExecution(events, selectedExecutionId)
       : null;
@@ -639,24 +664,12 @@ export function ConsoleApp(): ReactElement {
         </section>
         <section className="console-panel console-panel-history">
           <h3 className="console-panel-title">历史会话</h3>
-          {selected === null ? (
-            <ExecutionList
-              executions={executions}
-              onSelect={setSelectedExecutionId}
-            />
-          ) : (
-            <div className="console-detail">
-              <button
-                type="button"
-                className="console-btn console-btn-ghost"
-                onClick={() => setSelectedExecutionId(null)}
-              >
-                ← 返回列表
-              </button>
-              <h3 className="console-detail-title">{selectedExecutionId}</h3>
-              <ExecutionDetail events={selected} />
-            </div>
-          )}
+          <ExecutionList
+            executions={executions}
+            eventsFor={(id) => eventsForExecution(events, id)}
+            selectedId={selectedEvents !== null ? selectedExecutionId : null}
+            onSelect={setSelectedExecutionId}
+          />
         </section>
       </div>
       <p className="console-clients">
