@@ -753,10 +753,9 @@ describe("ClientSupervisor", () => {
       );
     });
     assert.deepEqual(store.getExecution("e1")?.state, "done");
-    assert.deepEqual(store.listUnackedEvents("e1")[2]?.payload, {
-      eventType: "text_delta",
-      text: "hello",
-    });
+    const progress = store.listUnackedEvents("e1")[2];
+    assert.deepEqual(progress?.eventType, "text_delta");
+    assert.deepEqual(progress?.payload, { text: "hello" });
   });
 
   it("maps a runner stream error to one durable failed terminal state", async () => {

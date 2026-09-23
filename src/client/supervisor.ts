@@ -8,6 +8,7 @@ import path from "node:path";
 import type { ClientCommand } from "./types.js";
 import type { PluginSyncAcknowledgement } from "./types.js";
 import type {
+  ClientEventContentType,
   InventoryReport,
   PluginInventoryEntry,
 } from "../protocol/index.js";
@@ -223,13 +224,6 @@ function platformRunInput(
         ? { projectRecordDir: resolved.recordDir }
         : {}),
     },
-  };
-}
-
-function progressPayload(event: PlatformEvent): Record<string, unknown> {
-  return {
-    ...(event.payload ?? {}),
-    eventType: event.type,
   };
 }
 
@@ -1098,7 +1092,9 @@ export class ClientSupervisor {
               payload: event.payload,
             });
           }
-          this.appendProgressIfRunning(executionId, event);
+          this.appendProgressIfRunning(executionId, event as PlatformEvent & {
+            type: ClientEventContentType;
+          });
           continue;
         }
         // Vendor events are lossless SDK passthrough retained for local
@@ -1175,7 +1171,7 @@ export class ClientSupervisor {
 
   private appendProgressIfRunning(
     executionId: string,
-    event: PlatformEvent,
+    event: PlatformEvent & { type: ClientEventContentType },
   ): void {
     if (this.options.store.getExecution(executionId)?.state !== "running") {
       return;
@@ -1183,8 +1179,9 @@ export class ClientSupervisor {
     this.options.store.appendEvent({
       executionId,
       type: "progress",
+      eventType: event.type,
       occurredAt: new Date().toISOString(),
-      payload: progressPayload(event),
+      payload: event.payload ?? {},
     });
   }
 

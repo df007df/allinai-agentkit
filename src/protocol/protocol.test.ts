@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   AGENT_CLIENT_PROTOCOL_VERSION,
+  CLIENT_EVENT_CONTENT_TYPES,
   CLIENT_EVENT_TYPES,
   CLIENT_RUNTIME_IDS,
   encodeClientEventBatch,
@@ -124,6 +125,63 @@ describe("agent-client protocol export boundary", () => {
         occurredAt: "2026-09-18T00:00:00.000Z",
       },
     );
+  });
+
+  it("parses progress events with the top-level eventType content dimension", () => {
+    assert.deepEqual(
+      parseClientEvent({
+        executionId: "execution-1",
+        eventSeq: 4,
+        type: "progress",
+        eventType: "tool",
+        payload: { item: { id: "item_1", type: "command_execution" } },
+        occurredAt: "2026-09-23T22:41:50.102Z",
+      }),
+      {
+        executionId: "execution-1",
+        eventSeq: 4,
+        type: "progress",
+        eventType: "tool",
+        payload: { item: { id: "item_1", type: "command_execution" } },
+        occurredAt: "2026-09-23T22:41:50.102Z",
+      },
+    );
+    for (const contentType of CLIENT_EVENT_CONTENT_TYPES) {
+      assert.ok(
+        parseClientEvent({
+          executionId: "execution-1",
+          eventSeq: 5,
+          type: "progress",
+          eventType: contentType,
+          occurredAt: "2026-09-23T22:41:50.102Z",
+        }),
+      );
+    }
+  });
+
+  it("rejects eventType on non-progress events and unknown content types", () => {
+    assert.equal(
+      parseClientEvent({
+        executionId: "execution-1",
+        eventSeq: 6,
+        type: "done",
+        eventType: "tool",
+        occurredAt: "2026-09-23T22:41:50.102Z",
+      }),
+      null,
+    );
+    assert.equal(
+      parseClientEvent({
+        executionId: "execution-1",
+        eventSeq: 7,
+        type: "progress",
+        eventType: "item.completed",
+        occurredAt: "2026-09-23T22:41:50.102Z",
+      }),
+      null,
+    );
+  });
+  it("parses plugin sync downlinks verbatim", () => {
     assert.deepEqual(
       parseHubDownlink({
         type: "plugin.sync",
@@ -330,6 +388,7 @@ describe("agent-client protocol export boundary", () => {
   it("keeps the wire compatibility export observably identical", () => {
     const compatibilityExports = {
       AGENT_CLIENT_PROTOCOL_VERSION,
+      CLIENT_EVENT_CONTENT_TYPES,
       CLIENT_EVENT_TYPES,
       CLIENT_RUNTIME_IDS,
       encodeClientEventBatch,

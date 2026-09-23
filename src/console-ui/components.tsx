@@ -51,6 +51,22 @@ export type ConsoleSnapshotFrame = {
   warning: string | null;
 };
 
+const CONTENT_BADGE_LABELS: Record<string, string> = {
+  init: "init",
+  text_delta: "text",
+  thinking_delta: "thinking",
+  tool: "tool",
+  vendor: "vendor",
+};
+
+/** Badge label for a timeline event: "progress·tool" reads at a glance. */
+function eventBadgeLabel(event: ClientEvent): string {
+  const base = event.type;
+  if (event.type !== "progress" || !event.eventType) return base;
+  const content = CONTENT_BADGE_LABELS[event.eventType] ?? event.eventType;
+  return `${base}·${content}`;
+}
+
 /** A locally policy-gated execution awaiting a human allow/deny decision. */
 export type ExecutionApprovalView = {
   clientId: string;
@@ -392,7 +408,9 @@ export function ExecutionDetail(props: {
           <span className="console-timeline-time">
             {formatTime(event.occurredAt)}
           </span>
-          <span className={stateBadgeClass(event.type)}>{event.type}</span>
+          <span className={stateBadgeClass(event.type)}>
+            {eventBadgeLabel(event)}
+          </span>
           <span className="console-timeline-seq">#{event.eventSeq}</span>
           {event.payload !== undefined ? (
             <details className="console-payload">

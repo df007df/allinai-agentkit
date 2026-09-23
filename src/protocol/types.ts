@@ -56,10 +56,27 @@ export const CLIENT_EVENT_TYPES = [
 
 export type ClientEventType = (typeof CLIENT_EVENT_TYPES)[number];
 
+/**
+ * Content dimension of a progress event: what the runtime actually did.
+ * Orthogonal to the lifecycle `type`; terminal lifecycle events omit it.
+ */
+export const CLIENT_EVENT_CONTENT_TYPES = [
+  "init",
+  "text_delta",
+  "thinking_delta",
+  "tool",
+  "vendor",
+] as const;
+
+export type ClientEventContentType =
+  (typeof CLIENT_EVENT_CONTENT_TYPES)[number];
+
 export type ClientEvent = {
   executionId: string;
   eventSeq: number;
   type: ClientEventType;
+  /** Present only when `type` is "progress"; names the payload shape. */
+  eventType?: ClientEventContentType;
   payload?: Record<string, unknown>;
   occurredAt: string;
 };

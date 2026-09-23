@@ -16,12 +16,14 @@ export {
   type HubEventAcknowledgement,
 } from "./wire.js";
 export {
+  CLIENT_EVENT_CONTENT_TYPES,
   CLIENT_EVENT_TYPES,
   CLIENT_RUNTIME_IDS,
   type AgentInput,
   type ClientCommand,
   type ClientEvent,
   type ClientEventBatch,
+  type ClientEventContentType,
   type ClientEventType,
   type HubDownlink,
   type HubRuntimeEvent,

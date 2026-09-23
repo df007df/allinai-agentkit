@@ -1,10 +1,12 @@
 import {
+  CLIENT_EVENT_CONTENT_TYPES,
   CLIENT_EVENT_TYPES,
   CLIENT_RUNTIME_IDS,
   type AgentInput,
   type ClientCommand,
   type ClientEvent,
   type ClientEventBatch,
+  type ClientEventContentType,
   type ClientEventType,
   type HubDownlink,
   type InventoryReport,
@@ -52,6 +54,15 @@ function isClientEventType(value: unknown): value is ClientEventType {
   return (
     typeof value === "string" &&
     CLIENT_EVENT_TYPES.includes(value as ClientEventType)
+  );
+}
+
+function isClientEventContentType(
+  value: unknown,
+): value is ClientEventContentType {
+  return (
+    typeof value === "string" &&
+    CLIENT_EVENT_CONTENT_TYPES.includes(value as ClientEventContentType)
   );
 }
 
@@ -222,6 +233,7 @@ export function parseClientEvent(value: unknown): ClientEvent | null {
       "executionId",
       "eventSeq",
       "type",
+      "eventType",
       "payload",
       "occurredAt",
     ]) ||
@@ -231,22 +243,25 @@ export function parseClientEvent(value: unknown): ClientEvent | null {
     !isNonEmptyString(value.occurredAt)
   )
     return null;
-  if (Object.hasOwn(value, "payload")) {
-    if (!isPlainObject(value.payload)) return null;
-    return {
-      executionId: value.executionId,
-      eventSeq: value.eventSeq,
-      type: value.type,
-      payload: value.payload,
-      occurredAt: value.occurredAt,
-    };
+  // eventType is the content dimension and only meaningful on progress.
+  if (Object.hasOwn(value, "eventType")) {
+    if (!isClientEventContentType(value.eventType)) return null;
+    if (value.type !== "progress") return null;
   }
-  return {
+  const common = {
     executionId: value.executionId,
     eventSeq: value.eventSeq,
     type: value.type,
+    ...(Object.hasOwn(value, "eventType")
+      ? { eventType: value.eventType as ClientEventContentType }
+      : {}),
     occurredAt: value.occurredAt,
   };
+  if (Object.hasOwn(value, "payload")) {
+    if (!isPlainObject(value.payload)) return null;
+    return { ...common, payload: value.payload };
+  }
+  return common;
 }
 
 export function parseClientEventBatch(value: unknown): ClientEvent[] | null {
