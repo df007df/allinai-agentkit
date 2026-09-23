@@ -18,9 +18,11 @@ import {
   handleConsoleLoginDeny,
 } from "./login-bridge.js";
 import { handleConsoleToolApproval } from "./tool-approval.js";
+import { handleConsoleRun } from "./runs.js";
 import { createStaticHandler } from "./static.js";
 import {
   CONSOLE_OBSERVE_PATH,
+  CONSOLE_RUNS_PATH,
   CONSOLE_TOOL_APPROVAL_PATH,
   LOGIN_APPROVE_PATH,
   LOGIN_DENY_PATH,
@@ -95,7 +97,8 @@ export function createConsoleRouter(
       request.method === "POST" &&
       (url.pathname === LOGIN_APPROVE_PATH ||
         url.pathname === LOGIN_DENY_PATH ||
-        url.pathname === CONSOLE_TOOL_APPROVAL_PATH)
+        url.pathname === CONSOLE_TOOL_APPROVAL_PATH ||
+        url.pathname === CONSOLE_RUNS_PATH)
     ) {
       response.writeHead(403, { "content-type": "application/json" });
       response.end(JSON.stringify({ error: "loopback_only" }));
@@ -111,6 +114,10 @@ export function createConsoleRouter(
     }
     if (request.method === "POST" && url.pathname === CONSOLE_TOOL_APPROVAL_PATH) {
       await handleConsoleToolApproval(runtime, request, response);
+      return true;
+    }
+    if (request.method === "POST" && url.pathname === CONSOLE_RUNS_PATH) {
+      await handleConsoleRun(runtime, request, response);
       return true;
     }
     if (options?.beforeStatic) {

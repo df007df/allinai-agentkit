@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type ReactElement } from "react";
 import type { ClientEvent } from "../protocol/index.js";
 import {
+  CONSOLE_RUNS_PATH,
   CONSOLE_TOOL_APPROVAL_PATH,
   LOGIN_APPROVE_PATH,
   LOGIN_DENY_PATH,
@@ -15,7 +16,11 @@ import { deriveExecutions, eventsForExecution, type ExecutionView } from "./exec
 
 /** Console snapshot frame payload: buffer + host warning. */
 export type ConsoleSnapshotFrame = {
-  clients: Array<{ clientId: string; lastSeen: number }>;
+  clients: Array<{
+    clientId: string;
+    lastSeen: number;
+    projects?: string[];
+  }>;
   events: ClientEvent[];
   observations: unknown[];
   pendingApprovals?: Array<{
@@ -281,6 +286,150 @@ export function ApprovalList(props: {
   );
 }
 
+const RUNTIME_OPTIONS = ["codex", "claude", "pi"] as const;
+
+/**
+ * Trigger an agent run on one connected client. Projects come from the
+ * client's latest inventory report; "默认" sends no project field so the run
+ * uses the client's managed default workspace.
+ */
+export function RunForm(props: {
+  clients: Array<{ clientId: string; projects?: string[] }>;
+}): ReactElement {
+  const online = props.clients.filter(
+    (client) => client.clientId.length > 0,
+  );
+  const [clientId, setClientId] = useState("");
+  const [runtime, setRuntime] = useState<string>("codex");
+  const [project, setProject] = useState("");
+  const [prompt, setPrompt] = useState("");
+  const [status, setStatus] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const selected = online.find((client) => client.clientId === clientId);
+  const projects = selected?.projects ?? [];
+
+  async function submit(): Promise<void> {
+    if (!clientId || !prompt.trim()) return;
+    setSubmitting(true);
+    setStatus(null);
+    try {
+      const response = await fetch(CONSOLE_RUNS_PATH, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          clientId,
+          prompt,
+          runtime,
+          ...(project ? { project } : {}),
+        }),
+      });
+      const body = (await response.json()) as {
+        delivered?: boolean;
+        error?: string;
+        message?: string;
+        executionId?: string;
+      };
+      if (!response.ok) {
+        setStatus(`失败：${body.error ?? response.status}${body.message ? ` ${body.message}` : ""}`);
+      } else if (body.delivered) {
+        setStatus(
+          body.executionId
+            ? `已下发（execution ${body.executionId.slice(0, 8)}），等待 client 本地策略确认`
+            : "已入队，等待 client 上线接收",
+        );
+        setPrompt("");
+      } else {
+        setStatus("已入队，等待 client 上线接收");
+      }
+    } catch (cause) {
+      setStatus(`失败：${cause instanceof Error ? cause.message : String(cause)}`);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (online.length === 0) {
+    return <p className="console-empty">暂无已接入 client，无法发起执行。</p>;
+  }
+  return (
+    <form
+      className="console-run-form"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void submit();
+      }}
+    >
+      <div className="console-run-row">
+        <label>
+          Client
+          <select
+            value={clientId}
+            onChange={(event) => {
+              setClientId(event.target.value);
+              setProject("");
+            }}
+          >
+            <option value="">选择 client…</option>
+            {online.map((client) => (
+              <option key={client.clientId} value={client.clientId}>
+                {client.clientId}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Runtime
+          <select
+            value={runtime}
+            onChange={(event) => setRuntime(event.target.value)}
+          >
+            {RUNTIME_OPTIONS.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          项目
+          <select
+            value={project}
+            onChange={(event) => setProject(event.target.value)}
+            disabled={!clientId}
+          >
+            <option value="">默认（client 托管目录）</option>
+            {projects.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <label className="console-run-prompt">
+        提示词
+        <textarea
+          value={prompt}
+          rows={3}
+          placeholder="要执行的任务描述…"
+          onChange={(event) => setPrompt(event.target.value)}
+        />
+      </label>
+      <div className="console-run-actions">
+        <button
+          type="submit"
+          className="console-btn console-btn-primary"
+          disabled={submitting || !clientId || !prompt.trim()}
+        >
+          {submitting ? "下发中…" : "发起执行"}
+        </button>
+        {status ? <span className="console-run-status">{status}</span> : null}
+      </div>
+    </form>
+  );
+}
+
 export function ConsoleApp(): ReactElement {
   const { snapshot, status, approvals, respondApproval } = useAgentEvents();
   const [selectedExecutionId, setSelectedExecutionId] = useState<
@@ -306,6 +455,7 @@ export function ConsoleApp(): ReactElement {
         <p className="console-warning">{snapshot.warning}</p>
       ) : null}
       <ApprovalList approvals={approvals} onRespond={respondApproval} />
+      <RunForm clients={snapshot?.clients ?? []} />
       {selected === null ? (
         <ExecutionList
           executions={executions}

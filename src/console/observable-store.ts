@@ -11,7 +11,7 @@ import type {
   HubStore,
   StoredOffer,
 } from "../hub/index.js";
-import type { ClientEvent } from "../protocol/index.js";
+import type { ClientEvent, InventoryReport } from "../protocol/index.js";
 
 /** A tool-approval request surfaced from a progress event, for approver UIs. */
 export type ToolApprovalObservation = {
@@ -36,7 +36,12 @@ export type HubObservation =
   | { kind: "offers.delivered"; clientId: string; count: number; at: number }
   | { kind: "events.ingested"; clientId: string; count: number; at: number; events: ClientEvent[] }
   | { kind: "plugin.acknowledged"; clientId: string; at: number }
-  | { kind: "inventory.recorded"; clientId: string; at: number }
+  | {
+      kind: "inventory.recorded";
+      clientId: string;
+      report: InventoryReport;
+      at: number;
+    }
   | {
       kind: "tool_approval.requested";
       clientId: string;
@@ -172,6 +177,7 @@ export class ObservableStore<Principal> implements HubStore<Principal> {
     this.notify({
       kind: "inventory.recorded",
       clientId: input.clientId,
+      report: input.report,
       at: Date.now(),
     });
   }

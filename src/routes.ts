@@ -21,6 +21,8 @@ export const CONSOLE_PATH_PREFIX = `${AGENTKIT_ROOT_PREFIX}/console`;
 export const CONSOLE_OBSERVE_PATH = `${CONSOLE_PATH_PREFIX}/observe`;
 /** In-flight tool-approval decisions from an approver UI. */
 export const CONSOLE_TOOL_APPROVAL_PATH = `${CONSOLE_PATH_PREFIX}/tool-approval`;
+/** Trigger an agent run on one client from the console. */
+export const CONSOLE_RUNS_PATH = `${CONSOLE_PATH_PREFIX}/runs`;
 
 /** Reserved second-level segments under the umbrella prefix. */
 export const RESERVED_AGENTKIT_SEGMENTS = [

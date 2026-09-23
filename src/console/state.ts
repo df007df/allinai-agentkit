@@ -1,10 +1,15 @@
-import type { ClientEvent } from "../protocol/index.js";
+import type { ClientEvent, InventoryReport } from "../protocol/index.js";
 import type { HubObservation } from "./observable-store.js";
 
 export const CONSOLE_EVENT_BUFFER_LIMIT = 500;
 export const CONSOLE_OBSERVATION_BUFFER_LIMIT = 200;
 
-export type ConsoleClientView = { clientId: string; lastSeen: number };
+export type ConsoleClientView = {
+  clientId: string;
+  lastSeen: number;
+  /** Project names from the client's latest inventory report. */
+  projects: string[];
+};
 
 /**
  * A tool approval still awaiting (or recently answered without a matching
@@ -49,12 +54,27 @@ export class ConsoleState {
   apply(observation: HubObservation): void {
     switch (observation.kind) {
       case "client.registered":
-      case "client.heartbeat":
+      case "client.heartbeat": {
+        const existing = this.clients.get(observation.clientId);
         this.clients.set(observation.clientId, {
           clientId: observation.clientId,
           lastSeen: observation.at,
+          projects: existing?.projects ?? [],
         });
         break;
+      }
+      case "inventory.recorded": {
+        const existing = this.clients.get(observation.clientId) ?? {
+          clientId: observation.clientId,
+          lastSeen: observation.at,
+          projects: [],
+        };
+        this.clients.set(observation.clientId, {
+          ...existing,
+          projects: observation.report.projects.map((project) => project.name),
+        });
+        break;
+      }
       case "events.ingested":
         this.events = trim(
           [...this.events, ...observation.events.map((e) => ({ ...e }))],

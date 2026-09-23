@@ -29,6 +29,7 @@ export {
   isLoopbackRedirect,
 } from "./login-bridge.js";
 export { handleConsoleToolApproval } from "./tool-approval.js";
+export { handleConsoleRun } from "./runs.js";
 export { createStaticHandler } from "./static.js";
 export {
   createConsoleRuntime,
