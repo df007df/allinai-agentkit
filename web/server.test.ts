@@ -2,11 +2,16 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { test } from "node:test";
-import { createAgentkitFallback, startWebHost } from "./server.js";
+import {
+  createAgentkitFallback,
+  createAgentkitUpgradeHandler,
+  startWebHost,
+} from "./server.js";
 
 const res = (): ServerResponse => {
   const chunks: string[] = [];
-  return Object.assign(new EventEmitter(), {
+  const emitter = new EventEmitter();
+  return Object.assign(emitter, {
     headersSent: false,
     writeHead(code: number, headers: object) {
       Object.assign(this, { statusCode: code, headers });
@@ -15,7 +20,7 @@ const res = (): ServerResponse => {
     end(body?: string) {
       this.headersSent = true;
       chunks.push(body ?? "");
-      this.emit("finish");
+      emitter.emit("finish");
     },
   }) as unknown as ServerResponse;
 };
@@ -39,6 +44,32 @@ test("agentkit-prefixed requests go to the console router, others to next", asyn
   await new Promise((resolve) => setTimeout(resolve, 10));
   assert.equal(routerHit, true);
   assert.equal(nextHit, true);
+});
+
+test("non-hub upgrades (Next HMR) are forwarded to the app's upgrade handler", async () => {
+  const forwarded: string[] = [];
+  const handler = createAgentkitUpgradeHandler({
+    nextUpgradeHandler: async (request) => {
+      forwarded.push(request.url ?? "");
+    },
+  });
+  const socket = { destroyed: false, destroy() { this.destroyed = true; } };
+  handler({ url: "/_next/webpack-hmr" } as never, socket as never, Buffer.alloc(0));
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.deepEqual(forwarded, ["/_next/webpack-hmr"]);
+  assert.equal(socket.destroyed, false, "a successful handoff must not destroy the socket");
+});
+
+test("a rejecting next upgrade handler destroys the socket instead of throwing", async () => {
+  const handler = createAgentkitUpgradeHandler({
+    nextUpgradeHandler: async () => {
+      throw new Error("boom");
+    },
+  });
+  const socket = { destroyed: false, destroy() { this.destroyed = true; } };
+  handler({ url: "/_next/webpack-hmr" } as never, socket as never, Buffer.alloc(0));
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(socket.destroyed, true);
 });
 
 test("GET /_agentkit/login passes through to Next for the authorize page", async () => {

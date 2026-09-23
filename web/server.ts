@@ -1,6 +1,7 @@
 import http from "node:http";
 import { once } from "node:events";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import type { Duplex } from "node:stream";
 import next from "next";
 
 /**
@@ -93,6 +94,25 @@ export function createAgentkitFallback(params: {
   };
 }
 
+/**
+ * Non-hub WebSocket upgrades (Next dev serves HMR on /_next/webpack-hmr)
+ * belong to the app; without this passthrough the Hub destroys them and the
+ * browser logs a failed HMR connection in dev.
+ */
+export function createAgentkitUpgradeHandler(params: {
+  nextUpgradeHandler: (
+    request: IncomingMessage,
+    socket: Duplex,
+    head: Buffer,
+  ) => Promise<void>;
+}): (request: IncomingMessage, socket: Duplex, head: Buffer) => void {
+  return (request, socket, head) => {
+    void params.nextUpgradeHandler(request, socket, head).catch(() => {
+      socket.destroy();
+    });
+  };
+}
+
 export async function startWebHost(options?: {
   port?: number;
   host?: string;
@@ -125,6 +145,9 @@ export async function startWebHost(options?: {
   // traffic flows through the fallback below (never also server.on("request")).
   runtime.hub.attach(server, {
     fallback: createAgentkitFallback({ router, nextHandler }),
+    onUnknownUpgrade: createAgentkitUpgradeHandler({
+      nextUpgradeHandler: app.getUpgradeHandler(),
+    }),
   });
   server.listen(options?.port ?? 4317, host);
   await once(server, "listening");
