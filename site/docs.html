@@ -131,8 +131,9 @@ node bin/allinai-agentkit --help</code></pre>
           <pre class="code-block"><code>node bin/allinai-agentkit daemon</code></pre>
           <p>
             回到控制台页面：client 列表出现你的 clientId，时间线实时显示注册与心跳。
-            在“派发任务”面板选择 runtime、填写 prompt，即可下发一次 <code>agent.run</code>，
-            执行事件持续回传并在时间线呈现。
+            在「发起执行」面板选择 client、runtime 与项目、填写 prompt，即可下发一次
+            <code>agent.run</code>，执行事件经 <code>events.ingested</code> 增量推送
+            实时回传（历史会话以手风琴展开单次执行的完整时间线）。
           </p>
 
           <h3>步骤四（可选）：注册项目目录并派发到指定目录</h3>
@@ -165,8 +166,8 @@ node bin/allinai-agentkit --help</code></pre>
               </tr>
               <tr>
                 <td><code>login</code></td>
-                <td>浏览器授权配对，保存 token；输出 authorizeUrl 并自动开浏览器</td>
-                <td><code>--hub URL</code>* · <code>--client ID</code> · <code>--no-browser</code></td>
+                <td>浏览器授权配对，保存 token；输出 authorizeUrl 并自动开浏览器。<code>--name</code> 为 client 起显示名（授权页与控制台 client 列表展示），clientId 由 client 本地生成并持久化</td>
+                <td><code>--hub URL</code>* · <code>--client ID</code> · <code>--name N</code> · <code>--no-browser</code></td>
               </tr>
               <tr>
                 <td><code>daemon</code></td>
@@ -253,6 +254,14 @@ node bin/allinai-agentkit --help</code></pre>
             <code>(executionId, eventSeq)</code> 去重批量上行，Hub 只确认已持久化的连续水位——
             重启后先补投递未确认事件，再继续收新任务。
           </p>
+          <p>
+            本地策略默认<strong>自动执行</strong>（<code>policy.requireRunApproval: false</code>）；
+            设为 <code>true</code> 后每次执行先进入 <code>awaiting_approval</code>，
+            Console 弹出执行审批卡片，点「允许」原位恢复执行。运行中的工具调用也可被
+            client 侧拦截，Console 以工具审批卡片放行或拒绝——两类审批都经 Hub 下发，
+            审批流向在事件流中可见。agent 运行还可配置
+            <code>proxy</code>（http/https 代理 URL），由 daemon 转发给 runtime 子进程。
+          </p>
 
           <h3 id="features-projects">5.2 项目目录</h3>
           <p>
@@ -270,7 +279,8 @@ node bin/allinai-agentkit --help</code></pre>
             <code>/runtime</code> 提供 codex / claude / pi / zcode 四个适配器，全部是可选 peer 依赖：
             装了哪个 agent SDK 就启用哪个，未装的自动降级并在清单上报中说明原因，
             <code>/client</code> 与 CLI 本身不依赖任何 agent SDK。<code>doctor</code>
-            会逐个探测并给出安装/缺失原因报告。
+            会逐个探测并给出安装/缺失原因报告。各 SDK 的事件词汇在适配器内归一为
+            统一的事件模型后上报（详见<a href="#architecture-events">事件模型</a>）。
           </p>
 
           <h3 id="features-plugins">5.4 插件体系</h3>
@@ -312,7 +322,7 @@ const hub = createAgentHub&lt;MyUser&gt;({
   authorize: (token) =&gt; loadUserByToken(token), <span class="c">// 你的鉴权</span>
   store: myDurableStore(),                    <span class="c">// 你的持久化</span>
 });
-hub.attach(httpServer);                       <span class="c">// WS 挂到 /api/agent-hub/v2/ws</span>
+hub.attach(httpServer);                       <span class="c">// WS 挂到 /_agentkit/hub/v2/ws</span>
 
 <span class="c">// 向某个 client 派发一次执行</span>
 await hub.offer({
@@ -386,7 +396,7 @@ import { hub } from "./src/server/hub";
 const app = next({ dev: false });
 await app.prepare();
 const server = createServer((req, res) =&gt; app.getRequestHandler()(req, res));
-hub.attach(server);            <span class="c">// WS: /api/agent-hub/v2/ws</span>
+hub.attach(server);            <span class="c">// WS: /_agentkit/hub/v2/ws</span>
 server.listen(3000);
 
 <span class="c">// 3) src/app/agents/page.tsx —— 页面上列出 client 与状态</span>
@@ -499,7 +509,7 @@ await site.close();</code></pre>
               <div class="arch-wire down tall" aria-hidden="true"></div>
               <div class="arch-link-badge">
                 <div class="arch-link-dir">命令下行 ↓ · 事件上行 ↑</div>
-                <div class="arch-link-main">WebSocket <code>/api/agent-hub/v2/ws</code></div>
+                <div class="arch-link-main">WebSocket <code>/_agentkit/hub/v2/ws</code></div>
                 <div class="arch-link-sub"><code>/protocol</code> · v2 wire：hello · 命令 · 事件 · 心跳 · 确认</div>
               </div>
               <div class="arch-wire up tall" aria-hidden="true"></div>
