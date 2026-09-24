@@ -417,8 +417,9 @@ main {
 }
 .export-row {
   display: grid;
-  grid-template-columns: minmax(0, 24rem) 1fr;
-  gap: 1.1rem;
+  /* single column: code card above, description below */
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.55rem;
   padding: 0.85rem 0;
   border-top: 1px solid var(--border);
   align-items: start;
@@ -956,7 +957,6 @@ textarea::placeholder { color: var(--text-dim); }
     gap: 2.25rem;
   }
   .exports-grid { grid-template-columns: 1fr; }
-  .export-row { grid-template-columns: 1fr; gap: 0.5rem; }
   .console-grid { grid-template-columns: 1fr; }
   .steps li { grid-template-columns: 2.5rem 1fr; }
 }
