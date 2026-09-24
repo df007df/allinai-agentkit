@@ -186,6 +186,18 @@
   color: var(--console-accent);
   word-break: break-all;
 }
+.console-exec-main {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+.console-exec-prompt {
+  font-size: 0.82rem;
+  color: var(--console-text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .console-exec-time,
 .console-exec-count {
   font-family: var(--console-mono);

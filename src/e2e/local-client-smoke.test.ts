@@ -426,6 +426,8 @@ describe("local Agent Client smoke", () => {
       ["received", "running"],
     );
     assert.deepEqual(hubStore.listEvents("agent-execution")[0]?.payload, {
+      prompt: "perform the local smoke task",
+      runtime: "codex",
       pluginSnapshot: [{ id: "smoke-plugin", resolvedCommit: fixture.commit }],
     });
     assert.deepEqual(hubStore.listEvents("agent-execution")[1]?.payload, {

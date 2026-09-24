@@ -364,6 +364,7 @@ export function ExecutionList(props: {
     <ul className="console-exec-list">
       {props.executions.map((view) => {
         const open = props.selectedId === view.executionId;
+        const promptText = promptOf(props.eventsFor(view.executionId));
         return (
           <li
             key={view.executionId}
@@ -379,7 +380,12 @@ export function ExecutionList(props: {
               <span className="console-exec-caret" aria-hidden="true">
                 {open ? "▾" : "▸"}
               </span>
-              <span className="console-exec-id">{view.executionId}</span>
+              <span className="console-exec-main">
+                <span className="console-exec-id">{view.executionId}</span>
+                {promptText ? (
+                  <span className="console-exec-prompt">{promptText}</span>
+                ) : null}
+              </span>
               <span className={stateBadgeClass(view.state)}>{view.state}</span>
               <span className="console-exec-time">
                 {formatTime(view.lastOccurredAt)}
@@ -396,6 +402,18 @@ export function ExecutionList(props: {
       })}
     </ul>
   );
+}
+
+/** The user prompt carried on the received event, trimmed for row display. */
+function promptOf(events: ClientEvent[]): string | null {
+  for (const event of events) {
+    const value = event.payload?.prompt;
+    if (typeof value === "string" && value.trim()) {
+      const text = value.trim();
+      return text.length > 80 ? `${text.slice(0, 80)}…` : text;
+    }
+  }
+  return null;
 }
 
 /** The runtime-reported session id (e.g. codex thread id) from the init event,

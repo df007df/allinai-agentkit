@@ -78,6 +78,8 @@ describe("ClientStateStore", () => {
     assert.deepEqual(store.getExecution("e1")?.pluginSnapshot, snapshot);
     assert.equal(store.getLastPluginSyncRevision(), "plugins-v1");
     assert.deepEqual(store.listUnackedEvents("e1")[0]?.payload, {
+      prompt: "hello",
+      runtime: "codex",
       pluginSnapshot: snapshot,
     });
   });

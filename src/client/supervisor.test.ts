@@ -615,6 +615,8 @@ describe("ClientSupervisor", () => {
       plugins.snapshots,
     );
     assert.deepEqual(store.listUnackedEvents("e1")[0]?.payload, {
+      prompt: "hello",
+      runtime: "codex",
       pluginSnapshot: plugins.snapshots,
     });
     assert.deepEqual(store.listUnackedEvents("e1")[1]?.payload, {

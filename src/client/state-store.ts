@@ -215,7 +215,15 @@ export class ClientStateStore implements PluginStateStore {
         type: "received",
         occurredAt: admittedAt,
       };
-      if (pluginSnapshot.length > 0) received.payload = { pluginSnapshot };
+      const receivedPayload: Record<string, unknown> = {};
+      if (command.kind === "agent.run") {
+        // Carry the user-facing prompt (and runtime) on the received event so
+        // upstream views can show what a run was asked to do.
+        receivedPayload.prompt = command.payload.prompt ?? "";
+        receivedPayload.runtime = command.runtime;
+      }
+      if (pluginSnapshot.length > 0) receivedPayload.pluginSnapshot = pluginSnapshot;
+      if (Object.keys(receivedPayload).length > 0) received.payload = receivedPayload;
 
       this.db
         .prepare(
