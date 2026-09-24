@@ -398,29 +398,69 @@ export function ExecutionList(props: {
   );
 }
 
+/** The runtime-reported session id (e.g. codex thread id) from the init event,
+ * when the run has one. Lets an operator resume the vendor thread in the
+ * vendor's own TUI. */
+function runtimeSessionIdOf(events: ClientEvent[]): string | null {
+  for (const event of events) {
+    const value = event.payload?.runtimeSessionId;
+    if (typeof value === "string" && value) return value;
+  }
+  return null;
+}
+
+function SessionIdRow(props: { sessionId: string }): ReactElement {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="console-session-row">
+      <span className="console-session-label">runtime session</span>
+      <code className="console-session-id">{props.sessionId}</code>
+      <button
+        type="button"
+        className="console-btn console-btn-ghost console-btn-copy"
+        onClick={() => {
+          void navigator.clipboard
+            .writeText(props.sessionId)
+            .then(() => {
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1600);
+            })
+            .catch(() => undefined);
+        }}
+      >
+        {copied ? "已复制" : "复制"}
+      </button>
+    </div>
+  );
+}
+
 export function ExecutionDetail(props: {
   events: ClientEvent[];
 }): ReactElement {
+  const sessionId = runtimeSessionIdOf(props.events);
   return (
-    <ol className="console-timeline">
-      {props.events.map((event) => (
-        <li key={`${event.executionId}:${event.eventSeq}`}>
-          <span className="console-timeline-time">
-            {formatTime(event.occurredAt)}
-          </span>
-          <span className={stateBadgeClass(event.type)}>
-            {eventBadgeLabel(event)}
-          </span>
-          <span className="console-timeline-seq">#{event.eventSeq}</span>
-          {event.payload !== undefined ? (
-            <details className="console-payload">
-              <summary>payload</summary>
-              <pre>{JSON.stringify(event.payload, null, 2)}</pre>
-            </details>
-          ) : null}
-        </li>
-      ))}
-    </ol>
+    <div className="console-exec-detail">
+      {sessionId ? <SessionIdRow sessionId={sessionId} /> : null}
+      <ol className="console-timeline">
+        {props.events.map((event) => (
+          <li key={`${event.executionId}:${event.eventSeq}`}>
+            <span className="console-timeline-time">
+              {formatTime(event.occurredAt)}
+            </span>
+            <span className={stateBadgeClass(event.type)}>
+              {eventBadgeLabel(event)}
+            </span>
+            <span className="console-timeline-seq">#{event.eventSeq}</span>
+            {event.payload !== undefined ? (
+              <details className="console-payload">
+                <summary>payload</summary>
+                <pre>{JSON.stringify(event.payload, null, 2)}</pre>
+              </details>
+            ) : null}
+          </li>
+        ))}
+      </ol>
+    </div>
   );
 }
 

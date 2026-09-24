@@ -226,6 +226,30 @@
 
 /* ---------- detail / timeline ---------- */
 
+.console-exec-detail {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.console-session-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  font-size: 0.8rem;
+  color: var(--console-text-dim);
+}
+.console-session-id {
+  font-family: var(--console-mono);
+  font-size: 0.76rem;
+  color: var(--console-accent);
+  word-break: break-all;
+}
+.console-btn-copy {
+  padding: 0.25rem 0.7rem;
+  font-size: 0.76rem;
+}
+
 .console-btn {
   display: inline-flex;
   align-items: center;
