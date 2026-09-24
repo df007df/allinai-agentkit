@@ -27,6 +27,8 @@ export const CONSOLE_TOOL_APPROVAL_PATH = `${CONSOLE_PATH_PREFIX}/tool-approval`
 export const CONSOLE_POLICY_APPROVAL_PATH = `${CONSOLE_PATH_PREFIX}/policy-approval`;
 /** Trigger an agent run on one client from the console. */
 export const CONSOLE_RUNS_PATH = `${CONSOLE_PATH_PREFIX}/runs`;
+/** Plugin divergence actions (force / keep) from the console. */
+export const CONSOLE_PLUGIN_ACTION_PATH = `${CONSOLE_PATH_PREFIX}/plugin-action`;
 
 /** Reserved second-level segments under the umbrella prefix. */
 export const RESERVED_AGENTKIT_SEGMENTS = [

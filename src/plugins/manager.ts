@@ -1,11 +1,4 @@
-import {
-  access,
-  mkdir,
-  readFile,
-  rename,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { PLATFORM_IDS, type PlatformId } from "../runtime/types.js";
 import { validateCapabilityEntries } from "../capabilities/manifest.js";
@@ -14,9 +7,11 @@ import { isValidPluginId, parsePluginManifest } from "./manifest.js";
 import type {
   ActivePluginSnapshot,
   InstalledPlugin,
+  InstalledPluginWithOutcome,
   PluginConfig,
   PluginManifest,
   PluginStateStore,
+  PluginSyncOutcome,
 } from "./types.js";
 
 type ActivePointer = {
@@ -51,8 +46,13 @@ function activePointerPath(pluginsRoot: string, id: string): string {
   return path.join(pluginRoot(pluginsRoot, id), "active.json");
 }
 
-function revisionPath(pluginsRoot: string, id: string, commit: string): string {
-  return path.join(pluginRoot(pluginsRoot, id), "revisions", commit);
+/**
+ * One persistent clone per plugin id. The active "directory" is this
+ * repository's working tree; untracked files (runtime scratch caches) live
+ * in it and survive every update because updates never recreate the tree.
+ */
+function repositoryPath(pluginsRoot: string, id: string): string {
+  return path.join(pluginRoot(pluginsRoot, id), "repo");
 }
 
 function errorMessage(error: unknown): string {
@@ -61,6 +61,17 @@ function errorMessage(error: unknown): string {
 
 function isKnownCommit(value: string): boolean {
   return /^[0-9a-f]{40}$/i.test(value);
+}
+
+/**
+ * The wire allows a full 40-hex commit in the legacy `ref` slot. Treat it
+ * exactly like `commit`: a pinned target compared by hash, not a branch to
+ * resolve through refs/remotes.
+ */
+function pinnedTarget(config: PluginConfig): string | undefined {
+  if (config.commit) return config.commit;
+  if (config.ref && isKnownCommit(config.ref.trim())) return config.ref.trim().toLowerCase();
+  return undefined;
 }
 
 function normalizeConfig(config: PluginConfig): PluginConfig {
@@ -81,6 +92,25 @@ function normalizeConfig(config: PluginConfig): PluginConfig {
       `Plugin ${config.id} ref must be a nonempty non-option string`,
     );
   }
+  if (
+    config.commit !== undefined &&
+    (typeof config.commit !== "string" ||
+      !isKnownCommit(config.commit.trim()) ||
+      config.commit.includes("\0"))
+  ) {
+    throw new TypeError(
+      `Plugin ${config.id} commit must be a full 40-hex commit`,
+    );
+  }
+  if (
+    config.updatePolicy !== undefined &&
+    config.updatePolicy !== "auto" &&
+    config.updatePolicy !== "force"
+  ) {
+    throw new TypeError(
+      `Plugin ${config.id} updatePolicy must be "auto" or "force"`,
+    );
+  }
   if (typeof config.enabled !== "boolean") {
     throw new TypeError(`Plugin ${config.id} enabled must be a boolean`);
   }
@@ -95,6 +125,7 @@ function normalizeConfig(config: PluginConfig): PluginConfig {
   return {
     ...config,
     ref: config.ref?.trim(),
+    commit: config.commit?.trim().toLowerCase(),
     runtimes: config.runtimes ? [...config.runtimes] : undefined,
   };
 }
@@ -119,9 +150,39 @@ function assertManifestCompatibility(
   }
 }
 
+/** Secret signatures that must never be installed, mirroring import-time scans. */
+const BARE_SECRET = /(?:^|[^A-Za-z0-9])(?:gh[pousr]_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{16,})/;
+const ASSIGNED_SECRET = /(?:api[_-]?key|token|secret|password|authorization)\s*[:=]\s*["']?([^\s"',}]{12,})/i;
+
+async function scanForSecrets(
+  git: GitClient,
+  repo: string,
+  commit: string,
+): Promise<void> {
+  // Scan only tracked files at the target commit: untracked runtime scratch
+  // files are the client's own data, not plugin content.
+  const files = (await git.run(["-C", repo, "ls-tree", "-r", "--name-only", commit]))
+    .split("\n")
+    .filter((line) => line.trim().length > 0);
+  for (const file of files) {
+    const content = await git.run([
+      "-C",
+      repo,
+      "show",
+      "--end-of-options",
+      `${commit}:${file}`,
+    ]);
+    if (BARE_SECRET.test(content) || ASSIGNED_SECRET.test(content)) {
+      throw new Error(
+        `Possible credential in ${file}; remove it from the plugin repository before installing`,
+      );
+    }
+  }
+}
+
 async function exists(file: string): Promise<boolean> {
   try {
-    await access(file);
+    await stat(file);
     return true;
   } catch {
     return false;
@@ -129,9 +190,10 @@ async function exists(file: string): Promise<boolean> {
 }
 
 /**
- * Reconciles Hub Git desired state into local, immutable plugin revisions.
- * Activation changes a small same-directory pointer only after the complete
- * checkout and its manifest have been validated.
+ * Reconciles Hub Git desired state into one local clone per plugin id.
+ * Updates fetch and re-checkout the existing repository so untracked runtime
+ * files survive; the working tree is only switched after the target commit's
+ * manifest and capabilities validate, otherwise it is checked back.
  */
 export class PluginManager {
   private readonly git: GitClient;
@@ -151,7 +213,7 @@ export class PluginManager {
     }
   }
 
-  async sync(desired: PluginConfig[]): Promise<InstalledPlugin[]> {
+  async sync(desired: PluginConfig[]): Promise<InstalledPluginWithOutcome[]> {
     const ids = new Set<string>();
     for (const config of desired) {
       if (ids.has(config.id)) {
@@ -203,7 +265,91 @@ export class PluginManager {
       .sort((left, right) => left.id.localeCompare(right.id));
   }
 
-  private async syncOne(input: PluginConfig): Promise<InstalledPlugin> {
+  /**
+   * Report-only reconciliation: fetch and compare against the desired state
+   * without switching commits. Used by CLI `check` and the Hub inventory.
+   */
+  async check(
+    desired: PluginConfig[],
+  ): Promise<Array<{ id: string } & Partial<PluginSyncOutcome> & { error?: string }>> {
+    const results: Array<{ id: string } & Partial<PluginSyncOutcome> & { error?: string }> = [];
+    for (const input of desired) {
+      const id = input.id;
+      try {
+        const config = normalizeConfig(input);
+        const repo = repositoryPath(this.options.pluginsRoot, config.id);
+        if (!(await exists(repo))) {
+          results.push({ id, error: "not installed" });
+          continue;
+        }
+        const outcome = await this.inspect(config, repo);
+        results.push({ id, ...outcome });
+      } catch (error) {
+        results.push({ id, error: errorMessage(error) });
+      }
+    }
+    return results;
+  }
+
+  /**
+   * Force-switch a plugin to an explicit commit, bypassing divergence checks.
+   * The prior commit stays reachable in the repository history. Validation
+   * failures roll the working tree back and surface as a failed record.
+   */
+  async forceTo(id: string, commit?: string): Promise<InstalledPlugin> {
+    return this.withPluginLock(id, async () => {
+      const current = this.statuses.get(id);
+      if (!current) throw new Error(`Plugin ${id} is not installed`);
+      const repo = repositoryPath(this.options.pluginsRoot, id);
+      if (!(await exists(repo))) {
+        throw new Error(`Plugin ${id} has no local repository to switch`);
+      }
+      const target = commit ?? current.resolvedCommit;
+      if (!isKnownCommit(target)) {
+        throw new TypeError("forceTo requires a full 40-hex commit");
+      }
+      const normalized = target.toLowerCase();
+      const priorCommit = await this.resolveCommit(repo);
+      await this.git.run([
+        "-C",
+        repo,
+        "checkout",
+        "--detach",
+        "--force",
+        normalized,
+      ]);
+      try {
+        const manifest = await this.readManifest(repo);
+        await validateCapabilityEntries(repo, manifest.capabilities ?? []);
+        assertManifestCompatibility(current, manifest);
+      } catch (error) {
+        await this.git.run([
+          "-C",
+          repo,
+          "checkout",
+          "--detach",
+          "--force",
+          priorCommit,
+        ]);
+        const failed = this.failed(current, errorMessage(error));
+        this.save({ plugin: failed, active: this.activePlugins.get(id) ?? null });
+        return failed;
+      }
+      const plugin: InstalledPlugin = {
+        ...current,
+        resolvedCommit: normalized,
+        status: "active",
+        lastError: undefined,
+      };
+      await this.writePointer(id, plugin);
+      this.save({ plugin, active: plugin });
+      return plugin;
+    });
+  }
+
+  private async syncOne(
+    input: PluginConfig,
+  ): Promise<InstalledPluginWithOutcome> {
     let config: PluginConfig | undefined;
     try {
       config = normalizeConfig(input);
@@ -227,20 +373,48 @@ export class PluginManager {
         return blocked;
       }
 
-      const staging = await this.createStagingDirectory();
-      try {
-        await this.checkout(staging, config);
-        const manifest = await this.readManifest(staging);
-        await validateCapabilityEntries(staging, manifest.capabilities ?? []);
-        assertManifestCompatibility(config, manifest);
-        const resolvedCommit = await this.resolveCommit(staging);
-        const active = await this.activate(config, resolvedCommit, staging);
-        this.save({ plugin: active, active });
-        return active;
-      } catch (error) {
-        await rm(staging, { recursive: true, force: true });
-        throw error;
+      const repo = repositoryPath(this.options.pluginsRoot, config.id);
+      if (!(await exists(repo))) {
+        await this.initialClone(config, repo);
+      } else {
+        const outcome = await this.inspect(config, repo);
+        // Local-only commits are never silently discarded, whatever the
+        // policy says: force is an explicit operator action.
+        if (outcome.aheadCount > 0) {
+          return this.divergedResult(config, outcome);
+        }
+        const target = pinnedTarget(config);
+        const onTarget =
+          target !== undefined
+            ? outcome.localHead === target
+            : outcome.behind === false;
+        // Tracked edits diverge under "auto"; under "force" only local-only
+        // commits above still block, tracked dirt is overwritten by the
+        // force checkout below.
+        if (outcome.dirty && config.updatePolicy !== "force") {
+          return this.divergedResult(config, outcome);
+        }
+        if (onTarget && !outcome.diverged) {
+          const prior = this.activePlugins.get(config.id);
+          const current: InstalledPluginWithOutcome = {
+            ...(prior ?? config),
+            resolvedCommit: outcome.resolvedCommit,
+            localHead: outcome.localHead,
+            diverged: undefined,
+            aheadCount: 0,
+            status: "active",
+            installedAt: prior?.installedAt ?? now(),
+          };
+          this.save({ plugin: current, active: current });
+          return { ...current, outcome: { ...outcome, diverged: false } };
+        }
+        await this.fetchTarget(config, repo);
       }
+
+      const outcome = await this.checkoutValidated(config, repo);
+      const active = await this.activate(config, outcome, repo);
+      this.save({ plugin: active, active });
+      return active;
     } catch (error) {
       const configForFailure = config ?? input;
       const failed = this.failed(configForFailure, errorMessage(error));
@@ -252,47 +426,225 @@ export class PluginManager {
     }
   }
 
-  private async checkout(staging: string, config: PluginConfig): Promise<void> {
-    await this.git.run([
-      "clone",
-      "--no-checkout",
-      "--",
-      config.gitUrl,
-      staging,
+  /**
+   * Three-way comparison against the fetched remote state: untracked files
+   * are the client's own runtime data and never count as divergence; only
+   * tracked edits or local-only commits do.
+   */
+  private async inspect(
+    config: PluginConfig,
+    repo: string,
+  ): Promise<PluginSyncOutcome & { dirty: boolean; behind: boolean }> {
+    const localHead = await this.resolveCommit(repo);
+    const status = await this.git.run(["-C", repo, "status", "--porcelain"]);
+    const dirty = status
+      .split("\n")
+      .some((line) => line.length > 2 && !line.startsWith("??"));
+    const pinned = pinnedTarget(config);
+    if (pinned) {
+      await this.git.run(["-C", repo, "fetch", "--force", "origin", pinned]);
+      // A detached HEAD can carry local-only commits relative to the pinned
+      // target just like a branch can; count them instead of assuming zero.
+      const aheadCount = Number(
+        await this.git.run([
+          "-C",
+          repo,
+          "rev-list",
+          "--count",
+          `${pinned}..${localHead}`,
+        ]),
+      );
+      const behind = aheadCount === 0 && localHead !== pinned;
+      return {
+        resolvedCommit: localHead,
+        localHead,
+        diverged: dirty || aheadCount > 0,
+        aheadCount: Number.isSafeInteger(aheadCount) ? aheadCount : 0,
+        dirty,
+        behind,
+      };
+    }
+    const ref = config.ref;
+    if (!ref) {
+      // No ref configured: fetch all branches so origin's HEAD is reachable.
+      await this.git.run(["-C", repo, "fetch", "--force", "origin"]);
+      const fetched = await this.git.run([
+        "-C",
+        repo,
+        "rev-parse",
+        "--verify",
+        "--end-of-options",
+        "FETCH_HEAD^{commit}",
+      ]);
+      return this.compareAgainst(config, repo, localHead, dirty, fetched);
+    }
+    await this.git.run(["-C", repo, "fetch", "--force", "origin", ref]);
+    const fetched = await this.git.run([
+      "-C",
+      repo,
+      "rev-parse",
+      "--verify",
+      "--end-of-options",
+      `refs/remotes/origin/${ref}^{commit}`,
     ]);
-    if (config.ref) {
+    return this.compareAgainst(config, repo, localHead, dirty, fetched);
+  }
+
+  /** ahead/behind counts of localHead against the fetched remote commit. */
+  private async compareAgainst(
+    config: PluginConfig,
+    repo: string,
+    localHead: string,
+    dirty: boolean,
+    fetched: string,
+  ): Promise<PluginSyncOutcome & { dirty: boolean; behind: boolean }> {
+    const aheadCount = Number(
       await this.git.run([
         "-C",
-        staging,
-        "fetch",
-        "--force",
-        "origin",
-        config.ref,
-      ]);
+        repo,
+        "rev-list",
+        "--count",
+        `${fetched}..${localHead}`,
+      ]),
+    );
+    const behindCount = Number(
       await this.git.run([
         "-C",
-        staging,
-        "checkout",
-        "--detach",
-        "--force",
-        config.ref,
-      ]);
-    } else {
-      await this.git.run([
-        "-C",
-        staging,
-        "checkout",
-        "--detach",
-        "--force",
-        "HEAD",
-      ]);
+        repo,
+        "rev-list",
+        "--count",
+        `${localHead}..${fetched}`,
+      ]),
+    );
+    return {
+      resolvedCommit: localHead,
+      localHead,
+      diverged: dirty || aheadCount > 0,
+      aheadCount: Number.isSafeInteger(aheadCount) ? aheadCount : 0,
+      dirty,
+      behind: behindCount > 0,
+    };
+  }
+
+  private divergedResult(
+    config: PluginConfig,
+    outcome: PluginSyncOutcome & { dirty: boolean },
+  ): InstalledPluginWithOutcome {
+    const prior = this.activePlugins.get(config.id);
+    const plugin: InstalledPlugin = {
+      ...(prior ?? config),
+      resolvedCommit: outcome.resolvedCommit,
+      localHead: outcome.localHead,
+      diverged: true,
+      aheadCount: outcome.aheadCount,
+      status: prior?.status ?? "active",
+      lastError: prior?.status === "active" ? undefined : prior?.lastError,
+      installedAt: prior?.installedAt ?? now(),
+      enabled: config.enabled,
+      gitUrl: config.gitUrl,
+      ref: config.ref,
+      commit: config.commit,
+      runtimes: config.runtimes,
+      updatePolicy: config.updatePolicy,
+    };
+    this.save({ plugin, active: prior ?? null });
+    return {
+      ...plugin,
+      outcome: {
+        resolvedCommit: outcome.resolvedCommit,
+        localHead: outcome.localHead,
+        diverged: true,
+        aheadCount: outcome.aheadCount,
+      },
+    };
+  }
+
+  private async initialClone(
+    config: PluginConfig,
+    repo: string,
+  ): Promise<void> {
+    await mkdir(path.dirname(repo), { recursive: true });
+    try {
+      await this.git.run(["clone", "--no-checkout", "--", config.gitUrl, repo]);
+      await this.fetchTarget(config, repo);
+    } catch (error) {
+      await rm(repo, { recursive: true, force: true });
+      throw error;
     }
   }
 
-  private async resolveCommit(staging: string): Promise<string> {
+  private async fetchTarget(
+    config: PluginConfig,
+    repo: string,
+  ): Promise<void> {
+    const pinned = pinnedTarget(config);
+    // fetch takes the REMOTE-side ref: pinned commits fetch by hash, branch
+    // refs by their remote name. (checkoutTarget is the local counterpart.)
+    await this.git.run([
+      "-C",
+      repo,
+      "fetch",
+      "--force",
+      "origin",
+      pinned ?? config.ref ?? "HEAD",
+    ]);
+  }
+
+  /**
+   * Switch the working tree to the desired commit only after the target's
+   * manifest, capabilities, and secret scan validate; a failure checks the
+   * prior commit back so the working tree is never left on an unvalidated
+   * state.
+   */
+  private async checkoutValidated(
+    config: PluginConfig,
+    repo: string,
+  ): Promise<PluginSyncOutcome> {
+    const priorCommit = await this.resolveCommit(repo);
+    // Resolve the branch target through origin BEFORE checkout: a bare
+    // branch name in a detached repo resolves to the stale local
+    // refs/heads/<ref>, silently re-checking out the old commit.
+    const target = await this.checkoutTarget(config, repo);
+    await this.git.run(["-C", repo, "checkout", "--detach", "--force", target]);
+    try {
+      const resolvedCommit = await this.resolveCommit(repo);
+      const manifest = await this.readManifest(repo);
+      await validateCapabilityEntries(repo, manifest.capabilities ?? []);
+      assertManifestCompatibility(config, manifest);
+      await scanForSecrets(this.git, repo, resolvedCommit);
+      return { resolvedCommit, localHead: resolvedCommit, diverged: false, aheadCount: 0 };
+    } catch (error) {
+      await this.git.run([
+        "-C",
+        repo,
+        "checkout",
+        "--detach",
+        "--force",
+        priorCommit,
+      ]);
+      throw error;
+    }
+  }
+
+  /**
+   * The exact ref to hand to git checkout: pinned commits pass through,
+   * branch refs resolve through their origin remote-tracking ref. Must be
+   * called after fetchTarget has refreshed that remote-tracking ref.
+   */
+  private async checkoutTarget(
+    config: PluginConfig,
+    repo: string,
+  ): Promise<string> {
+    const pinned = pinnedTarget(config);
+    if (pinned) return pinned;
+    if (config.ref) return `refs/remotes/origin/${config.ref}`;
+    return "FETCH_HEAD";
+  }
+
+  private async resolveCommit(repo: string): Promise<string> {
     const commit = await this.git.run([
       "-C",
-      staging,
+      repo,
       "rev-parse",
       "--verify",
       "--end-of-options",
@@ -306,11 +658,11 @@ export class PluginManager {
     return commit.toLowerCase();
   }
 
-  private async readManifest(staging: string): Promise<PluginManifest> {
+  private async readManifest(repo: string): Promise<PluginManifest> {
     let raw: unknown;
     try {
       raw = JSON.parse(
-        await readFile(path.join(staging, "allinai-plugin.json"), "utf8"),
+        await readFile(path.join(repo, "allinai-plugin.json"), "utf8"),
       ) as unknown;
     } catch (error) {
       throw new Error(
@@ -324,29 +676,33 @@ export class PluginManager {
 
   private async activate(
     config: PluginConfig,
-    resolvedCommit: string,
-    staging: string,
-  ): Promise<InstalledPlugin> {
-    const root = pluginRoot(this.options.pluginsRoot, config.id);
-    const revision = revisionPath(
-      this.options.pluginsRoot,
-      config.id,
-      resolvedCommit,
-    );
-    await mkdir(path.dirname(revision), { recursive: true });
-    if (await exists(revision)) {
-      await rm(staging, { recursive: true, force: true });
-    } else {
-      await rename(staging, revision);
-    }
-
+    outcome: PluginSyncOutcome,
+    repo: string,
+  ): Promise<InstalledPluginWithOutcome> {
+    const prior = this.activePlugins.get(config.id);
     const plugin: InstalledPlugin = {
       ...config,
-      resolvedCommit,
-      installedAt: now(),
+      resolvedCommit: outcome.resolvedCommit,
+      localHead: outcome.localHead,
+      // A successful switch clears any prior divergence marks.
+      diverged: undefined,
+      aheadCount: 0,
+      installedAt: prior?.installedAt ?? now(),
       status: "active",
+      lastError: undefined,
     };
-    const pointer = activePointerPath(this.options.pluginsRoot, config.id);
+    await this.writePointer(config.id, plugin);
+    this.activePlugins.set(config.id, plugin);
+    return { ...plugin, outcome };
+  }
+
+  private async writePointer(
+    id: string,
+    plugin: InstalledPlugin,
+  ): Promise<void> {
+    const root = pluginRoot(this.options.pluginsRoot, id);
+    await mkdir(root, { recursive: true });
+    const pointer = activePointerPath(this.options.pluginsRoot, id);
     const temporaryPointer = path.join(
       root,
       `.active-${process.pid}-${Date.now()}.json`,
@@ -354,14 +710,10 @@ export class PluginManager {
     await writeFile(
       temporaryPointer,
       JSON.stringify({ plugin } satisfies ActivePointer),
-      {
-        encoding: "utf8",
-        mode: 0o600,
-      },
+      { encoding: "utf8", mode: 0o600 },
     );
+    // Rename within the same directory keeps the pointer swap atomic.
     await rename(temporaryPointer, pointer);
-    this.activePlugins.set(config.id, plugin);
-    return plugin;
   }
 
   private failed(config: PluginConfig, lastError: string): InstalledPlugin {
@@ -401,13 +753,6 @@ export class PluginManager {
     this.options.stateStore?.savePluginState(state);
   }
 
-  private async createStagingDirectory(): Promise<string> {
-    await mkdir(this.options.pluginsRoot, { recursive: true });
-    const base = path.join(this.options.pluginsRoot, ".staging-");
-    const { mkdtemp } = await import("node:fs/promises");
-    return mkdtemp(base);
-  }
-
   private async withPluginLock<T>(
     id: string,
     work: () => Promise<T>,
@@ -428,3 +773,4 @@ export class PluginManager {
     }
   }
 }
+

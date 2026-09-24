@@ -107,12 +107,24 @@ export type HubDownlink =
 
 export type PluginSyncStatus = "applied" | "already_applied" | "failed";
 
+/** Per-plugin sync result carried on plugin.sync.ack. */
+export type PluginSyncEntry = {
+  id: string;
+  resolvedCommit: string;
+  /** Local working-repository HEAD (differs from resolvedCommit when diverged). */
+  localHead?: string;
+  /** True when tracked edits or local commits blocked an automatic update. */
+  diverged?: boolean;
+  /** Commits the local HEAD is ahead of the target (0 when not ahead). */
+  aheadCount?: number;
+};
+
 /** Local acknowledgement of a desired-state revision; it never carries a pluginSet task field. */
 export type PluginSyncAcknowledgement = {
   type: "plugin.sync.ack";
   revision: string;
   status: PluginSyncStatus;
-  plugins: Array<{ id: string; resolvedCommit: string }>;
+  plugins: PluginSyncEntry[];
   error?: { code: "plugin_sync_failed"; message: string };
 };
 
@@ -150,6 +162,12 @@ export type PluginInventoryEntry = {
   resolvedCommit: string;
   installedAt: string;
   lastError?: string;
+  /** Local working-repository HEAD (differs from resolvedCommit when diverged). */
+  localHead?: string;
+  /** True when tracked edits or local commits blocked an automatic update. */
+  diverged?: boolean;
+  /** Commits the local HEAD is ahead of the target (0 when not ahead). */
+  aheadCount?: number;
 };
 
 /**

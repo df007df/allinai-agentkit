@@ -16,7 +16,9 @@ import type { ClientTransport } from "./transport.js";
 import type {
   ActivePluginSnapshot,
   InstalledPlugin,
+  InstalledPluginWithOutcome,
   PluginConfig,
+  PluginSyncOutcome,
 } from "../plugins/types.js";
 import {
   buildCapabilityContext,
@@ -95,7 +97,13 @@ export type DefaultWorkspacePort = {
 };
 
 export type PluginManagerPort = {
-  sync(desired: PluginConfig[]): Promise<InstalledPlugin[]>;
+  sync(desired: PluginConfig[]): Promise<InstalledPluginWithOutcome[]>;
+  check(
+    desired: PluginConfig[],
+  ): Promise<
+    Array<{ id: string } & Partial<PluginSyncOutcome> & { error?: string }>
+  >;
+  forceTo(id: string, commit?: string): Promise<InstalledPlugin>;
   snapshotActivePlugins(
     runtime?: AgentRunCommand["runtime"],
   ): ActivePluginSnapshot[];
@@ -162,6 +170,29 @@ const ACTIVE_STATES: readonly ExecutionState[] = [
 
 function isActive(state: ExecutionState): boolean {
   return ACTIVE_STATES.includes(state);
+}
+
+/**
+ * Enriches the active snapshot with the per-plugin sync outcome (localHead /
+ * diverged / aheadCount) so the Hub ledger sees divergence, not just commits.
+ */
+function withOutcomes(
+  snapshot: ActivePluginSnapshot[],
+  results: InstalledPluginWithOutcome[],
+): ActivePluginSnapshot[] {
+  const outcomes = new Map(
+    results.map((plugin) => [plugin.id, plugin.outcome]),
+  );
+  return snapshot.map((entry) => {
+    const outcome = outcomes.get(entry.id);
+    if (!outcome) return entry;
+    return {
+      ...entry,
+      localHead: outcome.localHead,
+      diverged: outcome.diverged,
+      aheadCount: outcome.aheadCount,
+    };
+  });
 }
 
 function runnerStartFailurePayload(error: unknown): Record<string, unknown> {
@@ -847,7 +878,7 @@ export class ClientSupervisor {
           type: "plugin.sync.ack",
           revision: input.revision,
           status: "failed",
-          plugins: plugins.snapshotActivePlugins(),
+          plugins: withOutcomes(plugins.snapshotActivePlugins(), result),
           error: {
             code: "plugin_sync_failed",
             message: failed.lastError ?? `Plugin ${failed.id} could not sync`,
@@ -861,7 +892,7 @@ export class ClientSupervisor {
         type: "plugin.sync.ack",
         revision: input.revision,
         status: "applied",
-        plugins: plugins.snapshotActivePlugins(),
+        plugins: withOutcomes(plugins.snapshotActivePlugins(), result),
       });
       void this.reportInventory();
     } catch (error) {
@@ -930,6 +961,11 @@ export class ClientSupervisor {
       resolvedCommit: plugin.resolvedCommit,
       installedAt: plugin.installedAt,
       ...(plugin.lastError ? { lastError: plugin.lastError } : {}),
+      ...(plugin.localHead ? { localHead: plugin.localHead } : {}),
+      ...(plugin.diverged !== undefined ? { diverged: plugin.diverged } : {}),
+      ...(plugin.aheadCount !== undefined
+        ? { aheadCount: plugin.aheadCount }
+        : {}),
     }));
   }
 
@@ -971,6 +1007,34 @@ export class ClientSupervisor {
       status: revision ? "already_applied" : "applied",
       plugins: plugins.snapshotActivePlugins(),
     });
+  }
+
+  /**
+   * Offline plugin operations: the same manager path a Hub plugin.sync takes,
+   * triggered locally so hub outages cannot block fetching new plugin code.
+   */
+  async pluginCheck(desired: PluginConfig[]): Promise<unknown> {
+    const plugins = this.options.plugins;
+    if (!plugins) throw new Error("Plugin manager is unavailable");
+    return plugins.check(desired);
+  }
+
+  async pluginUpdate(
+    desired: PluginConfig[],
+  ): Promise<InstalledPluginWithOutcome[]> {
+    const plugins = this.options.plugins;
+    if (!plugins) throw new Error("Plugin manager is unavailable");
+    const result = await plugins.sync(desired);
+    void this.reportInventory();
+    return result;
+  }
+
+  async pluginForce(id: string, commit?: string): Promise<unknown> {
+    const plugins = this.options.plugins;
+    if (!plugins) throw new Error("Plugin manager is unavailable");
+    const plugin = await plugins.forceTo(id, commit);
+    void this.reportInventory();
+    return plugin;
   }
 
   private async startPersistedAgentRun(

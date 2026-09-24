@@ -323,6 +323,22 @@ class FakePluginManager {
   snapshotActivePlugins(): ActivePluginSnapshot[] {
     return [...this.snapshots];
   }
+
+  async check(
+    desired: PluginConfig[],
+  ): Promise<Array<{ id: string; resolvedCommit: string; diverged: false; aheadCount: 0; localHead: string }>> {
+    return desired.map(() => ({
+      id: "demo",
+      resolvedCommit: "a".repeat(40),
+      localHead: "a".repeat(40),
+      diverged: false as const,
+      aheadCount: 0 as const,
+    }));
+  }
+
+  async forceTo(): Promise<InstalledPlugin> {
+    throw new Error("forceTo is not exercised by supervisor tests");
+  }
 }
 
 class DeferredPluginManager extends FakePluginManager {

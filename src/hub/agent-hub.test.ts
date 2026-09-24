@@ -801,3 +801,35 @@ test("syncPlugins pushes desired plugin state to the connected owner client", as
     /Invalid plugin sync/,
   );
 });
+
+test("onClientRegistered fires on first connect and every reconnect for level-up hooks", async (t) => {
+  const registrations: string[] = [];
+  const { connect } = await setup(t, {
+    onClientRegistered: ({ clientId }) => {
+      registrations.push(clientId);
+    },
+  });
+  const first = await connect();
+  first.socket.send(JSON.stringify(hello));
+  await until(() => registrations.length === 1);
+  first.socket.close();
+  const second = await connect();
+  second.socket.send(JSON.stringify(hello));
+  await until(() => registrations.length === 2);
+  assert.deepEqual(registrations, ["client-1", "client-1"]);
+});
+
+test("a throwing onClientRegistered hook logs but keeps the connection", async (t) => {
+  let calls = 0;
+  const { connect, store } = await setup(t, {
+    onClientRegistered: () => {
+      calls += 1;
+      throw new Error("level-up exploded");
+    },
+  });
+  const { socket } = await connect();
+  socket.send(JSON.stringify(hello));
+  await until(() => calls === 1);
+  await until(() => store.calls.some((call) => call.method === "pending"));
+  assert.equal(socket.readyState, WebSocket.OPEN);
+});

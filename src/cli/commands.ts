@@ -31,6 +31,7 @@ import {
 } from "../control-http.js";
 import { PluginManager } from "../plugins/manager.js";
 import { parsePluginManifest } from "../plugins/manifest.js";
+import type { PluginConfig } from "../plugins/types.js";
 import {
   prepareExecutionWorkspace,
   projectDirectorySuffix,
@@ -209,7 +210,10 @@ export const COMMAND_OPTIONS: Readonly<Record<string, CommandOptionSpec>> = {
     values: ["name", "path", "config-dir"],
     booleans: ["remove"],
   },
-  plugins: { values: ["config-dir"], booleans: ["refresh"] },
+  plugins: {
+    values: ["config-dir", "action", "id", "commit"],
+    booleans: ["refresh"],
+  },
   docs: { booleans: ["json"] },
 };
 
@@ -461,6 +465,10 @@ function help(): string {
     "  project --name NAME --path DIR   register a local project working directory",
     "  project --name NAME --remove     remove a registered project",
     "  plugins [--refresh]              list installed plugins; --refresh re-reports them to the Hub",
+    "  plugins --action check           fetch + compare plugins against upstream without switching commits",
+    "  plugins --action update          fetch + update plugins locally (works while the Hub is offline)",
+    "  plugins --action force --id ID [--commit SHA]",
+    "                                   force-switch one plugin to a commit, discarding tracked local edits",
     "  codex-hooks                      install the Codex PreToolUse approval hook (then trust it via /hooks in codex)",
     "  docs [--json]                    print the full CLI manual (Markdown; --json for structured output)",
   ].join("\n");
@@ -785,15 +793,64 @@ export async function runCli(
 
     if (command === "plugins") {
       const refresh = parsed.flags.get("refresh") === true;
+      const action = parsed.flags.get("action");
       if (!control.plugins)
         throw new Error("This daemon does not expose plugins");
-      const plugins = await control.plugins();
+      const installed =
+        (await control.plugins()) as Array<Record<string, unknown>>;
+      if (action === "check" || action === "update" || action === "force") {
+        // Hub-free plugin maintenance: the desired state comes from what is
+        // already installed, so an offline client can fetch new code with
+        // the exact same manager path a Hub plugin.sync uses.
+        const desired = installed.map((plugin) => ({
+          id: plugin.id,
+          gitUrl: plugin.gitUrl,
+          ...(plugin.ref !== undefined ? { ref: plugin.ref } : {}),
+          ...(plugin.commit !== undefined ? { commit: plugin.commit } : {}),
+          ...(plugin.updatePolicy !== undefined
+            ? { updatePolicy: plugin.updatePolicy }
+            : {}),
+          enabled: true,
+        }));
+        if (action === "check") {
+          if (!control.pluginCheck)
+            throw new Error("This daemon does not support plugin checks");
+          emit(output, write, {
+            action,
+            results: await control.pluginCheck(desired),
+          });
+          return { exitCode: 0, output };
+        }
+        if (action === "update") {
+          if (!control.pluginUpdate)
+            throw new Error("This daemon does not support plugin updates");
+          emit(output, write, {
+            action,
+            results: await control.pluginUpdate(desired),
+          });
+          return { exitCode: 0, output };
+        }
+        if (!control.pluginForce)
+          throw new Error("This daemon does not support plugin force");
+        const target = parsed.flags.get("id");
+        if (!target)
+          throw new Error("plugins --action force requires --id PLUGIN_ID");
+        const commit = parsed.flags.get("commit");
+        const plugin = await control.pluginForce(
+          String(target),
+          commit === undefined || commit === true
+            ? undefined
+            : String(commit),
+        );
+        emit(output, write, { action, plugin });
+        return { exitCode: 0, output };
+      }
       if (refresh) {
         if (!control.refreshPlugins)
           throw new Error("This daemon does not support plugin refresh");
         await control.refreshPlugins();
       }
-      emit(output, write, { plugins, refreshed: refresh });
+      emit(output, write, { plugins: installed, refreshed: refresh });
       return { exitCode: 0, output };
     }
 
@@ -897,12 +954,7 @@ function capabilityHost(
       for (const state of store.listPluginStates()) {
         const plugin = state.active;
         if (!plugin || plugin.status !== "active" || !plugin.enabled) continue;
-        const root = path.resolve(
-          paths.pluginsRoot,
-          plugin.id,
-          "revisions",
-          plugin.resolvedCommit,
-        );
+        const root = path.resolve(paths.pluginsRoot, plugin.id, "repo");
         if (!isInside(paths.pluginsRoot, root)) continue;
         try {
           const manifest = parsePluginManifest(
@@ -1150,6 +1202,18 @@ export async function createLocalAgentDaemon(
         refreshPlugins: async () => {
           if (!supervisor) throw new Error("Agent daemon is still starting");
           await supervisor.refreshPlugins();
+        },
+        pluginCheck: async (desired) => {
+          if (!supervisor) throw new Error("Agent daemon is still starting");
+          return supervisor.pluginCheck(desired as PluginConfig[]);
+        },
+        pluginUpdate: async (desired) => {
+          if (!supervisor) throw new Error("Agent daemon is still starting");
+          return supervisor.pluginUpdate(desired as PluginConfig[]);
+        },
+        pluginForce: async (id, commit) => {
+          if (!supervisor) throw new Error("Agent daemon is still starting");
+          return supervisor.pluginForce(id, commit);
         },
       },
     },

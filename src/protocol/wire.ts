@@ -316,10 +316,25 @@ function isPluginSyncAcknowledgement(
     !value.plugins.every(
       (plugin) =>
         isPlainObject(plugin) &&
-        hasOnlyKeys(plugin, ["id", "resolvedCommit"]) &&
+        hasOnlyKeys(plugin, [
+          "id",
+          "resolvedCommit",
+          "localHead",
+          "diverged",
+          "aheadCount",
+        ]) &&
         isNonEmptyString(plugin.id) &&
         typeof plugin.resolvedCommit === "string" &&
-        /^[0-9a-f]{40}$/i.test(plugin.resolvedCommit),
+        /^[0-9a-f]{40}$/i.test(plugin.resolvedCommit) &&
+        (plugin.localHead === undefined ||
+          (typeof plugin.localHead === "string" &&
+            /^[0-9a-f]{40}$/i.test(plugin.localHead))) &&
+        (plugin.diverged === undefined ||
+          typeof plugin.diverged === "boolean") &&
+        (plugin.aheadCount === undefined ||
+          (typeof plugin.aheadCount === "number" &&
+            Number.isSafeInteger(plugin.aheadCount) &&
+            plugin.aheadCount >= 0)),
     )
   )
     return false;
@@ -359,6 +374,9 @@ function isPluginInventoryEntry(value: unknown): value is PluginInventoryEntry {
         "resolvedCommit",
         "installedAt",
         "lastError",
+        "localHead",
+        "diverged",
+        "aheadCount",
       ],
     ) ||
     !isNonEmptyString(value.id) ||
@@ -367,7 +385,16 @@ function isPluginInventoryEntry(value: unknown): value is PluginInventoryEntry {
     !["active", "blocked", "failed"].includes(value.status as string) ||
     typeof value.resolvedCommit !== "string" ||
     !(value.resolvedCommit === "unresolved" || /^[0-9a-f]{40}$/i.test(value.resolvedCommit)) ||
-    !isNonEmptyString(value.installedAt)
+    !isNonEmptyString(value.installedAt) ||
+    (value.localHead !== undefined &&
+      !(typeof value.localHead === "string" && /^[0-9a-f]{40}$/i.test(value.localHead))) ||
+    (value.diverged !== undefined && typeof value.diverged !== "boolean") ||
+    (value.aheadCount !== undefined &&
+      !(
+        typeof value.aheadCount === "number" &&
+        Number.isSafeInteger(value.aheadCount) &&
+        value.aheadCount >= 0
+      ))
   )
     return false;
   if (value.ref !== undefined && !isNonEmptyString(value.ref)) return false;
@@ -415,9 +442,16 @@ export function parsePluginSyncAcknowledgement(
     type: "plugin.sync.ack",
     revision: value.revision,
     status: value.status,
-    plugins: value.plugins.map(({ id, resolvedCommit }) => ({
-      id,
-      resolvedCommit: resolvedCommit.toLowerCase(),
+    plugins: value.plugins.map((plugin) => ({
+      id: plugin.id,
+      resolvedCommit: plugin.resolvedCommit.toLowerCase(),
+      ...(plugin.localHead !== undefined
+        ? { localHead: plugin.localHead.toLowerCase() }
+        : {}),
+      ...(plugin.diverged !== undefined ? { diverged: plugin.diverged } : {}),
+      ...(plugin.aheadCount !== undefined
+        ? { aheadCount: plugin.aheadCount }
+        : {}),
     })),
     ...(value.error
       ? {

@@ -1,4 +1,8 @@
-import type { ClientEvent, InventoryReport } from "../protocol/index.js";
+import type {
+  ClientEvent,
+  InventoryReport,
+  PluginInventoryEntry,
+} from "../protocol/index.js";
 import type { HubObservation } from "./observable-store.js";
 
 export const CONSOLE_EVENT_BUFFER_LIMIT = 500;
@@ -11,6 +15,8 @@ export type ConsoleClientView = {
   lastSeen: number;
   /** Project names from the client's latest inventory report. */
   projects: string[];
+  /** Plugin entries from the latest inventory; drives the diverged view. */
+  plugins: PluginInventoryEntry[];
 };
 
 /**
@@ -79,6 +85,7 @@ export class ConsoleState {
               : {}),
           lastSeen: observation.at,
           projects: existing?.projects ?? [],
+          plugins: existing?.plugins ?? [],
         });
         break;
       }
@@ -87,10 +94,12 @@ export class ConsoleState {
           clientId: observation.clientId,
           lastSeen: observation.at,
           projects: [],
+          plugins: [],
         };
         this.clients.set(observation.clientId, {
           ...existing,
           projects: observation.report.projects.map((project) => project.name),
+          plugins: observation.report.plugins,
         });
         break;
       }

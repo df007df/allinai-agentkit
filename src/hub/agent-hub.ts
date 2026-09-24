@@ -231,6 +231,22 @@ export function createAgentHub<Principal>(
           }
           prior?.socket.close(1000, "superseded connection");
           await deliver(connection);
+          if (options.onClientRegistered) {
+            try {
+              await options.onClientRegistered({
+                principal,
+                clientId: record.clientId,
+                connectionKey: record.connectionKey,
+              });
+            } catch (error) {
+              // A failing level-up hook must not take the connection down;
+              // the client still functions with its current plugins.
+              bridgeLog.warn("agent-hub", "onClientRegistered hook failed", {
+                clientId: record.clientId,
+                error: error instanceof Error ? error.message : String(error),
+              });
+            }
+          }
           return;
         }
         const acknowledgement = parsePluginSyncAcknowledgement(message);

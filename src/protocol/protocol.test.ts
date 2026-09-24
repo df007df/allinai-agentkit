@@ -383,6 +383,42 @@ describe("agent-client protocol export boundary", () => {
       parsePluginSyncAcknowledgement(acknowledgement),
       acknowledgement,
     );
+
+    const divergenceAcknowledgement = encodePluginSyncAcknowledgement({
+      type: "plugin.sync.ack",
+      revision: "plugins-v4",
+      status: "applied",
+      plugins: [
+        {
+          id: "demo",
+          resolvedCommit: "a".repeat(40),
+          localHead: "B".repeat(40),
+          diverged: true,
+          aheadCount: 2,
+        },
+      ],
+    });
+    const parsedDivergence =
+      parsePluginSyncAcknowledgement(divergenceAcknowledgement);
+    assert.ok(parsedDivergence);
+    assert.deepEqual(parsedDivergence.plugins, [
+      {
+        id: "demo",
+        resolvedCommit: "a".repeat(40),
+        localHead: "b".repeat(40),
+        diverged: true,
+        aheadCount: 2,
+      },
+    ]);
+    assert.equal(
+      parsePluginSyncAcknowledgement({
+        type: "plugin.sync.ack",
+        revision: "plugins-v5",
+        status: "applied",
+        plugins: [{ id: "demo", resolvedCommit: "a".repeat(40), diverged: "yes" }],
+      }),
+      null,
+    );
   });
 
   it("keeps the wire compatibility export observably identical", () => {

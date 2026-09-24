@@ -22,11 +22,13 @@ import {
   handleConsolePolicyApproval,
 } from "./tool-approval.js";
 import { handleConsoleRun } from "./runs.js";
+import { handleConsolePluginAction } from "./plugin-action.js";
 import { createStaticHandler } from "./static.js";
 import {
   CONSOLE_OBSERVE_PATH,
   CONSOLE_SNAPSHOT_PATH,
   CONSOLE_RUNS_PATH,
+  CONSOLE_PLUGIN_ACTION_PATH,
   CONSOLE_TOOL_APPROVAL_PATH,
   CONSOLE_POLICY_APPROVAL_PATH,
   LOGIN_APPROVE_PATH,
@@ -120,6 +122,7 @@ export function createConsoleRouter(
         url.pathname === LOGIN_DENY_PATH ||
         url.pathname === CONSOLE_TOOL_APPROVAL_PATH ||
         url.pathname === CONSOLE_POLICY_APPROVAL_PATH ||
+        url.pathname === CONSOLE_PLUGIN_ACTION_PATH ||
         url.pathname === CONSOLE_RUNS_PATH)
     ) {
       response.writeHead(403, { "content-type": "application/json" });
@@ -144,6 +147,10 @@ export function createConsoleRouter(
     }
     if (request.method === "POST" && url.pathname === CONSOLE_RUNS_PATH) {
       await handleConsoleRun(runtime, request, response);
+      return true;
+    }
+    if (request.method === "POST" && url.pathname === CONSOLE_PLUGIN_ACTION_PATH) {
+      await handleConsolePluginAction(runtime, request, response);
       return true;
     }
     if (options?.beforeStatic) {

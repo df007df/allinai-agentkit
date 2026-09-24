@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ReactElement } from "react";
 import type { ClientEvent } from "../protocol/index.js";
 import {
   CONSOLE_POLICY_APPROVAL_PATH,
+  CONSOLE_PLUGIN_ACTION_PATH,
   CONSOLE_RUNS_PATH,
   CONSOLE_TOOL_APPROVAL_PATH,
   LOGIN_APPROVE_PATH,
@@ -14,7 +15,7 @@ import {
   type AgentEventStream,
 } from "./events.js";
 import { deriveExecutions, eventsForExecution, type ExecutionView } from "./executions.js";
-import { CONSOLE_EVENT_BUFFER_LIMIT } from "../console/state.js";
+import { CONSOLE_EVENT_BUFFER_LIMIT, type ConsoleSnapshot } from "../console/state.js";
 
 const EMPTY_SNAPSHOT: ConsoleSnapshotFrame = {
   clients: [],
@@ -31,6 +32,15 @@ export type ConsoleSnapshotFrame = {
     name?: string;
     lastSeen: number;
     projects?: string[];
+    plugins?: Array<{
+      id: string;
+      status: string;
+      resolvedCommit: string;
+      localHead?: string;
+      diverged?: boolean;
+      aheadCount?: number;
+      lastError?: string;
+    }>;
   }>;
   events: ClientEvent[];
   observations: unknown[];
@@ -577,6 +587,112 @@ export function ApprovalList(props: {
 const RUNTIME_OPTIONS = ["codex", "claude", "pi"] as const;
 
 /**
+ * Plugin divergence panel: lists per-client plugin state from the latest
+ * inventory and surfaces diverged plugins with two deliberate actions —
+ * force-overwrite with the hub's desired state, or keep the local edits
+ * (refreshes the inventory so the banner reflects a deliberate keep).
+ */
+export function PluginPanel(props: {
+  clients: ConsoleSnapshotFrame["clients"];
+}): ReactElement {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const diverged = props.clients.flatMap((client) =>
+    (client.plugins ?? [])
+      .filter((plugin) => plugin.diverged)
+      .map((plugin) => ({ client, plugin })),
+  );
+
+  async function act(
+    action: "force" | "keep",
+    clientId: string,
+    pluginId: string,
+  ): Promise<void> {
+    setBusy(`${clientId}:${pluginId}`);
+    setMessage(null);
+    try {
+      const response = await fetch(CONSOLE_PLUGIN_ACTION_PATH, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ clientId, action, pluginId }),
+      });
+      const body = (await response.json()) as { error?: string; delivered?: boolean };
+      if (!response.ok) {
+        setMessage(`操作失败：${body.error ?? response.status}`);
+      } else if (action === "force") {
+        setMessage(
+          body.delivered
+            ? `已下发强制覆盖指令（${pluginId}），等待 client 应用`
+            : `client 不在线，指令未送达（${pluginId}）`,
+        );
+      } else {
+        setMessage(`已请求刷新插件状态（${pluginId}），保留本地修改`);
+      }
+    } catch (error) {
+      setMessage(`操作失败：${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  if (props.clients.every((client) => !(client.plugins ?? []).length)) {
+    return <></>;
+  }
+  return (
+    <section className="console-panel">
+      <h3 className="console-panel-title">插件状态</h3>
+      {message ? <p className="console-warning">{message}</p> : null}
+      {props.clients.map((client) => (
+        <div key={client.clientId} className="console-plugin-client">
+          <strong>{client.name || client.clientId.slice(0, 8)}</strong>
+          {(client.plugins ?? []).map((plugin) => (
+            <div
+              key={plugin.id}
+              className="console-plugin-row"
+              data-diverged={plugin.diverged ? "true" : "false"}
+            >
+              <span>
+                {plugin.id} @ {plugin.resolvedCommit.slice(0, 8)}
+                {plugin.diverged ? (
+                  <em>
+                    {" "}
+                    本地已分叉（领先 {plugin.aheadCount ?? 0} 个提交，
+                    local {plugin.localHead?.slice(0, 8) ?? "?"}）
+                  </em>
+                ) : null}
+              </span>
+              {plugin.diverged ? (
+                <span className="console-plugin-actions">
+                  <button
+                    type="button"
+                    disabled={busy !== null}
+                    onClick={() => act("force", client.clientId, plugin.id)}
+                  >
+                    强制覆盖
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy !== null}
+                    onClick={() => act("keep", client.clientId, plugin.id)}
+                  >
+                    保留本地
+                  </button>
+                </span>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ))}
+      {diverged.length > 0 ? (
+        <p className="console-warning">
+          {diverged.length} 个插件处于分叉状态：更新已暂停，需人工裁决。
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+/**
  * Trigger an agent run on one connected client. Projects come from the
  * client's latest inventory report; "默认" sends no project field so the run
  * uses the client's managed default workspace.
@@ -754,6 +870,7 @@ export function ConsoleApp(): ReactElement {
         approvals={executionApprovals}
         onRespond={respondExecutionApproval}
       />
+      <PluginPanel clients={snapshot?.clients ?? []} />
       <div className="console-grid">
         <section className="console-panel">
           <h3 className="console-panel-title">发起执行</h3>

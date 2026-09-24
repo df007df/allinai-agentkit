@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import {
   mkdtempSync,
   mkdirSync,
+  readFileSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -269,5 +270,109 @@ describe("PluginManager", () => {
     assert.equal(calls, 0);
     assert.equal(result[0]?.status, "failed");
     assert.match(result[0]?.lastError ?? "", /non-option/);
+  });
+
+  it("reuses one repository per plugin id and keeps untracked files across updates", async () => {
+    const fixture = createFixture();
+    const root = mkdtempSync(path.join(tmpdir(), "allinai-plugin-store-"));
+    directories.push(root);
+    const manager = createManager(root);
+
+    await manager.sync([desired(fixture.root, fixture.goodCommit)]);
+    const repo = path.join(root, "demo", "repo");
+    writeFileSync(path.join(repo, "runtime-cache.tmp"), "scratch");
+    git(repo, ["checkout", "--detach", fixture.badCommit]);
+    // Put the tree back on the good commit so the next sync sees a clean state.
+    git(repo, ["checkout", "--detach", "--force", fixture.goodCommit]);
+
+    const result = await manager.sync([desired(fixture.root, fixture.goodCommit)]);
+
+    assert.equal(result[0]?.outcome?.diverged, false);
+    assert.equal(result[0]?.resolvedCommit, fixture.goodCommit);
+    assert.equal(
+      readFileSync(path.join(repo, "runtime-cache.tmp"), "utf8"),
+      "scratch",
+    );
+  });
+
+  it("reports divergence for local-only commits and refuses to overwrite", async () => {
+    const fixture = createFixture();
+    const root = mkdtempSync(path.join(tmpdir(), "allinai-plugin-store-"));
+    directories.push(root);
+    const manager = createManager(root);
+    await manager.sync([desired(fixture.root, fixture.goodCommit)]);
+
+    // Advance upstream while the client carries a local commit of its own.
+    const repo = path.join(root, "demo", "repo");
+    writeFileSync(path.join(repo, "local-note.txt"), "agent edit");
+    git(repo, ["add", "local-note.txt"]);
+    git(repo, ["commit", "-m", "local tweak"]);
+
+    const result = await manager.sync([desired(fixture.root, fixture.goodCommit)]);
+
+    assert.equal(result[0]?.outcome?.diverged, true);
+    assert.equal(result[0]?.outcome?.aheadCount, 1);
+    assert.equal(
+      manager.active("codex")[0]?.resolvedCommit,
+      fixture.goodCommit,
+    );
+  });
+
+  it("forceTo switches an explicit commit and validates the working tree", async () => {
+    const fixture = createFixture();
+    const root = mkdtempSync(path.join(tmpdir(), "allinai-plugin-store-"));
+    directories.push(root);
+    const manager = createManager(root);
+    await manager.sync([desired(fixture.root, fixture.goodCommit)]);
+
+    const plugin = await manager.forceTo("demo", fixture.badCommit);
+    assert.equal(plugin.status, "failed");
+    assert.match(plugin.lastError ?? "", /does not match configured id/);
+
+    const restored = await manager.forceTo("demo", fixture.goodCommit);
+    assert.equal(restored.status, "active");
+    assert.equal(
+      manager.active("codex")[0]?.resolvedCommit,
+      fixture.goodCommit,
+    );
+  });
+
+  it("rejects a target commit containing credential-looking content", async () => {
+    const fixture = createFixture();
+    const root = mkdtempSync(path.join(tmpdir(), "allinai-plugin-store-"));
+    directories.push(root);
+    const manager = createManager(root);
+    await manager.sync([desired(fixture.root, fixture.goodCommit)]);
+
+    writeFileSync(
+      path.join(fixture.root, "allinai-plugin.json"),
+      JSON.stringify({ id: "demo", runtimes: ["codex"] }),
+    );
+    writeFileSync(path.join(fixture.root, "config.env"), "token = sk-abcdefghijklmnop1234\n");
+    git(fixture.root, ["add", "config.env", "allinai-plugin.json"]);
+    git(fixture.root, ["commit", "-m", "leak"]);
+    const leakCommit = git(fixture.root, ["rev-parse", "HEAD"]);
+
+    const result = await manager.sync([desired(fixture.root, leakCommit)]);
+    assert.equal(result[0]?.status, "failed");
+    assert.match(result[0]?.lastError ?? "", /credential/i);
+    assert.equal(
+      manager.active("codex")[0]?.resolvedCommit,
+      fixture.goodCommit,
+    );
+  });
+
+  it("pins an exact commit ahead of the configured ref", async () => {
+    const fixture = createFixture();
+    const root = mkdtempSync(path.join(tmpdir(), "allinai-plugin-store-"));
+    directories.push(root);
+    const manager = createManager(root);
+
+    const result = await manager.sync([
+      { ...desired(fixture.root, "main"), commit: fixture.goodCommit },
+    ]);
+
+    assert.equal(result[0]?.status, "active");
+    assert.equal(result[0]?.resolvedCommit, fixture.goodCommit);
   });
 });

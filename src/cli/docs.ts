@@ -195,9 +195,16 @@ export function cliManual(): CliManual {
       },
       {
         name: "plugins",
-        summary: "List installed plugins; --refresh re-reports them to the Hub.",
-        options: [{ flag: "refresh", description: "Re-report plugins to the Hub" }],
-        example: "allinai-agentkit plugins --refresh",
+        summary:
+          "List installed plugins; --refresh re-reports them to the Hub. Offline maintenance: --action check compares against upstream, --action update fetches and updates locally (no Hub needed), --action force switches one plugin to an explicit commit.",
+        options: [
+          { flag: "refresh", description: "Re-report plugins to the Hub" },
+          { flag: "action check|update|force", description: "Hub-free plugin maintenance action" },
+          { flag: "id PLUGIN_ID", description: "Plugin id for --action force" },
+          { flag: "commit SHA", description: "Target commit for --action force (defaults to the last resolved commit)" },
+        ],
+        example:
+          "allinai-agentkit plugins --action update",
       },
       {
         name: "docs",
@@ -231,7 +238,8 @@ export function cliManual(): CliManual {
       { path: "~/.allinai/agent/config.json", description: "Client config (mode 0600)" },
       { path: "~/.allinai/agent/state.db", description: "SQLite execution state, survives restarts" },
       { path: "~/.allinai/agent/credentials/", description: "Token store: one mode-0600 file per clientId, identical on every platform" },
-      { path: "~/.allinai/agent/plugins/", description: "Plugin revisions (immutable, per commit)" },
+      { path: "~/.allinai/agent/plugins/<id>/repo/", description: "Plugin working repository (one persistent clone per plugin; active commit = working tree)" },
+      { path: "~/.allinai/agent/plugins/<id>/active.json", description: "Active-plugin record (mode 0600); ledger for reporting, not a dispatch pointer" },
       { path: "~/.allinai/agent/projects/default/runtime/<platform>/<executionId>/", description: "Disposable scratch cwd for runs without a bound project" },
       { path: "~/.allinai/agent/projects/default/sessions/<executionId>/", description: "Session records (events.jsonl + session.json) for default runs" },
       { path: "~/.allinai/agent/projects/<name>-<dir>/sessions/<executionId>/", description: "Session records for runs bound to a registered project (cwd stays the configured project path)" },

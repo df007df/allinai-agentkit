@@ -111,6 +111,17 @@ export interface AgentHubOptions<Principal> {
    * code needed). Defaults to 30000; 0 disables keepalive.
    */
   heartbeatIntervalMs?: number;
+  /**
+   * Called after a client registers (first connect and every reconnect).
+   * Hosts level the client up here: push the current desired plugin.sync so
+   * an offline gap cannot leave versions drifted. Awaited inside
+   * registration; a throw only closes that socket, never the Hub.
+   */
+  onClientRegistered?: (client: {
+    principal: Principal;
+    clientId: string;
+    connectionKey: string;
+  }) => Promise<void> | void;
 }
 export interface HubAttachOptions {
   /** Supply the application's handler; attach to a server without request handlers. */

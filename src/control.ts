@@ -35,6 +35,12 @@ export type AgentControl = {
   plugins?(): Promise<unknown>;
   /** Re-report installed plugin state to the Hub without a plugin.sync push. */
   refreshPlugins?(): Promise<void>;
+  /** Fetch-and-compare plugins against a desired list without switching commits. */
+  pluginCheck?(plugins: unknown): Promise<unknown>;
+  /** Fetch-and-update plugins (same path a Hub plugin.sync takes). */
+  pluginUpdate?(plugins: unknown): Promise<unknown>;
+  /** Force-switch one plugin to an explicit commit, bypassing divergence. */
+  pluginForce?(id: string, commit?: string): Promise<unknown>;
 };
 
 export type AgentControlServer = {
@@ -73,6 +79,9 @@ export type AgentControlClient = {
   sync?(): Promise<void>;
   plugins?(): Promise<unknown>;
   refreshPlugins?(): Promise<void>;
+  pluginCheck?(plugins: unknown): Promise<unknown>;
+  pluginUpdate?(plugins: unknown): Promise<unknown>;
+  pluginForce?(id: string, commit?: string): Promise<unknown>;
 };
 
 export type AgentControlClientOptions = {
@@ -86,6 +95,9 @@ type ControlRequest =
   | { id: string; method: "sync" }
   | { id: string; method: "plugins" }
   | { id: string; method: "refreshPlugins" }
+  | { id: string; method: "pluginCheck"; plugins: unknown }
+  | { id: string; method: "pluginUpdate"; plugins: unknown }
+  | { id: string; method: "pluginForce"; id2: string; commit?: string }
   | { id: string; method: "approve"; executionId: string }
   | {
       id: string;
@@ -102,6 +114,9 @@ type ControlRequestInput =
   | { method: "sync" }
   | { method: "plugins" }
   | { method: "refreshPlugins" }
+  | { method: "pluginCheck"; plugins: unknown }
+  | { method: "pluginUpdate"; plugins: unknown }
+  | { method: "pluginForce"; pluginId: string; commit?: string }
   | { method: "approve"; executionId: string }
   | {
       method: "respondToolApproval";
@@ -146,6 +161,24 @@ function parseRequest(value: unknown): ControlRequest {
   if (input.method === "plugins") return { id: input.id, method: "plugins" };
   if (input.method === "refreshPlugins")
     return { id: input.id, method: "refreshPlugins" };
+  if (input.method === "pluginCheck")
+    return { id: input.id, method: "pluginCheck", plugins: input.plugins };
+  if (input.method === "pluginUpdate")
+    return { id: input.id, method: "pluginUpdate", plugins: input.plugins };
+  if (
+    input.method === "pluginForce" &&
+    typeof input.pluginId === "string" &&
+    input.pluginId
+  ) {
+    return {
+      id: input.id,
+      method: "pluginForce",
+      id2: input.pluginId,
+      ...(typeof input.commit === "string" && input.commit
+        ? { commit: input.commit }
+        : {}),
+    };
+  }
   if (
     input.method === "approve" &&
     typeof input.executionId === "string" &&
@@ -314,6 +347,30 @@ async function handleLine(
         throw new Error("Local Agent Client does not support plugin refresh");
       await control.refreshPlugins();
       response = { id: request.id, ok: true };
+    } else if (request.method === "pluginCheck") {
+      if (!control.pluginCheck)
+        throw new Error("Local Agent Client does not support plugin checks");
+      response = {
+        id: request.id,
+        ok: true,
+        result: await control.pluginCheck(request.plugins),
+      };
+    } else if (request.method === "pluginUpdate") {
+      if (!control.pluginUpdate)
+        throw new Error("Local Agent Client does not support plugin updates");
+      response = {
+        id: request.id,
+        ok: true,
+        result: await control.pluginUpdate(request.plugins),
+      };
+    } else if (request.method === "pluginForce") {
+      if (!control.pluginForce)
+        throw new Error("Local Agent Client does not support plugin force");
+      response = {
+        id: request.id,
+        ok: true,
+        result: await control.pluginForce(request.id2, request.commit),
+      };
     } else if (request.method === "respondToolApproval") {
       if (!control.respondToolApproval)
         throw new Error(
@@ -453,6 +510,31 @@ export function createAgentControlClient(
         { method: "refreshPlugins" },
         options,
       );
+    },
+    async pluginCheck(plugins) {
+      return (await sendControlRequest(
+        endpoint,
+        { method: "pluginCheck", plugins },
+        options,
+      )) as unknown;
+    },
+    async pluginUpdate(plugins) {
+      return (await sendControlRequest(
+        endpoint,
+        { method: "pluginUpdate", plugins },
+        options,
+      )) as unknown;
+    },
+    async pluginForce(id, commit) {
+      return (await sendControlRequest(
+        endpoint,
+        {
+          method: "pluginForce",
+          pluginId: id,
+          ...(commit !== undefined ? { commit } : {}),
+        },
+        options,
+      )) as unknown;
     },
   };
 }
