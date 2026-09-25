@@ -523,6 +523,26 @@
   color: #b45309;
 }
 
+.console-plugin-delivery {
+  margin-left: 0.5rem;
+}
+
+.console-plugin-delivery em[data-state="installed"] {
+  color: #15803d;
+}
+
+.console-plugin-delivery em[data-state="removed"] {
+  color: #64748b;
+}
+
+.console-plugin-delivery em[data-state="skipped"] {
+  color: #64748b;
+}
+
+.console-plugin-delivery em[data-state="failed"] {
+  color: #dc2626;
+}
+
 .console-plugin-actions {
   display: flex;
   gap: 0.375rem;

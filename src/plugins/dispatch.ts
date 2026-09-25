@@ -2,15 +2,12 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 import type { PlatformId } from "../runtime/types.js";
-import type { PluginWarning } from "./types.js";
+import type { PluginDeliveryEntry, PluginWarning } from "./types.js";
 
 export type PlatformDispatchPlatform = "claude" | "codex" | "pi" | "zcode";
 
-export type PlatformDispatchResult = {
-  platform: PlatformDispatchPlatform;
-  state: "installed" | "removed" | "skipped" | "failed";
-  detail?: string;
-};
+/** Same shape as PluginDeliveryEntry; kept as a named alias for dispatcher callers. */
+export type PlatformDispatchResult = PluginDeliveryEntry;
 
 export type PlatformDispatcherDeps = {
   /** Command existence probe (mirrors the runtime probe semantics). */

@@ -14,6 +14,7 @@ import { afterEach, describe, it } from "node:test";
 import { createGitClient, type GitClient } from "./git.js";
 import { PluginManager } from "./manager.js";
 import type { PluginConfig } from "./types.js";
+import type { PlatformDispatcherDeps } from "./dispatch.js";
 import { ClientStateStore } from "../client/state-store.js";
 
 type Fixture = {
@@ -79,6 +80,22 @@ function createManager(
     // Local repositories are permitted only by this explicit test transport.
     validateGitUrl: () => true,
   });
+}
+
+/** Stub dispatcher deps whose CLI is a real exit-0 script. */
+function stubDispatcher(): PlatformDispatcherDeps {
+  const dir = mkdtempSync(path.join(tmpdir(), "plugin-dispatch-stub-"));
+  directories.push(dir);
+  const stub = (name: string): string => {
+    const script = path.join(dir, name);
+    writeFileSync(script, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    return script;
+  };
+  return {
+    which: async () => "/usr/bin/stub",
+    codexCommand: stub("codex"),
+    piCommand: stub("pi"),
+  };
 }
 
 describe("PluginManager", () => {
@@ -374,6 +391,35 @@ describe("PluginManager", () => {
 
     assert.equal(result[0]?.status, "active");
     assert.equal(result[0]?.resolvedCommit, fixture.goodCommit);
+  });
+
+  it("persists per-platform delivery outcomes and reports them in the sync outcome", async () => {
+    const fixture = createFixture();
+    const root = mkdtempSync(path.join(tmpdir(), "allinai-plugin-delivery-"));
+    directories.push(root);
+    const state = new ClientStateStore(path.join(root, "state.db"));
+    try {
+      const manager = new PluginManager({
+        pluginsRoot: path.join(root, "plugins"),
+        stateStore: state,
+        validateGitUrl: () => true,
+        installedPlatforms: new Set(["codex", "pi", "claude"]),
+        dispatcher: stubDispatcher(),
+      });
+      const [installed] = await manager.sync([
+        desired(fixture.root, fixture.goodCommit),
+      ]);
+      assert.equal(installed?.status, "active");
+
+      // The outcome and the persisted state both carry the dispatch result
+      // for every targeted platform. The fixture declares runtimes: ["codex"],
+      // so codex installs (stub CLI) and that is the only target.
+      const expected = [{ platform: "codex", state: "installed" }];
+      assert.deepEqual(installed?.delivery, expected);
+      assert.deepEqual(state.listPluginStates()[0]?.plugin.delivery, expected);
+    } finally {
+      state.close();
+    }
   });
 });
 

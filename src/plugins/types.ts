@@ -47,6 +47,13 @@ export type PluginWarning = {
   message: string;
 };
 
+/** One platform's dispatch outcome for a synced plugin. */
+export type PluginDeliveryEntry = {
+  platform: "claude" | "codex" | "pi" | "zcode";
+  state: "installed" | "removed" | "skipped" | "failed";
+  detail?: string;
+};
+
 export type InstalledPlugin = PluginConfig & {
   resolvedCommit: string;
   installedAt: string;
@@ -60,6 +67,8 @@ export type InstalledPlugin = PluginConfig & {
   aheadCount?: number;
   /** Non-fatal entry-file problems; a synced plugin still runs. */
   warnings?: PluginWarning[];
+  /** Per-platform dispatch outcome of the last sync (one entry per platform). */
+  delivery?: PluginDeliveryEntry[];
 };
 
 export type ActivePluginSnapshot = {

@@ -109,7 +109,6 @@ describe("system plugin", () => {
       // local:// sentinel URLs are exempt from HTTPS/SSH origin policy; the
       // validator would reject them if it were consulted.
       validateGitUrl: () => false,
-      logger: () => undefined,
     });
     const outcome = (await manager.sync([systemPluginConfig()]))[0];
     assert.ok(outcome, "sync must return one outcome");

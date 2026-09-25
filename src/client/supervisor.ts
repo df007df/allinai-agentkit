@@ -995,6 +995,9 @@ export class ClientSupervisor {
       ...(plugin.aheadCount !== undefined
         ? { aheadCount: plugin.aheadCount }
         : {}),
+      ...(plugin.delivery && plugin.delivery.length > 0
+        ? { delivery: plugin.delivery }
+        : {}),
     }));
   }
 

@@ -13,6 +13,7 @@ import {
   type PlatformInventoryEntry,
   type ProjectInventoryEntry,
   type PluginConfig,
+  type PluginDeliveryInventoryEntry,
   type PluginInventoryEntry,
   type PluginSyncAcknowledgement,
   type RuntimeId,
@@ -360,6 +361,19 @@ function isPlatformInventoryEntry(value: unknown): value is PlatformInventoryEnt
   return value.reason === undefined || isNonEmptyString(value.reason);
 }
 
+function isPluginDeliveryEntry(
+  value: unknown,
+): value is PluginDeliveryInventoryEntry {
+  if (
+    !isPlainObject(value) ||
+    !hasOnlyKeys(value, ["platform", "state", "detail"]) ||
+    !["claude", "codex", "pi", "zcode"].includes(value.platform as string) ||
+    !["installed", "removed", "skipped", "failed"].includes(value.state as string)
+  )
+    return false;
+  return value.detail === undefined || isNonEmptyString(value.detail);
+}
+
 function isPluginInventoryEntry(value: unknown): value is PluginInventoryEntry {
   if (
     !isPlainObject(value) ||
@@ -377,6 +391,7 @@ function isPluginInventoryEntry(value: unknown): value is PluginInventoryEntry {
         "localHead",
         "diverged",
         "aheadCount",
+        "delivery",
       ],
     ) ||
     !isNonEmptyString(value.id) ||
@@ -394,6 +409,10 @@ function isPluginInventoryEntry(value: unknown): value is PluginInventoryEntry {
         typeof value.aheadCount === "number" &&
         Number.isSafeInteger(value.aheadCount) &&
         value.aheadCount >= 0
+      )) ||
+    (value.delivery !== undefined &&
+      !(
+        Array.isArray(value.delivery) && value.delivery.every(isPluginDeliveryEntry)
       ))
   )
     return false;

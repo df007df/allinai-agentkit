@@ -153,6 +153,13 @@ export type PlatformInventoryEntry = {
   reason?: string;
 };
 
+/** One platform's dispatch outcome for a synced plugin, as reported in inventory. */
+export type PluginDeliveryInventoryEntry = {
+  platform: "claude" | "codex" | "pi" | "zcode";
+  state: "installed" | "removed" | "skipped" | "failed";
+  detail?: string;
+};
+
 export type PluginInventoryEntry = {
   id: string;
   gitUrl: string;
@@ -168,6 +175,8 @@ export type PluginInventoryEntry = {
   diverged?: boolean;
   /** Commits the local HEAD is ahead of the target (0 when not ahead). */
   aheadCount?: number;
+  /** Per-platform dispatch outcome of the last sync (one entry per platform). */
+  delivery?: PluginDeliveryInventoryEntry[];
 };
 
 /**

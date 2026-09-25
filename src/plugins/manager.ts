@@ -16,6 +16,7 @@ import type {
   InstalledPlugin,
   InstalledPluginWithOutcome,
   PluginConfig,
+  PluginDeliveryEntry,
   PluginManifest,
   PluginStateStore,
   PluginSyncOutcome,
@@ -744,24 +745,35 @@ export class PluginManager {
       lastError: undefined,
       ...(outcome.warnings ? { warnings: outcome.warnings } : { warnings: undefined }),
     };
-    await this.writePointer(config.id, plugin);
-    this.activePlugins.set(config.id, plugin);
-    // Platform delivery: install on every desired+installed platform. The
-    // warnings array stays owned by the caller — dispatch failures append
-    // to the merged result, not to the persisted plugin state (a platform
-    // install can be retried without touching the repo).
-    const dispatchWarnings = await this.dispatchToPlatforms(
+    // Platform delivery: install on every desired+installed platform.
+    // Failures are warnings, not sync failures — the repo itself is already
+    // validated and active — but every platform outcome is persisted so the
+    // inventory (and the console) can show per-platform delivery state.
+    const dispatchResults = await this.dispatchToPlatforms(
       config,
       repo,
       "install",
     );
+    const dispatchWarnings = dispatchResults
+      .filter((result) => result.state === "failed")
+      .map((result) => ({
+        platform: result.platform,
+        code: "manifest_unknown_fields" as const,
+        message: `Plugin ${config.id}: ${result.platform} dispatch failed: ${result.detail ?? "unknown error"}`,
+      }));
+    const pluginWithDelivery: InstalledPlugin = {
+      ...plugin,
+      ...(dispatchResults.length > 0 ? { delivery: dispatchResults } : {}),
+    };
+    await this.writePointer(config.id, pluginWithDelivery);
+    this.activePlugins.set(config.id, pluginWithDelivery);
     const mergedOutcome: PluginSyncOutcome & { warnings?: PluginWarning[] } = {
       ...outcome,
       ...(dispatchWarnings.length > 0
         ? { warnings: [...(outcome.warnings ?? []), ...dispatchWarnings] }
         : {}),
     };
-    return { ...plugin, outcome: mergedOutcome };
+    return { ...pluginWithDelivery, outcome: mergedOutcome };
   }
 
   /**
@@ -773,13 +785,12 @@ export class PluginManager {
     config: PluginConfig,
     repo: string,
     op: "install" | "remove",
-  ): Promise<PluginWarning[]> {
+  ): Promise<PluginDeliveryEntry[]> {
     const { dispatcher, installedPlatforms } = this.options;
     if (!dispatcher || !installedPlatforms || installedPlatforms.size === 0) {
       return [];
     }
     const platforms = targetPlatforms(config.runtimes, installedPlatforms);
-    const warnings: PluginWarning[] = [];
     const results: PlatformDispatchResult[] = [];
     for (const platform of platforms) {
       results.push(
@@ -791,16 +802,7 @@ export class PluginManager {
         ),
       );
     }
-    for (const result of results) {
-      if (result.state === "failed") {
-        warnings.push({
-          platform: result.platform,
-          code: "manifest_unknown_fields",
-          message: `Plugin ${config.id}: ${result.platform} dispatch failed: ${result.detail ?? "unknown error"}`,
-        });
-      }
-    }
-    return warnings;
+    return results;
   }
 
   private async writePointer(
@@ -842,9 +844,12 @@ export class PluginManager {
     this.activePlugins.delete(id);
     // Best-effort platform removal: the repo may already be gone (cleanup
     // path), and a failing uninstall must not block the state transition.
+    // Outcomes replace the install-time delivery record so the inventory
+    // reflects what is actually left on each platform.
     const repo = repositoryPath(this.options.pluginsRoot, id);
+    let delivery: PluginDeliveryEntry[] | undefined;
     try {
-      await this.dispatchToPlatforms(active, repo, "remove");
+      delivery = await this.dispatchToPlatforms(active, repo, "remove");
     } catch {
       // Deactivation proceeds regardless.
     }
@@ -854,6 +859,7 @@ export class PluginManager {
         enabled: false,
         status: "blocked",
         lastError: reason,
+        ...(delivery && delivery.length > 0 ? { delivery } : { delivery: undefined }),
       },
       active: null,
     });

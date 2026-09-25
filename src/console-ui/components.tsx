@@ -40,6 +40,11 @@ export type ConsoleSnapshotFrame = {
       diverged?: boolean;
       aheadCount?: number;
       lastError?: string;
+      delivery?: Array<{
+        platform: string;
+        state: "installed" | "removed" | "skipped" | "failed";
+        detail?: string;
+      }>;
     }>;
   }>;
   events: ClientEvent[];
@@ -586,6 +591,13 @@ export function ApprovalList(props: {
 
 const RUNTIME_OPTIONS = ["codex", "claude", "pi"] as const;
 
+const DELIVERY_STATE_LABEL: Record<string, string> = {
+  installed: "已分发",
+  removed: "已卸载",
+  skipped: "跳过",
+  failed: "失败",
+};
+
 /**
  * Plugin divergence panel: lists per-client plugin state from the latest
  * inventory and surfaces diverged plugins with two deliberate actions —
@@ -659,6 +671,20 @@ export function PluginPanel(props: {
                     本地已分叉（领先 {plugin.aheadCount ?? 0} 个提交，
                     local {plugin.localHead?.slice(0, 8) ?? "?"}）
                   </em>
+                ) : null}
+                {(plugin.delivery ?? []).length > 0 ? (
+                  <span className="console-plugin-delivery">
+                    {(plugin.delivery ?? []).map((entry) => (
+                      <em
+                        key={entry.platform}
+                        data-state={entry.state}
+                        title={entry.detail ?? entry.state}
+                      >
+                        {" "}
+                        {entry.platform}:{DELIVERY_STATE_LABEL[entry.state] ?? entry.state}
+                      </em>
+                    ))}
+                  </span>
                 ) : null}
               </span>
               {plugin.diverged ? (
