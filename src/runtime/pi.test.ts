@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, describe, it } from "node:test";
 import { createPiAdapter } from "./pi.js";
 import { OptionalRuntimeDependencyError } from "./codex.js";
 
@@ -335,5 +338,85 @@ describe("Pi adapter", () => {
       "abort:end",
       "dispose",
     ]);
+  });
+});
+
+describe("Pi adapter CLI execution", () => {
+  const directories: string[] = [];
+
+  afterEach(() => {
+    for (const directory of directories.splice(0)) {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  function stubPi(output: string): string {
+    const dir = mkdtempSync(path.join(tmpdir(), "pi-cli-stub-"));
+    directories.push(dir);
+    const script = path.join(dir, "pi");
+    const outputB64 = Buffer.from(output, "utf8").toString("base64");
+    writeFileSync(
+      script,
+      [
+        "#!/bin/sh",
+        `[ -n "${outputB64}" ] && printf '%s' "$(printf '%s' ${outputB64} | base64 -D)"`,
+        "exit 0",
+      ].join("\n"),
+      { mode: 0o755 },
+    );
+    return script;
+  }
+
+  it("runs via the CLI when cliExecution is on and no approval bridge is set", async () => {
+    const adapter = createPiAdapter({
+      cliExecution: true,
+      piCommand: stubPi(
+        [
+          '{"type":"session","version":3,"id":"pi-sess-1","cwd":"/tmp"}',
+          '{"type":"message_update","assistantMessageEvent":{"type":"text_delta","delta":"HE"}}',
+          '{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"HELLO"}]}}',
+        ].join("\n"),
+      ),
+    });
+
+    const events = await collect(
+      adapter.start(
+        { platform: "pi", prompt: "go", cwd: tmpdir() },
+        new AbortController().signal,
+      ),
+    );
+
+    assert.deepEqual(
+      events.map((event) => event.type),
+      ["init", "text_delta", "done"],
+    );
+    assert.equal(events[0]?.payload?.runtimeSessionId, "pi-sess-1");
+    assert.equal(events[2]?.payload?.text, "HELLO");
+  });
+
+  it("passes --session with the transport sessionId on the CLI path", async () => {
+    const adapter = createPiAdapter({
+      cliExecution: true,
+      piCommand: stubPi(
+        '{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"resumed"}]}}',
+      ),
+    });
+
+    const events = await collect(
+      adapter.start(
+        {
+          platform: "pi",
+          prompt: "go",
+          cwd: tmpdir(),
+          sessionId: "old-sess",
+        },
+        new AbortController().signal,
+      ),
+    );
+
+    assert.deepEqual(events.map((event) => event.type), ["init", "done"]);
+    assert.equal(events[0]?.payload?.runtimeSessionId, "old-sess");
+    assert.equal(events[0]?.payload?.resumed, true);
+    assert.equal(events[1]?.payload?.text, "resumed");
   });
 });

@@ -1,5 +1,8 @@
 import { OptionalRuntimeDependencyError } from "./codex.js";
 import { probeCli, type WhichFn } from "./cli-probe.js";
+import { mapPiCliEvent } from "./pi-cli.js";
+import { readJsonl } from "./codex-cli.js";
+import { spawn } from "node:child_process";
 import type {
   PlatformEvent,
   PlatformProbe,
@@ -119,6 +122,14 @@ export type CreatePiAdapterDeps = {
   loadResourceLoader?: PiResourceLoaderLoader;
   /** Test seam for the CLI existence probe. */
   which?: WhichFn;
+  /** Pi CLI command; defaults to "pi". Tests inject a stub script. */
+  piCommand?: string;
+  /**
+   * Opts the adapter into CLI execution for runs without an in-process
+   * approval bridge. Defaults to false so legacy SDK-path callers keep
+   * working until the daemon assembly flips it.
+   */
+  cliExecution?: boolean;
 };
 
 const PI_SDK_PACKAGE = "@earendil-works/pi-coding-agent";
@@ -365,6 +376,14 @@ export function createPiAdapter(deps: CreatePiAdapterDeps = {}): PiAdapter {
         return;
       }
 
+      // CLI-first execution when no in-process approval bridge is needed:
+      // spawn `pi -p --mode json` and map its JSONL events. The onAskUser
+      // path keeps the SDK (the approval extension is an SDK surface).
+      if (deps.cliExecution === true && !input.onAskUser) {
+        yield* startPiCli(input, signal, deps.piCommand ?? "pi");
+        return;
+      }
+
       let session: PiSession | null = null;
       let unsubscribe: (() => void) | null = null;
       const events = new PiEventQueue();
@@ -494,4 +513,82 @@ export function createPiAdapter(deps: CreatePiAdapterDeps = {}): PiAdapter {
       }
     },
   };
+}
+
+/**
+ * CLI execution path for Pi: `pi -p --mode json` with optional
+ * `--session <id>` resume. Mirrors the codex/claude CLI loop.
+ */
+async function* startPiCli(
+  input: PiAdapterRunInput,
+  signal: AbortSignal,
+  piCommand: string,
+): AsyncIterable<PlatformEvent> {
+  if (input.sessionId) {
+    yield {
+      type: "init",
+      payload: { runtimeSessionId: input.sessionId, resumed: true },
+    };
+  }
+  const args: string[] = ["-p", "--mode", "json"];
+  if (input.model) args.push("--model", input.model);
+  if (input.cwd) args.push("--cwd", input.cwd);
+  if (input.sessionId) args.push("--session", input.sessionId);
+  args.push(input.prompt);
+
+  const child = spawn(piCommand, args, {
+    cwd: input.cwd,
+    shell: false,
+    stdio: ["ignore", "pipe", "pipe"],
+    signal,
+  });
+  const stdout = readJsonl(
+    child.stdout as unknown as AsyncIterable<string>,
+  );
+  const stderrChunks: string[] = [];
+  void (async () => {
+    child.stderr?.setEncoding("utf8");
+    for await (const chunk of child.stderr) stderrChunks.push(String(chunk));
+  })();
+  let sawDone = false;
+  try {
+    for await (const cliEvent of stdout) {
+      const mapped = mapPiCliEvent(cliEvent);
+      if (!mapped) continue;
+      if (mapped.type === "init" && input.sessionId) continue;
+      yield mapped;
+      if (mapped.type === "done" || mapped.type === "error") {
+        sawDone = true;
+        return;
+      }
+    }
+    const exit = await new Promise<{ code: number | null }>((resolve) => {
+      child.once("error", () => resolve({ code: null }));
+      child.once("close", (code) => resolve({ code }));
+    });
+    if (!sawDone) {
+      if (signal.aborted) {
+        yield { type: "done", payload: { aborted: true } };
+      } else if (exit.code !== 0) {
+        yield {
+          type: "error",
+          payload: {
+            message: stderrChunks.join("").trim() || `pi exited with code ${exit.code ?? "null"}`,
+            cause: "cli_exit_nonzero",
+          },
+        };
+      } else {
+        yield { type: "done" };
+      }
+    }
+  } catch (error) {
+    if (signal.aborted) {
+      yield { type: "done", payload: { aborted: true } };
+      return;
+    }
+    yield {
+      type: "error",
+      payload: { message: errorMessage(error), cause: "cli_spawn_failed" },
+    };
+  }
 }

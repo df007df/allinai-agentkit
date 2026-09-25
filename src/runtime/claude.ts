@@ -1,5 +1,10 @@
 import { OptionalRuntimeDependencyError } from "./codex.js";
 import { probeCli, type WhichFn } from "./cli-probe.js";
+import {
+  mapClaudeCliEvent,
+  spawnClaudeCli,
+} from "./claude-cli.js";
+import { drainToString, readJsonl } from "./codex-cli.js";
 import type { PlatformEvent, PlatformProbe } from "./types.js";
 
 /** Opaque vendor message shape retained without a mandatory SDK type dependency. */
@@ -65,6 +70,8 @@ export type CreateClaudeAdapterDeps = {
   loadClaude?: ClaudeSdkLoader;
   /** Test seam for the CLI existence probe. */
   which?: WhichFn;
+  /** Claude CLI command; defaults to "claude". Tests inject a stub script. */
+  claudeCommand?: string;
 };
 
 const CLAUDE_SDK_PACKAGE = "@anthropic-ai/claude-agent-sdk";
@@ -235,58 +242,73 @@ export function createClaudeAdapter(
         return;
       }
 
-      const abortController = new AbortController();
-      let activeQuery: ClaudeQuery | null = null;
-      let closed = false;
-      const close = () => {
-        if (closed) return;
-        closed = true;
-        abortController.abort();
-        activeQuery?.close();
-      };
-      signal.addEventListener("abort", close, { once: true });
+      // CLI-first execution: spawn `claude -p --output-format stream-json`
+      // and map its JSONL events. Only string prompts run through the CLI —
+      // an async-iterable prompt is an SDK-only surface.
+      if (typeof input.prompt !== "string") {
+        throw new OptionalRuntimeDependencyError(
+          CLAUDE_SDK_PACKAGE,
+          new Error("async-iterable prompts require the SDK path"),
+        );
+      }
+      const options = input.options ?? {};
+      const sessionId =
+        text((options as Record<string, unknown>).resume) ?? input.sessionId;
+      const cwd = text((options as Record<string, unknown>).cwd);
+      const model = text((options as Record<string, unknown>).model);
 
-      try {
-        const queryFactory =
-          deps.query ?? (await loadClaudeModule(loadClaude)).query;
-        // The runner child forwards the transport-level PlatformRunInput, so
-        // `options` may be absent; the resume id falls back to `sessionId`.
-        const options = input.options ?? {};
-        const sessionId = text(options.resume) ?? input.sessionId;
-        activeQuery = queryFactory({
+      const claudeCommand = deps.claudeCommand ?? "claude";
+      const child = spawnClaudeCli(
+        claudeCommand,
+        {
+          cwd,
+          resumeSessionId: sessionId,
           prompt: input.prompt,
-          options: {
-            ...options,
-            ...(sessionId ? { resume: sessionId } : {}),
-            abortController,
-            ...(input.onAskUser ? { canUseTool: input.onAskUser } : {}),
-          },
-        });
+          model,
+          maxTurns: 1,
+        },
+        signal,
+      );
 
-        for await (const message of activeQuery) {
-          if (signal.aborted) break;
-          const mapped = mapClaudeMessage(message);
+      let sawDone = false;
+      try {
+        for await (const cliEvent of readJsonl(child.stdout)) {
+          const mapped = mapClaudeCliEvent(cliEvent);
+          if (!mapped) continue;
           yield mapped;
-          if (mapped.type === "done" || mapped.type === "error") return;
+          if (mapped.type === "done" || mapped.type === "error") {
+            sawDone = true;
+            return;
+          }
         }
-
-        yield {
-          type: "done",
-          ...(signal.aborted ? { payload: { aborted: true } } : {}),
-        };
+        const exit = await child.onExit;
+        if (!sawDone) {
+          if (signal.aborted) {
+            yield { type: "done", payload: { aborted: true } };
+          } else if (exit.code !== 0) {
+            const stderrText = await drainToString(child.stderr);
+            yield {
+              type: "error",
+              payload: {
+                message:
+                  stderrText.trim() ||
+                  `claude -p exited with code ${exit.code ?? "null"}`,
+                cause: "cli_exit_nonzero",
+              },
+            };
+          } else {
+            yield { type: "done" };
+          }
+        }
       } catch (error) {
-        if (error instanceof OptionalRuntimeDependencyError) throw error;
         if (signal.aborted) {
           yield { type: "done", payload: { aborted: true } };
           return;
         }
         yield {
           type: "error",
-          payload: { message: errorMessage(error), cause: "sdk_throw" },
+          payload: { message: errorMessage(error), cause: "cli_spawn_failed" },
         };
-      } finally {
-        signal.removeEventListener("abort", close);
-        close();
       }
     },
   };

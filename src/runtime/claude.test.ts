@@ -1,23 +1,14 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
-import { createClaudeAdapter, type ClaudeQueryFactory } from "./claude.js";
-import { OptionalRuntimeDependencyError } from "./codex.js";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, describe, it } from "node:test";
+import { createClaudeAdapter } from "./claude.js";
 
 async function collect<T>(iterable: AsyncIterable<T>): Promise<T[]> {
   const values: T[] = [];
   for await (const value of iterable) values.push(value);
   return values;
-}
-
-function runInput() {
-  return {
-    prompt: "Summarise the repository",
-    options: {
-      cwd: "/work/project",
-      model: "claude-sonnet-4-6",
-      includePartialMessages: true,
-    },
-  };
 }
 
 describe("Claude adapter", () => {
@@ -41,44 +32,13 @@ describe("Claude adapter", () => {
     assert.match(probe.reason ?? "", /claude CLI not found/);
   });
 
-  it("propagates an actionable optional dependency error from adapter use", async () => {
+  it("maps init, assistant text and result into normalized events", async () => {
     const adapter = createClaudeAdapter({
-      loadClaude: async () => {
-        throw new Error("Cannot find package");
-      },
-    });
-
-    await assert.rejects(
-      collect(adapter.start(runInput(), new AbortController().signal)),
-      (error: unknown) => {
-        assert.ok(error instanceof OptionalRuntimeDependencyError);
-        assert.equal(error.packageName, "@anthropic-ai/claude-agent-sdk");
-        assert.match(
-          error.message,
-          /npm install @anthropic-ai\/claude-agent-sdk/,
-        );
-        return true;
-      },
-    );
-  });
-
-  it("maps official SDK messages into normalized init, text and done events", async () => {
-    const adapter = createClaudeAdapter({
-      query: (({ prompt, options }: Parameters<ClaudeQueryFactory>[0]) => {
-        assert.equal(prompt, "Summarise the repository");
-        assert.equal(options?.cwd, "/work/project");
-        return fakeQuery([
-          { type: "system", subtype: "init", session_id: "claude-thread-1" },
-          {
-            type: "stream_event",
-            event: {
-              type: "content_block_delta",
-              delta: { type: "text_delta", text: "Hello" },
-            },
-          },
-          { type: "result", subtype: "success", result: "Hello" },
-        ]);
-      }) as ClaudeQueryFactory,
+      claudeCommand: stubClaude([
+        '{"type":"system","subtype":"init","session_id":"s-1","model":"glm"}',
+        '{"type":"assistant","message":{"content":[{"type":"text","text":"Hello"}]}}',
+        '{"type":"result","is_error":false,"result":"Hello"}',
+      ].join("\n")),
     });
 
     const events = await collect(
@@ -89,201 +49,134 @@ describe("Claude adapter", () => {
       events.map((event) => event.type),
       ["init", "text_delta", "done"],
     );
-    assert.equal(events[0]?.payload?.runtimeSessionId, "claude-thread-1");
+    assert.equal(events[0]?.payload?.runtimeSessionId, "s-1");
     assert.equal(events[1]?.payload?.text, "Hello");
-    assert.equal(events[2]?.payload?.result, "Hello");
+    assert.equal(events[2]?.payload?.text, "Hello");
   });
 
-  it("maps a transport sessionId onto the SDK resume option when options lack one", async () => {
-    let seenOptions: Record<string, unknown> | undefined;
+  it("passes --resume with the transport sessionId", async () => {
     const adapter = createClaudeAdapter({
-      query: (({ options }: Parameters<ClaudeQueryFactory>[0]) => {
-        seenOptions = options as Record<string, unknown>;
-        return fakeQuery([
-          { type: "system", subtype: "init", session_id: "claude-thread-1" },
-          { type: "result", subtype: "success", result: "done" },
-        ]);
-      }) as ClaudeQueryFactory,
+      claudeCommand: stubClaude(
+        '{"type":"result","is_error":false,"result":"resumed"}',
+      ),
     });
+    const argsFile = path.join(stubScriptDir ?? "", "args.txt");
 
-    await collect(
+    const events = await collect(
       adapter.start(
-        {
-          ...runInput(),
-          options: { ...runInput().options, resume: undefined } as never,
-          sessionId: "claude-thread-9",
-        },
+        { prompt: "go", options: {}, sessionId: "sess-9" },
         new AbortController().signal,
       ),
     );
 
-    assert.equal(seenOptions?.resume, "claude-thread-9");
+    assert.deepEqual(events.map((event) => event.type), ["done"]);
+    assert.equal(events[0]?.payload?.text, "resumed");
+    const recordedArgs = readFileSync(argsFile, "utf8");
+    assert.match(recordedArgs, /--resume sess-9/);
   });
 
-  it("forwards an explicit options.resume over the transport sessionId and survives absent options", async () => {
-    const seen: Array<string | undefined> = [];
+  it("surfaces a nonzero CLI exit with stderr as an error event", async () => {
     const adapter = createClaudeAdapter({
-      query: (({ options }: Parameters<ClaudeQueryFactory>[0]) => {
-        seen.push(
-          options === undefined ? undefined : String(options.resume),
-        );
-        return fakeQuery([{ type: "result", subtype: "success" }]);
-      }) as ClaudeQueryFactory,
-    });
-
-    await collect(
-      adapter.start(
-        { ...runInput(), options: { resume: "explicit-1" } as never, sessionId: "session-2" },
-        new AbortController().signal,
-      ),
-    );
-    // The runner child forwards PlatformRunInput without `options`; the
-    // adapter must not crash and must still map the transport sessionId.
-    await collect(
-      adapter.start(
-        { prompt: "hi", sessionId: "session-3" } as never,
-        new AbortController().signal,
-      ),
-    );
-
-    assert.equal(seen[0], "explicit-1");
-    assert.equal(seen[1], "session-3");
-  });
-
-  it("maps tool results to tool and other lifecycle messages to vendor with the original message kept", async () => {
-    const adapter = createClaudeAdapter({
-      query: ((() =>
-        fakeQuery([
-          { type: "system", subtype: "init", session_id: "claude-thread-2" },
-          {
-            type: "user",
-            message: {
-              content: [{ type: "tool_result", tool_use_id: "t1", content: "ok" }],
-            },
-          },
-          { type: "system", subtype: "compact_boundary", compact_metadata: {} },
-          { type: "result", subtype: "success", result: "done" },
-        ])) as unknown as ClaudeQueryFactory),
+      claudeCommand: stubClaudeWithStderr("invalid api key", 1),
     });
 
     const events = await collect(
       adapter.start(runInput(), new AbortController().signal),
     );
 
-    assert.deepEqual(
-      events.map((event) => event.type),
-      ["init", "tool", "vendor", "done"],
-    );
-    assert.equal(
-      (events[1]?.payload?.vendorMessage as { type?: string } | undefined)?.type,
-      "user",
-    );
-    assert.equal(events[2]?.payload?.vendorMessageType, "system");
-    assert.equal(events[2]?.payload?.subtype, "compact_boundary");
+    assert.deepEqual(events.map((event) => event.type), ["error"]);
+    assert.match(String(events[0]?.payload?.message), /invalid api key/);
   });
 
-  it("asks the injected AskUser hook instead of importing a Domain bridge", async () => {
-    const asked: string[] = [];
-    let canUseTool:
-      | ((
-          toolName: string,
-          input: Record<string, unknown>,
-          options: { toolUseID: string; signal: AbortSignal },
-        ) => Promise<unknown>)
-      | undefined;
-    const adapter = createClaudeAdapter({
-      query: (({ options }: Parameters<ClaudeQueryFactory>[0]) => {
-        canUseTool = options?.canUseTool as typeof canUseTool;
-        return fakeQuery([
-          { type: "result", subtype: "success", result: "done" },
-        ]);
-      }) as ClaudeQueryFactory,
-    });
-
-    await collect(
-      adapter.start(
-        {
-          ...runInput(),
-          onAskUser: async (_toolName, _input, options) => {
-            asked.push(options.toolUseID);
-            return { behavior: "allow", updatedInput: { answer: "yes" } };
-          },
-        },
-        new AbortController().signal,
-      ),
-    );
-    await canUseTool?.(
-      "AskUserQuestion",
-      {},
-      {
-        toolUseID: "tool-1",
-        signal: new AbortController().signal,
-      },
-    );
-
-    assert.deepEqual(asked, ["tool-1"]);
-  });
-
-  it("closes the official Query when its supplied signal is aborted", async () => {
+  it("aborts an active CLI stream through the supplied signal", async () => {
     const controller = new AbortController();
-    let closed = 0;
     const adapter = createClaudeAdapter({
-      query: (() =>
-        fakeQuery(
-          (async function* () {
-            await new Promise<void>((resolve) => {
-              controller.signal.addEventListener("abort", () => resolve(), {
-                once: true,
-              });
-            });
-          })(),
-          () => {
-            closed += 1;
-          },
-        )) as ClaudeQueryFactory,
+      claudeCommand: stubClaudeSlow(controller),
     });
 
     const stream = adapter.start(runInput(), controller.signal);
     const iterator = stream[Symbol.asyncIterator]();
-    const next = iterator.next();
-    controller.abort();
-    assert.equal((await next).value?.type, "done");
     await iterator.next();
-    assert.equal(closed, 1);
+    controller.abort();
+    assert.equal((await iterator.next()).value?.type, "done");
   });
 });
 
-function fakeQuery(
-  messages: Iterable<unknown> | AsyncIterable<unknown>,
-  onClose?: () => void,
-): ReturnType<ClaudeQueryFactory> {
-  const iterator = (async function* () {
-    for await (const message of messages) yield message;
-  })();
-  return Object.assign(iterator, {
-    interrupt: async () => undefined,
-    setPermissionMode: async () => undefined,
-    setModel: async () => undefined,
-    setMaxThinkingTokens: async () => undefined,
-    applyFlagSettings: async () => undefined,
-    initializationResult: async () => ({}),
-    supportedCommands: async () => [],
-    supportedModels: async () => [],
-    supportedAgents: async () => [],
-    mcpServerStatus: async () => [],
-    getContextUsage: async () => ({}),
-    readFile: async () => null,
-    reloadPlugins: async () => ({}),
-    reloadSkills: async () => ({}),
-    accountInfo: async () => ({}),
-    rewindFiles: async () => ({}),
-    seedReadState: async () => undefined,
-    reconnectMcpServer: async () => undefined,
-    toggleMcpServer: async () => undefined,
-    setMcpServers: async () => ({}),
-    streamInput: async () => undefined,
-    stopTask: async () => undefined,
-    backgroundTasks: async () => false,
-    close: () => onClose?.(),
-  }) as unknown as ReturnType<ClaudeQueryFactory>;
+const directories: string[] = [];
+
+afterEach(() => {
+  for (const directory of directories.splice(0)) {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+function stubClaude(
+  output: string,
+  onSpawn?: (args: string[]) => void,
+): string {
+  return makeStubScript(output, "0", onSpawn);
+}
+
+function stubClaudeWithStderr(stderr: string, code: number): string {
+  return makeStubScript("", String(code), undefined, stderr);
+}
+
+function stubClaudeSlow(controller: AbortController): string {
+  const dir = mkdtempSync(path.join(tmpdir(), "claude-cli-stub-"));
+  directories.push(dir);
+  const script = path.join(dir, "claude");
+  writeFileSync(
+    script,
+    [
+      "#!/bin/sh",
+      "echo '{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s-slow\"}'",
+      "sleep 30",
+      "exit 0",
+    ].join("\n"),
+    { mode: 0o755 },
+  );
+  controller.signal.addEventListener("abort", () => {
+    try {
+      rmSync(dir, { recursive: true, force: true });
+    } catch {
+      // cleanup best-effort
+    }
+  });
+  return script;
+}
+
+let stubScriptDir: string | null = null;
+
+function makeStubScript(
+  output: string,
+  exitCode: string,
+  _onSpawn?: (args: string[]) => void,
+  stderr = "",
+): string {
+  const dir = mkdtempSync(path.join(tmpdir(), "claude-cli-stub-"));
+  directories.push(dir);
+  stubScriptDir = dir;
+  const script = path.join(dir, "claude");
+  const outputB64 = Buffer.from(output, "utf8").toString("base64");
+  const stderrB64 = Buffer.from(stderr, "utf8").toString("base64");
+  writeFileSync(
+    script,
+    [
+      "#!/bin/sh",
+      `printf '%s ' "$@" >> "${dir}/args.txt"`,
+      `[ -n "${outputB64}" ] && printf '%s' "$(printf '%s' ${outputB64} | base64 -D)"`,
+      `[ -n "${stderrB64}" ] && printf '%s' "$(printf '%s' ${stderrB64} | base64 -D)" >&2`,
+      `exit ${exitCode}`,
+      "",
+    ].join("\n"),
+    { mode: 0o755 },
+  );
+  return script;
+}
+
+function runInput() {
+  return {
+    prompt: "Summarise the repository",
+    options: { cwd: "/tmp" } as Record<string, unknown>,
+  };
 }

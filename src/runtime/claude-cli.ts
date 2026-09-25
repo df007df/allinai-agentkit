@@ -1,6 +1,6 @@
+import { spawn } from "node:child_process";
 import type { PlatformEvent, PlatformRunInput } from "./types.js";
-
-export { readJsonl } from "./codex-cli.js";
+import { readJsonl } from "./codex-cli.js";
 
 export type ClaudeCliSpawn = {
   cwd?: string;
@@ -91,4 +91,57 @@ export function claudeCliRunInput(
     model: input.model,
     maxTurns: 1,
   };
+}
+
+export type ClaudeCliProcess = {
+  stdout: AsyncIterable<string>;
+  stderr: AsyncIterable<string>;
+  onExit: Promise<{ code: number | null; signal: string | null }>;
+  kill(): void;
+};
+
+export function spawnClaudeCli(
+  claudeCommand: string,
+  input: ClaudeCliSpawn,
+  signal: AbortSignal,
+  env: NodeJS.ProcessEnv = process.env,
+): ClaudeCliProcess {
+  const child = spawn(claudeCommand, buildClaudePrintArgs(input), {
+    cwd: input.cwd,
+    env,
+    shell: false,
+    stdio: ["ignore", "pipe", "pipe"],
+    signal,
+  });
+
+  const stdout: AsyncIterable<string> = readChildStream(child.stdout);
+  const stderrChunks: string[] = [];
+  const stderrDone = (async () => {
+    for await (const chunk of readChildStream(child.stderr)) {
+      stderrChunks.push(chunk);
+    }
+  })();
+  const stderr = {
+    async *[Symbol.asyncIterator]() {
+      yield* stderrChunks;
+      await stderrDone;
+    },
+  } as AsyncIterable<string>;
+  const onExit = new Promise<{ code: number | null; signal: string | null }>(
+    (resolve) => {
+      child.once("error", () => resolve({ code: null, signal: "ABORT" }));
+      child.once("close", (code, signalName) => resolve({ code, signal: signalName }));
+    },
+  );
+  return { stdout, stderr, onExit, kill: () => child.kill("SIGTERM") };
+}
+
+async function* readChildStream(
+  stream: NodeJS.ReadableStream | null,
+): AsyncIterable<string> {
+  if (!stream) return;
+  stream.setEncoding("utf8");
+  for await (const chunk of stream) {
+    yield String(chunk);
+  }
 }
