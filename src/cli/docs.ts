@@ -137,6 +137,42 @@ export function cliManual(): CliManual {
           "allinai-agentkit codex-hooks --control-endpoint http://127.0.0.1:8787",
       },
       {
+        name: "claude-hooks",
+        summary:
+          "Install the Claude Code PreToolUse approval hook into settings.json: tool calls post to the local daemon and its synchronous reply allows or blocks them. Shares the daemon approval bridge with codex-hooks. Takes effect on the next claude session; no separate trust step is required.",
+        options: [
+          {
+            flag: "control-endpoint",
+            description:
+              "Daemon control endpoint base URL; default http://127.0.0.1:8787.",
+          },
+          {
+            flag: "claude-home",
+            description: "Claude config directory; default ~/.claude.",
+          },
+        ],
+        example:
+          "allinai-agentkit claude-hooks --control-endpoint http://127.0.0.1:8787",
+      },
+      {
+        name: "pi-hooks",
+        summary:
+          "Install the Pi tool-approval extension into ~/.pi/agent/extensions/: high-risk tool calls (bash/edit/write) post to the local daemon and its synchronous reply allows or blocks them. Auto-discovered on the next pi session start; /reload reloads it in a running session.",
+        options: [
+          {
+            flag: "control-endpoint",
+            description:
+              "Daemon control endpoint base URL; default http://127.0.0.1:8787.",
+          },
+          {
+            flag: "pi-agent-dir",
+            description: "Pi agent directory; default ~/.pi/agent.",
+          },
+        ],
+        example:
+          "allinai-agentkit pi-hooks --control-endpoint http://127.0.0.1:8787",
+      },
+      {
         name: "uninstall",
         summary: "Remove the user-level OS service.",
         options: [],

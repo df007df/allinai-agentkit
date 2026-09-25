@@ -24,6 +24,9 @@ import {
 import { resolveAgentPaths, type AgentPaths } from "../paths.js";
 import { renderManualMarkdown, cliManual } from "./docs.js";
 import { installCodexHooks } from "../codex-hooks.js";
+import { installClaudeHooks } from "../claude-hooks.js";
+import { installPiApprovalExtension } from "../pi-approval-extension.js";
+import { readCodexHookTrustStatus } from "../codex-hooks-trust.js";
 import {
   startToolApprovalHttpBridge,
   ToolApprovalDecisionMap,
@@ -199,6 +202,8 @@ export const COMMAND_OPTIONS: Readonly<Record<string, CommandOptionSpec>> = {
   daemon: { values: ["config-dir"] },
   install: { values: ["config-dir"] },
   "codex-hooks": { values: ["control-endpoint", "codex-home", "config-dir"] },
+  "claude-hooks": { values: ["control-endpoint", "claude-home", "config-dir"] },
+  "pi-hooks": { values: ["control-endpoint", "pi-agent-dir", "config-dir"] },
   status: { values: ["config-dir"] },
   logs: { values: ["config-dir"], booleans: ["f"] },
   sync: { values: ["config-dir"] },
@@ -470,6 +475,8 @@ function help(): string {
     "  plugins --action force --id ID [--commit SHA]",
     "                                   force-switch one plugin to a commit, discarding tracked local edits",
     "  codex-hooks                      install the Codex PreToolUse approval hook (then trust it via /hooks in codex)",
+  "  claude-hooks                     install the Claude Code PreToolUse approval hook (settings.json)",
+  "  pi-hooks                         install the Pi tool-approval extension (~/.pi/agent/extensions)",
     "  docs [--json]                    print the full CLI manual (Markdown; --json for structured output)",
   ].join("\n");
 }
@@ -681,6 +688,33 @@ export async function runCli(
       return { exitCode: 0, output };
     }
 
+    if (command === "claude-hooks") {
+      const endpoint = flagValue(parsed.flags, "control-endpoint") ?? "http://127.0.0.1:8787";
+      const claudeHome = flagValue(parsed.flags, "claude-home");
+      const result = installClaudeHooks({ controlEndpoint: endpoint, claudeHome });
+      emit(output, write, {
+        installed: true,
+        settingsPath: result.settingsPath,
+        scriptPath: result.scriptPath,
+        merged: result.merged,
+        nextStep: result.trustNote,
+      });
+      return { exitCode: 0, output };
+    }
+
+    if (command === "pi-hooks") {
+      const endpoint = flagValue(parsed.flags, "control-endpoint") ?? "http://127.0.0.1:8787";
+      const piAgentDir = flagValue(parsed.flags, "pi-agent-dir");
+      const result = installPiApprovalExtension({ controlEndpoint: endpoint, piAgentDir });
+      emit(output, write, {
+        installed: true,
+        extensionPath: result.extensionPath,
+        replaced: result.replaced,
+        nextStep: result.note,
+      });
+      return { exitCode: 0, output };
+    }
+
     if (command === "uninstall") {
       const input = serviceInput(scopedOptions);
       await (
@@ -880,6 +914,7 @@ export async function runCli(
         config: config ? "ok" : "invalid",
         paired,
         runtimes: probes.map(({ id, probe }) => ({ id, ...probe })),
+        codexHookTrust: readCodexHookTrustStatus(),
         ...(configError ? { configError } : {}),
       };
       emit(output, write, report);
