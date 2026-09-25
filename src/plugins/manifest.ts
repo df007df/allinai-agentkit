@@ -62,9 +62,28 @@ export function parsePluginManifest(value: unknown): PluginManifest | null {
   const capabilities = parseCapabilities(value.capabilities);
   if (capabilities === null) return null;
 
+  let skills: string[] | undefined;
+  if (value.skills !== undefined) {
+    if (
+      !Array.isArray(value.skills) ||
+      !value.skills.every(
+        (entry) =>
+          typeof entry === "string" &&
+          entry.length > 0 &&
+          !entry.startsWith("/") &&
+          !entry.includes("..") &&
+          !entry.includes("\0"),
+      )
+    ) {
+      return null;
+    }
+    skills = [...value.skills];
+  }
+
   const manifest: PluginManifest = { id: value.id };
   if (runtimes) manifest.runtimes = runtimes;
   if (value.capabilities !== undefined) manifest.capabilities = capabilities;
+  if (skills) manifest.skills = skills;
   return manifest;
 }
 

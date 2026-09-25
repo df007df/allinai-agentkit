@@ -23,6 +23,28 @@ export type PluginManifest = {
   id: string;
   runtimes?: PlatformId[];
   capabilities?: PluginCapabilityDeclaration[];
+  /**
+   * Skill entries this plugin delivers to agent runtimes. Directory paths
+   * relative to the plugin root, each containing a SKILL.md; a directory
+   * path itself also works when it holds the conventional skills/ layout.
+   */
+  skills?: string[];
+};
+
+/** Non-fatal delivery problems found while validating a synced plugin. */
+export type PluginWarning = {
+  /** Which platform delivery the issue affects; "all" means every runtime. */
+  platform: "claude" | "codex" | "pi" | "zcode" | "all";
+  /** Machine-readable issue code for upstream filtering. */
+  code:
+    | "skill_missing"
+    | "skill_missing_description"
+    | "skill_name_mismatch"
+    | "skill_name_invalid"
+    | "skill_empty_dir"
+    | "manifest_unknown_fields";
+  /** Human-readable reminder shown on the client and reported to the hub. */
+  message: string;
 };
 
 export type InstalledPlugin = PluginConfig & {
@@ -36,6 +58,8 @@ export type InstalledPlugin = PluginConfig & {
   diverged?: boolean;
   /** Commits the local HEAD was ahead of the target at the last sync. */
   aheadCount?: number;
+  /** Non-fatal entry-file problems; a synced plugin still runs. */
+  warnings?: PluginWarning[];
 };
 
 export type ActivePluginSnapshot = {
@@ -53,6 +77,8 @@ export type PluginSyncOutcome = {
   diverged: boolean;
   /** Commits the local HEAD is ahead of the fetched ref (0 when not ahead). */
   aheadCount: number;
+  /** Non-fatal delivery entry-file problems found on the synced tree. */
+  warnings?: PluginWarning[];
 };
 
 export type InstalledPluginWithOutcome = InstalledPlugin & {

@@ -4,6 +4,7 @@ import { PLATFORM_IDS, type PlatformId } from "../runtime/types.js";
 import { validateCapabilityEntries } from "../capabilities/manifest.js";
 import { createGitClient, isAllowedGitOrigin, type GitClient } from "./git.js";
 import { isValidPluginId, parsePluginManifest } from "./manifest.js";
+import { validateDelivery } from "./delivery.js";
 import type {
   ActivePluginSnapshot,
   InstalledPlugin,
@@ -12,6 +13,7 @@ import type {
   PluginManifest,
   PluginStateStore,
   PluginSyncOutcome,
+  PluginWarning,
 } from "./types.js";
 
 type ActivePointer = {
@@ -594,12 +596,12 @@ export class PluginManager {
    * Switch the working tree to the desired commit only after the target's
    * manifest, capabilities, and secret scan validate; a failure checks the
    * prior commit back so the working tree is never left on an unvalidated
-   * state.
+   * state. Non-fatal delivery warnings are collected for reporting.
    */
   private async checkoutValidated(
     config: PluginConfig,
     repo: string,
-  ): Promise<PluginSyncOutcome> {
+  ): Promise<PluginSyncOutcome & { warnings?: PluginWarning[] }> {
     const priorCommit = await this.resolveCommit(repo);
     // Resolve the branch target through origin BEFORE checkout: a bare
     // branch name in a detached repo resolves to the stale local
@@ -612,7 +614,14 @@ export class PluginManager {
       await validateCapabilityEntries(repo, manifest.capabilities ?? []);
       assertManifestCompatibility(config, manifest);
       await scanForSecrets(this.git, repo, resolvedCommit);
-      return { resolvedCommit, localHead: resolvedCommit, diverged: false, aheadCount: 0 };
+      const warnings = await validateDelivery(repo, manifest);
+      return {
+        resolvedCommit,
+        localHead: resolvedCommit,
+        diverged: false,
+        aheadCount: 0,
+        ...(warnings.length > 0 ? { warnings } : {}),
+      };
     } catch (error) {
       await this.git.run([
         "-C",
@@ -676,7 +685,7 @@ export class PluginManager {
 
   private async activate(
     config: PluginConfig,
-    outcome: PluginSyncOutcome,
+    outcome: PluginSyncOutcome & { warnings?: PluginWarning[] },
     repo: string,
   ): Promise<InstalledPluginWithOutcome> {
     const prior = this.activePlugins.get(config.id);
@@ -690,6 +699,7 @@ export class PluginManager {
       installedAt: prior?.installedAt ?? now(),
       status: "active",
       lastError: undefined,
+      ...(outcome.warnings ? { warnings: outcome.warnings } : { warnings: undefined }),
     };
     await this.writePointer(config.id, plugin);
     this.activePlugins.set(config.id, plugin);

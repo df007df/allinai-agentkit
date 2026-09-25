@@ -376,3 +376,92 @@ describe("PluginManager", () => {
     assert.equal(result[0]?.resolvedCommit, fixture.goodCommit);
   });
 });
+
+describe("PluginManager delivery validation", () => {
+  function gitFixture(): { root: string; commit: () => string } {
+    const root = mkdtempSync(path.join(tmpdir(), "allinai-plugin-dlv-"));
+    directories.push(root);
+    git(root, ["init", "--initial-branch=main"]);
+    git(root, ["config", "user.email", "t@t"]);
+    git(root, ["config", "user.name", "T"]);
+    return { root, commit: () => git(root, ["rev-parse", "HEAD"]) };
+  }
+
+  it("warns when skills/ exists but the manifest declares no skills field", async () => {
+    const fixture = gitFixture();
+    mkdirSync(path.join(fixture.root, "skills", "demo"), { recursive: true });
+    writeFileSync(
+      path.join(fixture.root, "skills", "demo", "SKILL.md"),
+      "---\nname: demo\ndescription: d\n---\nbody\n",
+    );
+    writeFileSync(
+      path.join(fixture.root, "allinai-plugin.json"),
+      JSON.stringify({ id: "demo", runtimes: ["codex"] }),
+    );
+    git(fixture.root, ["add", "."]);
+    git(fixture.root, ["commit", "-m", "v"]);
+    const root = mkdtempSync(path.join(tmpdir(), "allinai-plugin-store-"));
+    directories.push(root);
+    const manager = createManager(root);
+
+    const result = await manager.sync([desired(fixture.root, fixture.commit())]);
+
+    assert.equal(result[0]?.status, "active");
+    const warnings = result[0]?.outcome?.warnings ?? [];
+    assert.equal(warnings[0]?.code, "skill_empty_dir");
+    assert.match(warnings[0]?.message ?? "", /skills.*contains 1 skill/);
+  });
+
+  it("warns per platform when delivery entry files are missing", async () => {
+    const fixture = gitFixture();
+    writeFileSync(
+      path.join(fixture.root, "allinai-plugin.json"),
+      JSON.stringify({ id: "demo", runtimes: ["codex"], skills: [] }),
+    );
+    git(fixture.root, ["add", "."]);
+    git(fixture.root, ["commit", "-m", "v"]);
+    const root = mkdtempSync(path.join(tmpdir(), "allinai-plugin-store-"));
+    directories.push(root);
+    const manager = createManager(root);
+
+    const result = await manager.sync([desired(fixture.root, fixture.commit())]);
+
+    const warnings = result[0]?.outcome?.warnings ?? [];
+    const platforms = warnings.map((warning) => warning.platform).sort();
+    assert.deepEqual(platforms, ["claude", "codex", "codex", "pi"]);
+    assert.match(warnings[0]?.message ?? "", /delivery will not work/);
+  });
+
+  it("clears warnings once the entry files exist", async () => {
+    const fixture = gitFixture();
+    mkdirSync(path.join(fixture.root, "skills", "demo"), { recursive: true });
+    writeFileSync(
+      path.join(fixture.root, "skills", "demo", "SKILL.md"),
+      "---\nname: demo\ndescription: d\n---\nbody\n",
+    );
+    writeFileSync(
+      path.join(fixture.root, "allinai-plugin.json"),
+      JSON.stringify({ id: "demo", runtimes: ["codex"], skills: ["skills/demo"] }),
+    );
+    git(fixture.root, ["add", "."]);
+    git(fixture.root, ["commit", "-m", "v1"]);
+    const root = mkdtempSync(path.join(tmpdir(), "allinai-plugin-store-"));
+    directories.push(root);
+    const manager = createManager(root);
+    await manager.sync([desired(fixture.root, fixture.commit())]);
+
+    mkdirSync(path.join(fixture.root, ".claude-plugin"), { recursive: true });
+    writeFileSync(path.join(fixture.root, ".claude-plugin", "marketplace.json"), "{}");
+    mkdirSync(path.join(fixture.root, ".codex-plugin"), { recursive: true });
+    writeFileSync(path.join(fixture.root, ".codex-plugin", "plugin.json"), "{}");
+    mkdirSync(path.join(fixture.root, ".agents", "plugins"), { recursive: true });
+    writeFileSync(path.join(fixture.root, ".agents", "plugins", "marketplace.json"), "{}");
+    writeFileSync(path.join(fixture.root, "package.json"), "{}");
+    git(fixture.root, ["add", "."]);
+    git(fixture.root, ["commit", "-m", "v2"]);
+    const result = await manager.sync([desired(fixture.root, fixture.commit())]);
+
+    assert.equal(result[0]?.outcome?.warnings, undefined);
+    assert.equal(manager.status("demo")?.warnings, undefined);
+  });
+});
