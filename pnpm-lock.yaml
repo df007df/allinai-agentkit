@@ -8,9 +8,6 @@ importers:
 
   .:
     dependencies:
-      '@openai/codex':
-        specifier: ^0.156.1
-        version: 0.156.1
       ws:
         specifier: ^8.18.0
         version: 8.21.3

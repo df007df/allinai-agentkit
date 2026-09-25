@@ -166,25 +166,10 @@
     "verify:artifact": "node scripts/publish-stage.mjs stage && node scripts/verify-package-artifact.mjs"
   },
   "dependencies": {
-    "@openai/codex": "^0.156.1",
     "ws": "^8.18.0"
   },
   "peerDependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.3.168",
-    "@earendil-works/pi-coding-agent": "0.85.1",
-    "@openai/codex-sdk": "^0.142.4",
     "react": ">=19"
-  },
-  "peerDependenciesMeta": {
-    "@anthropic-ai/claude-agent-sdk": {
-      "optional": true
-    },
-    "@earendil-works/pi-coding-agent": {
-      "optional": true
-    },
-    "@openai/codex-sdk": {
-      "optional": true
-    }
   },
   "devDependencies": {
     "@allin-ai/agentkit-web": "workspace:*",
