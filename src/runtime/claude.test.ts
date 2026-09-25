@@ -21,34 +21,24 @@ function runInput() {
 }
 
 describe("Claude adapter", () => {
-  it("reports the installed SDK boundary without claiming auth health", async () => {
+  it("reports installed when the claude CLI exists on PATH", async () => {
     const adapter = createClaudeAdapter({
-      loadClaude: async () => ({
-        query: (() => {
-          throw new Error("probe must not invoke the SDK query");
-        }) as ClaudeQueryFactory,
-      }),
+      which: async (name) => `/usr/local/bin/${name}`,
     });
 
-    assert.deepEqual(await adapter.probe(), { installed: true, version: null });
+    assert.deepEqual(await adapter.probe(), {
+      installed: true,
+      version: null,
+      reason: "/usr/local/bin/claude",
+    });
   });
 
-  it("raises an actionable optional dependency error when the SDK is absent", async () => {
-    const adapter = createClaudeAdapter({
-      loadClaude: async () => {
-        throw new Error("Cannot find package");
-      },
-    });
+  it("reports not installed when the claude CLI is missing", async () => {
+    const adapter = createClaudeAdapter({ which: async () => null });
 
-    await assert.rejects(adapter.probe(), (error: unknown) => {
-      assert.ok(error instanceof OptionalRuntimeDependencyError);
-      assert.equal(error.packageName, "@anthropic-ai/claude-agent-sdk");
-      assert.match(
-        error.message,
-        /npm install @anthropic-ai\/claude-agent-sdk/,
-      );
-      return true;
-    });
+    const probe = await adapter.probe();
+    assert.equal(probe.installed, false);
+    assert.match(probe.reason ?? "", /claude CLI not found/);
   });
 
   it("propagates an actionable optional dependency error from adapter use", async () => {

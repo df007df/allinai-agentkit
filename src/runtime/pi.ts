@@ -1,4 +1,5 @@
 import { OptionalRuntimeDependencyError } from "./codex.js";
+import { probeCli, type WhichFn } from "./cli-probe.js";
 import type {
   PlatformEvent,
   PlatformProbe,
@@ -116,6 +117,8 @@ export type CreatePiAdapterDeps = {
   sessionResolver?: PiSessionResolver;
   /** Test seam for the inline approval extension's resource loader. */
   loadResourceLoader?: PiResourceLoaderLoader;
+  /** Test seam for the CLI existence probe. */
+  which?: WhichFn;
 };
 
 const PI_SDK_PACKAGE = "@earendil-works/pi-coding-agent";
@@ -350,8 +353,8 @@ export function createPiAdapter(deps: CreatePiAdapterDeps = {}): PiAdapter {
   return {
     id: "pi",
     async probe(): Promise<PlatformProbe> {
-      const sdk = await loadPiModule(loadPi);
-      return { installed: true, version: sdk.VERSION ?? null };
+      // CLI-first: installed means the pi binary exists on PATH.
+      return await probeCli("pi", "pi", deps.which);
     },
     async *start(
       input: PiAdapterRunInput,

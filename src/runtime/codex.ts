@@ -3,6 +3,13 @@ import type {
   PlatformProbe,
   PlatformRunInput,
 } from "./types.js";
+import { probeCli, type WhichFn } from "./cli-probe.js";
+import {
+  drainToString,
+  mapCodexCliEvent,
+  readJsonl,
+  spawnCodexCli,
+} from "./codex-cli.js";
 
 type CodexSdkEvent = { type: string; [key: string]: unknown };
 
@@ -84,6 +91,10 @@ export type CreateCodexAdapterDeps = {
   createCodex?: () => CodexSdk;
   /** Test seam for the optional SDK module. It is never invoked at import time. */
   loadCodex?: CodexSdkLoader;
+  /** Test seam for the CLI existence probe. */
+  which?: WhichFn;
+  /** Codex CLI command; defaults to "codex". Tests inject a stub script. */
+  codexCommand?: string;
 };
 
 const CODEX_SDK_PACKAGE = "@openai/codex-sdk";
@@ -267,10 +278,9 @@ export function createCodexAdapter(
   return {
     id: "codex",
     async probe(): Promise<PlatformProbe> {
-      // This only reports that the optional SDK boundary is importable; it
-      // intentionally does not claim CLI login or provider credentials are healthy.
-      await loadCodexModule(loadCodex);
-      return { installed: true, version: null };
+      // CLI-first: installed means the codex binary exists on PATH. This is
+      // the distribution ground truth; it makes no claim about login state.
+      return await probeCli("codex", "codex", deps.which);
     },
     async *start(
       input: CodexAdapterRunInput,
@@ -281,29 +291,10 @@ export function createCodexAdapter(
         return;
       }
 
-      const sdk = deps.createCodex
-        ? deps.createCodex()
-        : new (await loadCodexModule(loadCodex)).Codex();
-      const threadOptions = {
-        ...(input.cwd ? { workingDirectory: input.cwd } : {}),
-        ...(input.model ? { model: input.model } : {}),
-        // Runs are daemon-managed workspaces, not repos the user opened in
-        // Codex, so the interactive trust gate would block every run.
-        skipGitRepoCheck: true,
-        // The SDK exposes no approval callback, so escalation requests cannot
-        // be answered in-process. Lock the policy to `never` and let the
-        // sandbox be the boundary; tool-level human gating for Codex is the
-        // hooks-channel deliverable (see docs/research 2026-09-22).
-        ...(input.approvalPolicy ?? "never" ? { approvalPolicy: (input.approvalPolicy ?? "never") as "never" } : {}),
-      };
-      // `sessionId` is the platform-reported runtimeSessionId from a previous
-      // run; resuming continues the persisted Codex thread in place.
+      // CLI-first execution: spawn `codex exec --json` and map its JSONL
+      // events. The CLI is the distribution ground truth — it is exactly
+      // what probe reports as installed, so execution cannot drift from it.
       const resumeThreadId = input.resumeThreadId ?? input.sessionId;
-      const thread = resumeThreadId
-        ? sdk.resumeThread(resumeThreadId, threadOptions)
-        : sdk.startThread(threadOptions);
-      let terminal = false;
-
       if (resumeThreadId) {
         yield {
           type: "init",
@@ -314,26 +305,53 @@ export function createCodexAdapter(
         };
       }
 
+      const codexCommand = deps.codexCommand ?? "codex";
+      const child = spawnCodexCli(
+        codexCommand,
+        {
+          args: [],
+          cwd: input.cwd,
+          resumeThreadId,
+          prompt: input.prompt,
+        },
+        signal,
+      );
+
+      let terminal = false;
+      let sawInit = resumeThreadId !== undefined;
       try {
-        const { events } = await thread.runStreamed(input.prompt, { signal });
-        const iterator = events[Symbol.asyncIterator]();
-        while (true) {
-          const next = await nextEventOrAbort(iterator, signal);
-          if (!next || next.done) break;
-          const event = next.value;
-          const mapped = mapCodexEvent(event);
+        for await (const cliEvent of readJsonl(child.stdout)) {
+          const mapped = mapCodexCliEvent(cliEvent, resumeThreadId);
           if (!mapped) continue;
+          if (mapped.type === "init") {
+            // A resumed run re-emits thread.started; keep the resume init.
+            if (sawInit) continue;
+            sawInit = true;
+          }
           yield mapped;
           if (mapped.type === "done" || mapped.type === "error") {
             terminal = true;
             return;
           }
         }
+        const exit = await child.onExit;
         if (!terminal) {
-          yield {
-            type: "done",
-            payload: signal.aborted ? payload({ aborted: true }) : undefined,
-          };
+          if (signal.aborted) {
+            yield { type: "done", payload: payload({ aborted: true }) };
+          } else if (exit.code !== 0) {
+            const stderrText = await drainToString(child.stderr);
+            yield {
+              type: "error",
+              payload: payload({
+                message:
+                  stderrText.trim() ||
+                  `codex exec exited with code ${exit.code ?? "null"}`,
+                cause: "cli_exit_nonzero",
+              }),
+            };
+          } else {
+            yield { type: "done", payload: undefined };
+          }
         }
       } catch (error) {
         if (signal.aborted) {
@@ -344,7 +362,7 @@ export function createCodexAdapter(
           type: "error",
           payload: payload({
             message: errorMessage(error),
-            cause: "sdk_throw",
+            cause: "cli_spawn_failed",
           }),
         };
       }

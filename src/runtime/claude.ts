@@ -1,4 +1,5 @@
 import { OptionalRuntimeDependencyError } from "./codex.js";
+import { probeCli, type WhichFn } from "./cli-probe.js";
 import type { PlatformEvent, PlatformProbe } from "./types.js";
 
 /** Opaque vendor message shape retained without a mandatory SDK type dependency. */
@@ -62,6 +63,8 @@ export type CreateClaudeAdapterDeps = {
   query?: ClaudeQueryFactory;
   /** Test seam for the optional SDK module. It is never invoked at import time. */
   loadClaude?: ClaudeSdkLoader;
+  /** Test seam for the CLI existence probe. */
+  which?: WhichFn;
 };
 
 const CLAUDE_SDK_PACKAGE = "@anthropic-ai/claude-agent-sdk";
@@ -220,10 +223,8 @@ export function createClaudeAdapter(
   return {
     id: "claude",
     async probe(): Promise<PlatformProbe> {
-      // This is deliberately SDK-presence reporting, not a provider auth or
-      // executable health check.
-      await loadClaudeModule(loadClaude);
-      return { installed: true, version: null };
+      // CLI-first: installed means the claude binary exists on PATH.
+      return await probeCli("claude", "claude", deps.which);
     },
     async *start(
       input: ClaudeAdapterRunInput,

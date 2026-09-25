@@ -135,17 +135,22 @@ describe("Pi adapter", () => {
     assert.equal(events[4]?.payload?.messageCount, 1);
   });
 
-  it("reports the installed official SDK version", async () => {
-    const probe = await createPiAdapter({
-      loadPi: async () => ({
-        VERSION: "0.85.1",
-        createAgentSession: async () => {
-          throw new Error("probe must not create a session");
-        },
-      }),
-    }).probe();
+  it("reports installed when the pi CLI exists on PATH", async () => {
+    const adapter = createPiAdapter({
+      which: async (name) => `/usr/local/bin/${name}`,
+    });
 
-    assert.deepEqual(probe, { installed: true, version: "0.85.1" });
+    const probe = await adapter.probe();
+    assert.equal(probe.installed, true);
+    assert.match(probe.reason ?? "", /\/usr\/local\/bin\/pi/);
+  });
+
+  it("reports not installed when the pi CLI is missing", async () => {
+    const adapter = createPiAdapter({ which: async () => null });
+
+    const probe = await adapter.probe();
+    assert.equal(probe.installed, false);
+    assert.match(probe.reason ?? "", /pi CLI not found/);
   });
 
   it("resumes an existing session file when a transport sessionId resolves", async () => {
@@ -238,15 +243,16 @@ describe("Pi adapter", () => {
       },
     });
 
-    await assert.rejects(adapter.probe(), (error: unknown) => {
-      assert.ok(error instanceof OptionalRuntimeDependencyError);
-      assert.equal(error.packageName, "@earendil-works/pi-coding-agent");
-      assert.match(
-        error.message,
-        /npm install @earendil-works\/pi-coding-agent/,
-      );
-      return true;
-    });
+    // The probe is CLI-first now, so a missing SDK only surfaces when the
+    // adapter actually starts a session.
+    await assert.rejects(
+      collect(adapter.start(runInput(), new AbortController().signal)),
+      (error: unknown) => {
+        assert.ok(error instanceof OptionalRuntimeDependencyError);
+        assert.equal(error.packageName, "@earendil-works/pi-coding-agent");
+        return true;
+      },
+    );
   });
 
   it("propagates an actionable optional dependency error from adapter use", async () => {
