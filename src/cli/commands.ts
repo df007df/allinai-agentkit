@@ -894,7 +894,23 @@ export async function runCli(
           throw new Error("This daemon does not support plugin refresh");
         await control.refreshPlugins();
       }
-      emit(output, write, { plugins: installed, refreshed: refresh });
+      // Delivery state (per-platform dispatch outcome) rides on the same
+      // records; surface a compact summary line for humans scanning output.
+      emit(output, write, {
+        plugins: installed,
+        refreshed: refresh,
+        deliverySummary: installed.map((plugin) => ({
+          id: plugin.id,
+          ...(Array.isArray(plugin.delivery) && plugin.delivery.length > 0
+            ? {
+                delivery: plugin.delivery.map((entry) => ({
+                  platform: entry.platform,
+                  state: entry.state,
+                })),
+              }
+            : {}),
+        })),
+      });
       return { exitCode: 0, output };
     }
 

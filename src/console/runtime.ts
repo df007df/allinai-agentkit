@@ -61,8 +61,16 @@ export function createConsoleRuntime(options?: {
     sequence: { value: 0 },
     hostWarning: null,
   };
+  // Declared before the hub so the registration hook can close over it; the
+  // hook only fires once a client connects, long after assignment.
+  let plugins: ReturnType<typeof createDesiredPluginCatalog> | undefined;
   const hub = createAgentHub<string>({
     authorize: createRegistryAuthorizer(registry),
+    // Client (re)connects are levelled up to the console's desired catalog:
+    // edits made while a client was offline reach it without a manual re-push.
+    onClientRegistered: ({ clientId }) => {
+      void plugins?.push(clientId);
+    },
     store: new ObservableStore<string>(
       options?.store ?? new MemoryHubStore<string>(),
       (observation) => {
@@ -71,7 +79,7 @@ export function createConsoleRuntime(options?: {
       },
     ),
   });
-  const plugins = createDesiredPluginCatalog(hub);
+  plugins = createDesiredPluginCatalog(hub);
   return {
     hub,
     registry,

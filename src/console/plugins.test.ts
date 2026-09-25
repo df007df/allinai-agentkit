@@ -181,4 +181,59 @@ describe("console plugins endpoint (desired catalog)", () => {
       await site.close();
     }
   });
+
+  it("levels a reconnecting client up to the current catalog automatically", async () => {
+    const site = await startConsoleServer({ port: 0 });
+    const token = mintToken(site, "c4");
+      let syncedPlugins: Array<{ id: string }> = [];
+    const transport = new WsClientTransport({
+      hubBaseUrl: site.url,
+      token,
+      clientId: "c4",
+    });
+    try {
+      // Catalog edited while no client is connected.
+      await fetch(`${site.url}${CONSOLE_PLUGINS_PATH}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          clientId: "c4",
+          action: "add",
+          plugin: { id: "late", gitUrl: "https://git.test/late.git" },
+        }),
+      });
+
+      // The client connects afterwards: the onClientRegistered hook must
+      // push the pending catalog without any manual re-push. The transport
+      // routes plugin.sync to the pluginSync handler, not the command one.
+      const synced = new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(
+          () => reject(new Error("no plugin.sync within 3s")),
+          3_000,
+        );
+        void transport
+          .connect({
+            command: async () => {},
+            pluginSync: async (sync) => {
+              syncedPlugins = sync.plugins;
+              clearTimeout(timeout);
+              resolve();
+            },
+            connected: async () => {},
+          })
+          .catch((error) => {
+            clearTimeout(timeout);
+            reject(error);
+          });
+      });
+      await synced;
+      assert.deepEqual(
+        syncedPlugins.map((plugin) => plugin.id),
+        ["late"],
+      );
+    } finally {
+      await transport.close();
+      await site.close();
+    }
+  });
 });
