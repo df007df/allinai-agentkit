@@ -41,6 +41,18 @@ export type AgentControl = {
   pluginUpdate?(plugins: unknown): Promise<unknown>;
   /** Force-switch one plugin to an explicit commit, bypassing divergence. */
   pluginForce?(id: string, commit?: string): Promise<unknown>;
+  /**
+   * Register one plugin on this machine (local origin): sync it through the
+   * standard manager path and persist it so Hub pushes cannot remove it.
+   */
+  pluginInstall?(input: {
+    id: string;
+    gitUrl: string;
+    ref?: string;
+    enabled?: boolean;
+  }): Promise<unknown>;
+  /** Unregister a locally registered plugin (deactivate + clear local record). */
+  pluginRemove?(id: string): Promise<unknown>;
 };
 
 export type AgentControlServer = {
@@ -82,6 +94,13 @@ export type AgentControlClient = {
   pluginCheck?(plugins: unknown): Promise<unknown>;
   pluginUpdate?(plugins: unknown): Promise<unknown>;
   pluginForce?(id: string, commit?: string): Promise<unknown>;
+  pluginInstall?(input: {
+    id: string;
+    gitUrl: string;
+    ref?: string;
+    enabled?: boolean;
+  }): Promise<unknown>;
+  pluginRemove?(id: string): Promise<unknown>;
 };
 
 export type AgentControlClientOptions = {
@@ -98,6 +117,12 @@ type ControlRequest =
   | { id: string; method: "pluginCheck"; plugins: unknown }
   | { id: string; method: "pluginUpdate"; plugins: unknown }
   | { id: string; method: "pluginForce"; id2: string; commit?: string }
+  | {
+      id: string;
+      method: "pluginInstall";
+      plugin: { id: string; gitUrl: string; ref?: string; enabled?: boolean };
+    }
+  | { id: string; method: "pluginRemove"; id2: string }
   | { id: string; method: "approve"; executionId: string }
   | {
       id: string;
@@ -117,6 +142,11 @@ type ControlRequestInput =
   | { method: "pluginCheck"; plugins: unknown }
   | { method: "pluginUpdate"; plugins: unknown }
   | { method: "pluginForce"; pluginId: string; commit?: string }
+  | {
+      method: "pluginInstall";
+      plugin: { id: string; gitUrl: string; ref?: string; enabled?: boolean };
+    }
+  | { method: "pluginRemove"; pluginId: string }
   | { method: "approve"; executionId: string }
   | {
       method: "respondToolApproval";
@@ -134,6 +164,31 @@ type ControlResponse = {
 };
 
 const controlFs: ControlFileSystem = { mkdir, lstat, unlink };
+
+/** Registration payload guard for pluginInstall requests. */
+function isPluginRegistration(
+  value: unknown,
+): value is { id: string; gitUrl: string; ref?: string; enabled?: boolean } {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  if (
+    typeof candidate.id !== "string" ||
+    !candidate.id ||
+    typeof candidate.gitUrl !== "string" ||
+    !candidate.gitUrl
+  ) {
+    return false;
+  }
+  if (
+    candidate.ref !== undefined &&
+    (typeof candidate.ref !== "string" || !candidate.ref)
+  ) {
+    return false;
+  }
+  return (
+    candidate.enabled === undefined || typeof candidate.enabled === "boolean"
+  );
+}
 
 function absent(error: unknown): boolean {
   return (
@@ -178,6 +233,16 @@ function parseRequest(value: unknown): ControlRequest {
         ? { commit: input.commit }
         : {}),
     };
+  }
+  if (input.method === "pluginInstall" && isPluginRegistration(input.plugin)) {
+    return { id: input.id, method: "pluginInstall", plugin: input.plugin };
+  }
+  if (
+    input.method === "pluginRemove" &&
+    typeof input.pluginId === "string" &&
+    input.pluginId
+  ) {
+    return { id: input.id, method: "pluginRemove", id2: input.pluginId };
   }
   if (
     input.method === "approve" &&
@@ -371,6 +436,22 @@ async function handleLine(
         ok: true,
         result: await control.pluginForce(request.id2, request.commit),
       };
+    } else if (request.method === "pluginInstall") {
+      if (!control.pluginInstall)
+        throw new Error("Local Agent Client does not support plugin install");
+      response = {
+        id: request.id,
+        ok: true,
+        result: await control.pluginInstall(request.plugin),
+      };
+    } else if (request.method === "pluginRemove") {
+      if (!control.pluginRemove)
+        throw new Error("Local Agent Client does not support plugin remove");
+      response = {
+        id: request.id,
+        ok: true,
+        result: await control.pluginRemove(request.id2),
+      };
     } else if (request.method === "respondToolApproval") {
       if (!control.respondToolApproval)
         throw new Error(
@@ -533,6 +614,20 @@ export function createAgentControlClient(
           pluginId: id,
           ...(commit !== undefined ? { commit } : {}),
         },
+        options,
+      )) as unknown;
+    },
+    async pluginInstall(input) {
+      return (await sendControlRequest(
+        endpoint,
+        { method: "pluginInstall", plugin: input },
+        options,
+      )) as unknown;
+    },
+    async pluginRemove(id) {
+      return (await sendControlRequest(
+        endpoint,
+        { method: "pluginRemove", pluginId: id },
         options,
       )) as unknown;
     },

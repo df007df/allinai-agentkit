@@ -254,10 +254,13 @@ export class PluginManager {
     );
 
     for (const id of [...this.activePlugins.keys()]) {
-      if (!ids.has(id))
-        await this.withPluginLock(id, () =>
-          this.deactivate(id, "removed from desired state"),
-        );
+      if (ids.has(id)) continue;
+      // Locally registered plugins are owned by this machine: a Hub
+      // full-state push that simply omits them must not uninstall them.
+      if (this.statuses.get(id)?.origin === "local") continue;
+      await this.withPluginLock(id, () =>
+        this.deactivate(id, "removed from desired state"),
+      );
     }
     return results;
   }
@@ -367,6 +370,28 @@ export class PluginManager {
       await this.writePointer(id, plugin);
       this.save({ plugin, active: plugin });
       return plugin;
+    });
+  }
+
+  /**
+   * Unregisters one plugin: deactivate (which dispatches per-platform
+   * removals and records the outcome) and drop it from active state. The
+   * on-disk repository stays — a later install of the same id reuses it,
+   * mirroring how Hub-removed plugins are handled.
+   */
+  async remove(id: string): Promise<InstalledPlugin | null> {
+    return this.withPluginLock(id, async () => {
+      const current = this.statuses.get(id);
+      if (!current) return null;
+      if (current.origin === undefined || current.origin === "hub") {
+        // Registered on the Hub: local remove must not silently fight the
+        // Hub's desired state — the Hub push would reinstall it.
+        throw new Error(
+          `Plugin ${id} is registered on the Hub; remove it from the Hub desired state instead`,
+        );
+      }
+      await this.deactivate(id, "removed by local registration");
+      return this.statuses.get(id) ?? null;
     });
   }
 

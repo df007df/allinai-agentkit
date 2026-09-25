@@ -232,15 +232,17 @@ export function cliManual(): CliManual {
       {
         name: "plugins",
         summary:
-          "List installed plugins; --refresh re-reports them to the Hub. Offline maintenance: --action check compares against upstream, --action update fetches and updates locally (no Hub needed), --action force switches one plugin to an explicit commit.",
+          "List installed plugins; --refresh re-reports them to the Hub. Local registration: --action install registers a machine-owned plugin (survives Hub pushes; reported via inventory), --action remove unregisters it. Offline maintenance: --action check compares against upstream, --action update fetches and updates locally (no Hub needed), --action force switches one plugin to an explicit commit.",
         options: [
           { flag: "refresh", description: "Re-report plugins to the Hub" },
-          { flag: "action check|update|force", description: "Hub-free plugin maintenance action" },
-          { flag: "id PLUGIN_ID", description: "Plugin id for --action force" },
+          { flag: "action install|remove|check|update|force", description: "Plugin management action" },
+          { flag: "git-url URL", description: "Git repository URL for --action install" },
+          { flag: "id PLUGIN_ID", description: "Plugin id for --action install|remove|force (install requires a lowercase slug)" },
+          { flag: "ref REF", description: "Optional branch/ref for --action install" },
           { flag: "commit SHA", description: "Target commit for --action force (defaults to the last resolved commit)" },
         ],
         example:
-          "allinai-agentkit plugins --action update",
+          "allinai-agentkit plugins --action install --git-url https://github.com/me/skills.git --id my-skills",
       },
       {
         name: "docs",

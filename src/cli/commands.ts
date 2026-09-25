@@ -217,7 +217,7 @@ export const COMMAND_OPTIONS: Readonly<Record<string, CommandOptionSpec>> = {
     booleans: ["remove"],
   },
   plugins: {
-    values: ["config-dir", "action", "id", "commit"],
+    values: ["config-dir", "action", "id", "commit", "ref", "git-url"],
     booleans: ["refresh"],
   },
   docs: { booleans: ["json"] },
@@ -480,6 +480,10 @@ function help(): string {
     "  project --name NAME --path DIR   register a local project working directory",
     "  project --name NAME --remove     remove a registered project",
     "  plugins [--refresh]              list installed plugins; --refresh re-reports them to the Hub",
+    "  plugins --action install --git-url URL --id ID [--ref REF]",
+    "                                   register a plugin on this machine (survives Hub pushes);",
+    "                                   report it to the Hub via inventory",
+    "  plugins --action remove --id ID  unregister a locally registered plugin",
     "  plugins --action check           fetch + compare plugins against upstream without switching commits",
     "  plugins --action update          fetch + update plugins locally (works while the Hub is offline)",
     "  plugins --action force --id ID [--commit SHA]",
@@ -840,6 +844,46 @@ export async function runCli(
       const action = parsed.flags.get("action");
       if (!control.plugins)
         throw new Error("This daemon does not expose plugins");
+
+      // Local registration: install/remove act on machine-owned plugins.
+      if (action === "install") {
+        const gitUrl = parsed.flags.get("git-url");
+        if (!gitUrl || gitUrl === true)
+          throw new Error("plugins --action install requires --git-url URL");
+        const explicitId = parsed.flags.get("id");
+        if (
+          !explicitId ||
+          explicitId === true ||
+          !/^[a-z0-9][a-z0-9-]{0,63}$/.test(String(explicitId))
+        ) {
+          throw new Error(
+            "plugins --action install requires --id with a lowercase slug",
+          );
+        }
+        if (!control.pluginInstall)
+          throw new Error("This daemon does not support plugin install");
+        const ref = parsed.flags.get("ref");
+        emit(
+          output,
+          write,
+          await control.pluginInstall({
+            id: String(explicitId),
+            gitUrl: String(gitUrl),
+            ...(ref && ref !== true ? { ref: String(ref) } : {}),
+          }),
+        );
+        return { exitCode: 0, output };
+      }
+      if (action === "remove") {
+        const target = parsed.flags.get("id");
+        if (!target || target === true)
+          throw new Error("plugins --action remove requires --id PLUGIN_ID");
+        if (!control.pluginRemove)
+          throw new Error("This daemon does not support plugin remove");
+        emit(output, write, await control.pluginRemove(String(target)));
+        return { exitCode: 0, output };
+      }
+
       const installed =
         (await control.plugins()) as Array<Record<string, unknown>>;
       if (action === "check" || action === "update" || action === "force") {
@@ -1276,6 +1320,14 @@ export async function createLocalAgentDaemon(
           if (!supervisor) throw new Error("Agent daemon is still starting");
           return supervisor.pluginForce(id, commit);
         },
+        pluginInstall: async (input) => {
+          if (!supervisor) throw new Error("Agent daemon is still starting");
+          return supervisor.pluginInstall(input);
+        },
+        pluginRemove: async (id) => {
+          if (!supervisor) throw new Error("Agent daemon is still starting");
+          return supervisor.pluginRemove(id);
+        },
       },
     },
   );
@@ -1315,23 +1367,16 @@ export async function createLocalAgentDaemon(
       dispatcher: { which: defaultWhich },
       installedPlatforms,
     });
-    // Locally configured skill repositories ride the standard plugin
-    // pipeline; the built-in agentkit-system plugin (client-operation
-    // guidance for agents) is materialized locally and always present.
+    // The built-in agentkit-system plugin (client-operation guidance for
+    // agents) is materialized locally and always present — it is not a
+    // registered plugin (no Hub entry, no local registration) and carries
+    // no origin.
     installSystemPlugin({
       pluginsRoot: paths.pluginsRoot,
       manual: cliManual(),
       version: "0.4.0",
     });
-    const basePlugins: PluginConfig[] = [
-      ...config.skillsRepos.map((repo) => ({
-        id: repo.id,
-        gitUrl: repo.gitUrl,
-        ...(repo.ref ? { ref: repo.ref } : {}),
-        enabled: true,
-      })),
-      systemPluginConfig(),
-    ];
+    const basePlugins: PluginConfig[] = [systemPluginConfig()];
     runner = (options.createRunner ?? createRunnerManager)({
       ...(config.proxy ? { proxyUrl: config.proxy } : {}),
     });

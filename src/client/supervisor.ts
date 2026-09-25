@@ -67,11 +67,10 @@ export type ClientSupervisorOptions = {
   /** Plugins root; used to derive per-plugin repo paths for --plugin-dir. */
   pluginsRoot?: string;
   /**
-   * Locally-configured plugin desired state (skillsRepos from config.json
-   * plus the built-in agentkit-system plugin). Merged under every Hub
-   * plugin.sync: a Hub entry with the same id overrides the local one, so
-   * the hub stays the online source of truth while local entries keep
-   * skills available offline.
+   * Built-in plugins always present (agentkit-system). Appended to every
+   * sync's desired list: they are not registered anywhere (Hub or local)
+   * and carry no origin — the Hub's full-state push neither owns nor
+   * removes them.
    */
   basePlugins?: PluginConfig[];
   /** Supplies the full local inventory for inventory reports; injected like plugins. */
@@ -114,6 +113,8 @@ export type PluginManagerPort = {
     Array<{ id: string } & Partial<PluginSyncOutcome> & { error?: string }>
   >;
   forceTo(id: string, commit?: string): Promise<InstalledPlugin>;
+  /** Unregister a locally registered plugin; refuses Hub-registered ones. */
+  remove?(id: string): Promise<InstalledPlugin | null>;
   snapshotActivePlugins(
     runtime?: AgentRunCommand["runtime"],
   ): ActivePluginSnapshot[];
@@ -183,16 +184,18 @@ function isActive(state: ExecutionState): boolean {
 }
 
 /**
- * Merges locally-configured desired plugins under a Hub desired list: a
- * Hub entry with the same id wins (online source of truth); local-only
- * entries survive so offline machines keep their skills.
+ * Appends the built-in base plugins (agentkit-system) to a desired list.
+ * Purely additive: registered plugins (Hub or locally installed) own their
+ * ids — a base plugin never overrides a registration, and a Hub entry with
+ * the same id wins because the registration was applied through sync and
+ * this list is only consulted for what else must always be present.
  */
 export function mergeDesiredPlugins(
   base: PluginConfig[],
   hub: PluginConfig[],
 ): PluginConfig[] {
-  const hubIds = new Set(hub.map((plugin) => plugin.id));
-  return [...hub, ...base.filter((plugin) => !hubIds.has(plugin.id))];
+  const registeredIds = new Set(hub.map((plugin) => plugin.id));
+  return [...hub, ...base.filter((plugin) => !registeredIds.has(plugin.id))];
 }
 
 /**
@@ -1067,6 +1070,47 @@ export class ClientSupervisor {
     const plugins = this.options.plugins;
     if (!plugins) throw new Error("Plugin manager is unavailable");
     const plugin = await plugins.forceTo(id, commit);
+    void this.reportInventory();
+    return plugin;
+  }
+
+  /**
+   * Local registration: install one plugin through the standard manager
+   * path with origin "local" (persisted), so Hub full-state pushes cannot
+   * remove it. Reports inventory so the Hub sees the machine-owned plugin.
+   */
+  async pluginInstall(input: {
+    id: string;
+    gitUrl: string;
+    ref?: string;
+    enabled?: boolean;
+  }): Promise<unknown> {
+    const plugins = this.options.plugins;
+    if (!plugins) throw new Error("Plugin manager is unavailable");
+    const result = await plugins.sync([
+      {
+        id: input.id,
+        gitUrl: input.gitUrl,
+        ...(input.ref ? { ref: input.ref } : {}),
+        enabled: input.enabled !== false,
+        origin: "local",
+      },
+    ]);
+    void this.reportInventory();
+    return result[0];
+  }
+
+  /**
+   * Removes a local registration: deactivate through the manager (which
+   * also dispatches per-platform uninstalls) and report the new state.
+   * Hub-registered plugins refuse here — they are removed from the Hub.
+   */
+  async pluginRemove(id: string): Promise<unknown> {
+    const plugins = this.options.plugins;
+    if (!plugins?.remove) {
+      throw new Error("This daemon does not support plugin removal");
+    }
+    const plugin = await plugins.remove(id);
     void this.reportInventory();
     return plugin;
   }

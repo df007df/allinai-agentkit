@@ -15,6 +15,13 @@ export type PluginConfig = {
   updatePolicy?: "auto" | "force";
   enabled: boolean;
   runtimes?: PlatformId[];
+  /**
+   * Who registered this plugin: "hub" (desired state pushed from the Hub)
+   * or "local" (installed via the CLI on this machine). Locally registered
+   * plugins survive Hub full-state pushes — only a local remove uninstalls
+   * them.
+   */
+  origin?: "hub" | "local";
 };
 
 export type PluginCapabilityDeclaration = ShellCapability;

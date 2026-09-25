@@ -27,13 +27,6 @@ export type AgentProject = {
   dir: string;
 };
 
-export type SkillRepo = {
-  /** Plugin id; conventionally prefixed "skills-" for identification. */
-  id: string;
-  gitUrl: string;
-  ref?: string;
-};
-
 export type AgentConfig = {
   hubBaseUrl: string;
   clientId: string;
@@ -49,13 +42,6 @@ export type AgentConfig = {
   policy: AgentLocalPolicy;
   /** Locally owned project registry; Hub payloads select a project by name. */
   projects: AgentProject[];
-  /**
-   * Locally configured skill repositories, synced as plugins through the
-   * standard plugin pipeline. Hub plugin.sync entries with the same id
-   * override these (hub is the online source of truth; local entries keep
-   * skills available offline).
-   */
-  skillsRepos: SkillRepo[];
 };
 
 export type ConfigFileSystem = {
@@ -92,13 +78,12 @@ function clonePolicy(policy = DEFAULT_POLICY): AgentLocalPolicy {
 /** Defaults apply only to bounded local settings; Hub identity remains explicit. */
 export function defaultAgentConfig(): Pick<
   AgentConfig,
-  "maxConcurrentRuns" | "policy" | "projects" | "skillsRepos"
+  "maxConcurrentRuns" | "policy" | "projects"
 > {
   return {
     maxConcurrentRuns: 1,
     policy: clonePolicy(),
     projects: [],
-    skillsRepos: [],
   };
 }
 
@@ -198,40 +183,6 @@ function parsePolicy(value: unknown): AgentLocalPolicy {
 
 const PROJECT_DIR_PATTERN = /^[0-9a-f]{6}$/;
 
-/** Projects must be locally absolute directories with unique names and a record suffix. */
-export function parseSkillRepos(value: unknown): SkillRepo[] {
-  if (value === undefined) return [];
-  if (!Array.isArray(value))
-    throw new TypeError("skillsRepos must be an array of { id, gitUrl, ref? }");
-  const ids = new Set<string>();
-  return value.map((entry) => {
-    if (
-      !isRecord(entry) ||
-      typeof entry.id !== "string" ||
-      !entry.id.trim() ||
-      typeof entry.gitUrl !== "string" ||
-      entry.gitUrl.trim().length === 0 ||
-      (entry.ref !== undefined && typeof entry.ref !== "string")
-    ) {
-      throw new TypeError(
-        "skillsRepos entries must be objects with nonempty id and gitUrl strings and an optional ref",
-      );
-    }
-    const id = entry.id.trim();
-    if (ids.has(id)) {
-      throw new TypeError(`skillsRepos id ${id} is duplicated`);
-    }
-    ids.add(id);
-    return {
-      id,
-      gitUrl: entry.gitUrl.trim(),
-      ...(typeof entry.ref === "string" && entry.ref.trim()
-        ? { ref: entry.ref.trim() }
-        : {}),
-    };
-  });
-}
-
 export function parseProjects(value: unknown): AgentProject[] {
   if (value === undefined) return [];
   if (!Array.isArray(value))
@@ -299,7 +250,6 @@ export function parseAgentConfig(value: unknown): AgentConfig {
     "maxConcurrentRuns",
     "policy",
     "projects",
-    "skillsRepos",
   ]);
   for (const key of Object.keys(value)) {
     if (!allowed.has(key))
@@ -329,7 +279,6 @@ export function parseAgentConfig(value: unknown): AgentConfig {
     maxConcurrentRuns: maxConcurrentRuns as number,
     policy: parsePolicy(value.policy),
     projects: parseProjects(value.projects),
-    skillsRepos: parseSkillRepos(value.skillsRepos),
   };
 }
 

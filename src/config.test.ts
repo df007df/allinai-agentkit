@@ -93,7 +93,6 @@ describe("agent config", () => {
       clientId: "client-1",
       maxConcurrentRuns: 2,
       projects: [],
-      skillsRepos: [],
       policy: {
         requireRunApproval: true,
         autoPermissions: [],
@@ -115,7 +114,6 @@ describe("agent config", () => {
         allowedWorkspaceRoots: [],
       },
       projects: [],
-      skillsRepos: [],
     });
   });
 

@@ -511,3 +511,80 @@ describe("PluginManager delivery validation", () => {
     assert.equal(manager.status("demo")?.warnings, undefined);
   });
 });
+
+describe("PluginManager local registration", () => {
+  it("marks install-origin plugins and spares them from Hub full-state removal", async () => {
+    const fixture = createFixture();
+    const root = mkdtempSync(path.join(tmpdir(), "allinai-plugin-local-"));
+    directories.push(root);
+    const state = new ClientStateStore(path.join(root, "state.db"));
+    try {
+      const manager = new PluginManager({
+        pluginsRoot: path.join(root, "plugins"),
+        stateStore: state,
+        validateGitUrl: () => true,
+      });
+      const [local] = await manager.sync([
+        { ...desired(fixture.root, fixture.goodCommit), origin: "local" },
+      ]);
+      assert.equal(local?.origin, "local");
+      assert.equal(local?.status, "active");
+
+      // A Hub full-state push that omits the local plugin must NOT remove it.
+      // demo2 shares the fixture repo so its manifest id mismatch makes its
+      // own sync fail — irrelevant: what matters is its desired presence.
+      await manager.sync([
+        {
+          id: "demo2",
+          gitUrl: fixture.root,
+          ref: fixture.goodCommit,
+          enabled: true,
+        } as PluginConfig,
+      ]);
+      assert.equal(manager.status("demo")?.status, "active",
+        "locally registered plugin survives a Hub push that omits it");
+
+      // A hub-registered plugin IS dropped from active state when the next
+      // push omits it (removed from desired state).
+      await manager.sync([]);
+      assert.notEqual(
+        manager.status("demo2")?.status,
+        "active",
+        "hub-registered plugin leaves active state when the desired list drops it",
+      );
+      assert.equal(manager.status("demo")?.status, "active");
+    } finally {
+      state.close();
+    }
+  });
+
+  it("remove() unregisters a local plugin but refuses a hub-registered one", async () => {
+    const fixture = createFixture();
+    const root = mkdtempSync(path.join(tmpdir(), "allinai-plugin-rm-"));
+    directories.push(root);
+    const state = new ClientStateStore(path.join(root, "state.db"));
+    try {
+      const manager = new PluginManager({
+        pluginsRoot: path.join(root, "plugins"),
+        stateStore: state,
+        validateGitUrl: () => true,
+      });
+      await manager.sync([
+        { ...desired(fixture.root, fixture.goodCommit), origin: "local" },
+      ]);
+      const removed = await manager.remove("demo");
+      assert.equal(removed?.status, "blocked");
+      assert.match(removed?.lastError ?? "", /local registration/);
+
+      await manager.sync([
+        desired(fixture.root, fixture.goodCommit),
+      ]);
+      await assert.rejects(
+        () => manager.remove("demo"),
+        /registered on the Hub/,
+      );
+    } finally {
+      state.close();
+    }
+  });
+});
