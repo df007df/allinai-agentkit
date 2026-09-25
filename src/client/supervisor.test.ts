@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { ClientStateStore, type ExecutionState } from "./state-store.js";
-import { ClientSupervisor } from "./supervisor.js";
+import { ClientSupervisor, mergeDesiredPlugins } from "./supervisor.js";
 import type { ClientTransport, ClientTransportHandlers } from "./transport.js";
 import type { ClientCommand, ClientEvent } from "./types.js";
 import type { InventoryReport } from "../protocol/index.js";
@@ -1727,5 +1727,42 @@ describe("ClientSupervisor", () => {
       inventoryQuery: true,
     });
     assert.equal(transport.inventoryReports.length, 2);
+  });
+});
+
+describe("mergeDesiredPlugins", () => {
+  const hubPlugin = {
+    id: "hub",
+    gitUrl: "https://hub.example.test/hub.git",
+    enabled: true,
+  };
+  const localSkill = {
+    id: "local-skills",
+    gitUrl: "https://git.example.test/skills.git",
+    enabled: true,
+  };
+  const systemPlugin = {
+    id: "agentkit-system",
+    gitUrl: "local://agentkit-system",
+    enabled: true,
+  };
+
+  it("keeps hub entries first and lets them override local entries by id", () => {
+    const localOverride = { ...hubPlugin, ref: "refs/heads/local-experiment" };
+    const merged = mergeDesiredPlugins([localOverride, localSkill], [hubPlugin]);
+    assert.deepEqual(merged, [hubPlugin, localSkill]);
+  });
+
+  it("keeps local-only entries so offline machines retain their skills", () => {
+    assert.deepEqual(mergeDesiredPlugins([localSkill], []), [localSkill]);
+    assert.deepEqual(mergeDesiredPlugins([], [hubPlugin]), [hubPlugin]);
+    assert.deepEqual(mergeDesiredPlugins([], []), []);
+  });
+
+  it("does not treat the built-in system plugin as hub-overridable boilerplate", () => {
+    const hubSystem = { ...systemPlugin, gitUrl: "local://hijack-attempt" };
+    const merged = mergeDesiredPlugins([systemPlugin], [hubSystem]);
+    assert.deepEqual(merged, [hubSystem]);
+    assert.equal(merged.length, 1);
   });
 });

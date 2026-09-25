@@ -64,6 +64,16 @@ export type ClientSupervisorOptions = {
   maxConcurrentRuns?: number;
   policy?: LocalPolicy;
   plugins?: PluginManagerPort;
+  /** Plugins root; used to derive per-plugin repo paths for --plugin-dir. */
+  pluginsRoot?: string;
+  /**
+   * Locally-configured plugin desired state (skillsRepos from config.json
+   * plus the built-in agentkit-system plugin). Merged under every Hub
+   * plugin.sync: a Hub entry with the same id overrides the local one, so
+   * the hub stays the online source of truth while local entries keep
+   * skills available offline.
+   */
+  basePlugins?: PluginConfig[];
   /** Supplies the full local inventory for inventory reports; injected like plugins. */
   inventoryProvider?: () => Promise<InventoryReport>;
   /**
@@ -173,6 +183,19 @@ function isActive(state: ExecutionState): boolean {
 }
 
 /**
+ * Merges locally-configured desired plugins under a Hub desired list: a
+ * Hub entry with the same id wins (online source of truth); local-only
+ * entries survive so offline machines keep their skills.
+ */
+export function mergeDesiredPlugins(
+  base: PluginConfig[],
+  hub: PluginConfig[],
+): PluginConfig[] {
+  const hubIds = new Set(hub.map((plugin) => plugin.id));
+  return [...hub, ...base.filter((plugin) => !hubIds.has(plugin.id))];
+}
+
+/**
  * Enriches the active snapshot with the per-plugin sync outcome (localHead /
  * diverged / aheadCount) so the Hub ledger sees divergence, not just commits.
  */
@@ -224,6 +247,7 @@ type ProjectResolver = ProjectDirectoryResolver["resolve"];
 function platformRunInput(
   command: AgentRunCommand,
   resolveProject?: ProjectResolver,
+  pluginReposFor?: (runtime: string) => string[],
 ): PlatformRunInput {
   const prompt = command.payload.prompt;
   if (typeof prompt !== "string" || prompt.trim().length === 0) {
@@ -247,6 +271,9 @@ function platformRunInput(
       ? { sessionDir: path.join(resolved.recordDir, "sessions", command.executionId) }
       : {}),
     sessionId: optionalString(command.payload.sessionId),
+    ...(command.runtime === "claude"
+      ? { pluginDirs: pluginReposFor?.(command.runtime) ?? [] }
+      : {}),
     model: optionalString(command.payload.model),
     context: {
       ...command.payload,
@@ -871,7 +898,9 @@ export class ClientSupervisor {
       return;
     }
     try {
-      const result = await plugins.sync(input.plugins);
+      const result = await plugins.sync(
+        mergeDesiredPlugins(this.options.basePlugins ?? [], input.plugins),
+      );
       const failed = result.find((plugin) => plugin.status === "failed");
       if (failed) {
         await this.reportPluginSync({
@@ -1024,7 +1053,9 @@ export class ClientSupervisor {
   ): Promise<InstalledPluginWithOutcome[]> {
     const plugins = this.options.plugins;
     if (!plugins) throw new Error("Plugin manager is unavailable");
-    const result = await plugins.sync(desired);
+    const result = await plugins.sync(
+      mergeDesiredPlugins(this.options.basePlugins ?? [], desired),
+    );
     void this.reportInventory();
     return result;
   }
@@ -1074,6 +1105,18 @@ export class ClientSupervisor {
         const resolved = this.options.projectResolver?.resolve(name, runtime);
         if (!resolved) return undefined;
         return { path: resolved.path, recordDir: resolved.recordDir };
+      }, (runtime) => {
+        // Active plugin repos for this runtime: claude consumes them as
+        // --plugin-dir; other platforms ignore the field (their plugins
+        // arrive through the dispatcher's install commands). The plugins
+        // root comes from the manager options; when absent, no dirs.
+        const plugins = this.options.plugins;
+        const root = this.options.pluginsRoot;
+        if (!plugins || !root) return [];
+        void runtime;
+        return plugins
+          .snapshotActivePlugins()
+          .map((plugin) => path.join(root, plugin.id, "repo"));
       });
       // An unbound run takes a managed scratch cwd when the host supplies a
       // default-workspace port; otherwise the adapter default applies.

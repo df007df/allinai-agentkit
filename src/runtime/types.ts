@@ -17,6 +17,12 @@ export type PlatformRunInput = {
   sessionId?: string;
   model?: string;
   context?: Record<string, unknown>;
+  /**
+   * Active plugin repositories to deliver to the platform for this run
+   * (claude: --plugin-dir per path; codex/pi: marketplaces are preinstalled
+   * by the dispatcher, so they ignore this field).
+   */
+  pluginDirs?: string[];
 };
 
 /**

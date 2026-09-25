@@ -266,6 +266,13 @@ export function createClaudeAdapter(
           prompt: input.prompt,
           model,
           maxTurns: 1,
+          pluginDirs: Array.isArray(
+            (input as { pluginDirs?: unknown }).pluginDirs,
+          )
+            ? ((input as { pluginDirs?: unknown[] }).pluginDirs ?? []).filter(
+                (dir): dir is string => typeof dir === "string",
+              )
+            : [],
         },
         signal,
       );

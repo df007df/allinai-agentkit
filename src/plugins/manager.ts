@@ -78,6 +78,13 @@ function isKnownCommit(value: string): boolean {
   return /^[0-9a-f]{40}$/i.test(value);
 }
 
+const LOCAL_PLUGIN_URL = /^local:\/\//;
+
+/** Built-in plugins use a sentinel URL and are never fetched. */
+function isLocalPluginUrl(gitUrl: string): boolean {
+  return LOCAL_PLUGIN_URL.test(gitUrl);
+}
+
 /**
  * The wire allows a full 40-hex commit in the legacy `ref` slot. Treat it
  * exactly like `commit`: a pinned target compared by hash, not a branch to
@@ -368,7 +375,10 @@ export class PluginManager {
     let config: PluginConfig | undefined;
     try {
       config = normalizeConfig(input);
-      if (!this.validateGitUrl(config.gitUrl)) {
+      if (
+        !isLocalPluginUrl(config.gitUrl) &&
+        !this.validateGitUrl(config.gitUrl)
+      ) {
         throw new TypeError(
           "Plugin Git URL must use HTTPS or SSH and pass local origin policy",
         );
@@ -480,6 +490,17 @@ export class PluginManager {
       };
     }
     const ref = config.ref;
+    if (isLocalPluginUrl(config.gitUrl)) {
+      // Local (built-in) plugins: no remote to fetch; HEAD is current.
+      return {
+        resolvedCommit: localHead,
+        localHead,
+        diverged: dirty,
+        aheadCount: 0,
+        dirty,
+        behind: false,
+      };
+    }
     if (!ref) {
       // No ref configured: fetch all branches so origin's HEAD is reachable.
       await this.git.run(["-C", repo, "fetch", "--force", "origin"]);
@@ -579,6 +600,11 @@ export class PluginManager {
     repo: string,
   ): Promise<void> {
     await mkdir(path.dirname(repo), { recursive: true });
+    // Local (built-in) plugins are materialized by the daemon, not cloned.
+    if (isLocalPluginUrl(config.gitUrl)) {
+      await mkdir(repo, { recursive: true });
+      return;
+    }
     try {
       await this.git.run(["clone", "--no-checkout", "--", config.gitUrl, repo]);
       await this.fetchTarget(config, repo);
@@ -592,6 +618,9 @@ export class PluginManager {
     config: PluginConfig,
     repo: string,
   ): Promise<void> {
+    // Local (built-in) plugins have no remote: their content is materialized
+    // in place by the daemon, and HEAD is already current.
+    if (isLocalPluginUrl(config.gitUrl)) return;
     const pinned = pinnedTarget(config);
     // fetch takes the REMOTE-side ref: pinned commits fetch by hash, branch
     // refs by their remote name. (checkoutTarget is the local counterpart.)
@@ -660,6 +689,7 @@ export class PluginManager {
     const pinned = pinnedTarget(config);
     if (pinned) return pinned;
     if (config.ref) return `refs/remotes/origin/${config.ref}`;
+    if (isLocalPluginUrl(config.gitUrl)) return "HEAD";
     return "FETCH_HEAD";
   }
 

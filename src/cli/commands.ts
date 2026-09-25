@@ -33,6 +33,7 @@ import {
   type ToolApprovalHttpBridge,
 } from "../control-http.js";
 import { PluginManager } from "../plugins/manager.js";
+import { installSystemPlugin, systemPluginConfig } from "../plugins/system-plugin.js";
 import { parsePluginManifest } from "../plugins/manifest.js";
 import type { PluginConfig } from "../plugins/types.js";
 import {
@@ -1298,6 +1299,23 @@ export async function createLocalAgentDaemon(
       dispatcher: { which: defaultWhich },
       installedPlatforms,
     });
+    // Locally configured skill repositories ride the standard plugin
+    // pipeline; the built-in agentkit-system plugin (client-operation
+    // guidance for agents) is materialized locally and always present.
+    installSystemPlugin({
+      pluginsRoot: paths.pluginsRoot,
+      manual: cliManual(),
+      version: "0.4.0",
+    });
+    const basePlugins: PluginConfig[] = [
+      ...config.skillsRepos.map((repo) => ({
+        id: repo.id,
+        gitUrl: repo.gitUrl,
+        ...(repo.ref ? { ref: repo.ref } : {}),
+        enabled: true,
+      })),
+      systemPluginConfig(),
+    ];
     runner = (options.createRunner ?? createRunnerManager)({
       ...(config.proxy ? { proxyUrl: config.proxy } : {}),
     });
@@ -1410,7 +1428,9 @@ export async function createLocalAgentDaemon(
       transport,
       runner,
       maxConcurrentRuns: config.maxConcurrentRuns,
+      basePlugins,
       plugins,
+      pluginsRoot: paths.pluginsRoot,
       inventoryProvider: createInventoryProvider({
         store,
         probeRuntimes: options.probeRuntimes ?? defaultProbeRuntimes,

@@ -275,13 +275,18 @@ describe("local agent daemon composition", () => {
     const reports = transport.recorded.inventoryReports;
     assert.ok(reports.length >= 2);
     // Reports converge: every delivered report carries the same durable
-    // platform and plugin snapshot built from local state.
+    // platform and plugin snapshot built from local state. The built-in
+    // agentkit-system plugin (materialized at daemon boot) is always present
+    // alongside whatever the hub synced.
     for (const report of reports) {
       assert.equal(report.type, "inventory.report");
       assert.equal(typeof report.reportedAt, "string");
       assert.equal(report.platforms.length, 4);
-      assert.equal(report.plugins.length, 1);
-      assert.equal(report.plugins[0]?.id, "smoke-plugin");
+      assert.equal(report.plugins.length, 2);
+      assert.ok(
+        report.plugins.some((plugin) => plugin.id === "smoke-plugin"),
+        "the hub-synced plugin must be reported",
+      );
     }
     const report = reports.at(-1)!;
 
@@ -298,13 +303,19 @@ describe("local agent daemon composition", () => {
     assert.ok(claude?.installed);
     assert.equal(claude.version, "4.5.0");
 
-    assert.equal(report.plugins.length, 1);
-    assert.equal(report.plugins[0]?.id, "smoke-plugin");
-    assert.equal(report.plugins[0]?.status, "blocked");
-    assert.equal(report.plugins[0]?.enabled, false);
-    assert.equal(report.plugins[0]?.resolvedCommit, "unresolved");
+    const smoke = report.plugins.find((plugin) => plugin.id === "smoke-plugin");
+    assert.ok(smoke, "the hub-synced plugin must be reported");
+    const system = report.plugins.find(
+      (plugin) => plugin.id === "agentkit-system",
+    );
+    assert.ok(system, "the built-in system plugin must be reported");
+    assert.equal(system.status, "active");
+
+    assert.equal(smoke.status, "blocked");
+    assert.equal(smoke.enabled, false);
+    assert.equal(smoke.resolvedCommit, "unresolved");
     assert.equal(
-      report.plugins[0]?.gitUrl,
+      smoke.gitUrl,
       "https://fixture.test/daemon-inventory-plugin.git",
     );
   });

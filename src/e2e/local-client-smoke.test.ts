@@ -308,7 +308,10 @@ async function waitUntil(
   predicate: () => boolean | Promise<boolean>,
   description: string,
 ): Promise<void> {
-  for (let attempt = 0; attempt < 150; attempt += 1) {
+  // A wall-clock budget instead of a fixed poll count: under a full
+  // parallel test run the same assertions need far more polls than solo.
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
     if (await predicate()) return;
     await new Promise<void>((resolve) => setTimeout(resolve, 10));
   }
