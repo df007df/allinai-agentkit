@@ -23,12 +23,17 @@ import {
 } from "./tool-approval.js";
 import { handleConsoleRun } from "./runs.js";
 import { handleConsolePluginAction } from "./plugin-action.js";
+import {
+  createDesiredPluginCatalog,
+  handleConsolePlugins,
+} from "./plugins.js";
 import { createStaticHandler } from "./static.js";
 import {
   CONSOLE_OBSERVE_PATH,
   CONSOLE_SNAPSHOT_PATH,
   CONSOLE_RUNS_PATH,
   CONSOLE_PLUGIN_ACTION_PATH,
+  CONSOLE_PLUGINS_PATH,
   CONSOLE_TOOL_APPROVAL_PATH,
   CONSOLE_POLICY_APPROVAL_PATH,
   LOGIN_APPROVE_PATH,
@@ -40,6 +45,8 @@ export type ConsoleRuntime = {
   registry: TokenRegistry;
   state: ConsoleState;
   stream: ConsoleStreamContext;
+  /** Per-client desired plugin/skill catalog, editable from the console. */
+  plugins: ReturnType<typeof createDesiredPluginCatalog>;
   close(): Promise<void>;
 };
 
@@ -64,11 +71,13 @@ export function createConsoleRuntime(options?: {
       },
     ),
   });
+  const plugins = createDesiredPluginCatalog(hub);
   return {
     hub,
     registry,
     state,
     stream,
+    plugins,
     async close() {
       await hub.close();
     },
@@ -123,6 +132,7 @@ export function createConsoleRouter(
         url.pathname === CONSOLE_TOOL_APPROVAL_PATH ||
         url.pathname === CONSOLE_POLICY_APPROVAL_PATH ||
         url.pathname === CONSOLE_PLUGIN_ACTION_PATH ||
+        url.pathname === CONSOLE_PLUGINS_PATH ||
         url.pathname === CONSOLE_RUNS_PATH)
     ) {
       response.writeHead(403, { "content-type": "application/json" });
@@ -151,6 +161,13 @@ export function createConsoleRouter(
     }
     if (request.method === "POST" && url.pathname === CONSOLE_PLUGIN_ACTION_PATH) {
       await handleConsolePluginAction(runtime, request, response);
+      return true;
+    }
+    if (
+      (request.method === "GET" || request.method === "POST") &&
+      url.pathname === CONSOLE_PLUGINS_PATH
+    ) {
+      await handleConsolePlugins(runtime, request, response);
       return true;
     }
     if (options?.beforeStatic) {

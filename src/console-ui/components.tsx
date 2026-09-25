@@ -5,6 +5,7 @@ import type { ClientEvent } from "../protocol/index.js";
 import {
   CONSOLE_POLICY_APPROVAL_PATH,
   CONSOLE_PLUGIN_ACTION_PATH,
+  CONSOLE_PLUGINS_PATH,
   CONSOLE_RUNS_PATH,
   CONSOLE_TOOL_APPROVAL_PATH,
   LOGIN_APPROVE_PATH,
@@ -599,16 +600,21 @@ const DELIVERY_STATE_LABEL: Record<string, string> = {
 };
 
 /**
- * Plugin divergence panel: lists per-client plugin state from the latest
- * inventory and surfaces diverged plugins with two deliberate actions —
- * force-overwrite with the hub's desired state, or keep the local edits
- * (refreshes the inventory so the banner reflects a deliberate keep).
+ * Plugin & skill panel: per-client install state from the latest inventory
+ * (status, per-platform delivery badges, divergence banner with force/keep)
+ * plus a desired-catalog editor — add/update/remove entries and push them to
+ * the client via /_agentkit/console/plugins. A skill is just a plugin whose
+ * repo carries skills/: both use the same entry shape (id + gitUrl + ref).
  */
 export function PluginPanel(props: {
   clients: ConsoleSnapshotFrame["clients"];
 }): ReactElement {
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [formClient, setFormClient] = useState<string | null>(null);
+  const [formId, setFormId] = useState("");
+  const [formUrl, setFormUrl] = useState("");
+  const [formRef, setFormRef] = useState("");
   const diverged = props.clients.flatMap((client) =>
     (client.plugins ?? [])
       .filter((plugin) => plugin.diverged)
@@ -647,16 +653,120 @@ export function PluginPanel(props: {
     }
   }
 
-  if (props.clients.every((client) => !(client.plugins ?? []).length)) {
+  /** Desired-catalog mutation; resets the editor form on success. */
+  async function manage(
+    action: "add" | "remove" | "push",
+    clientId: string,
+    plugin?: { id: string; gitUrl: string; ref?: string },
+    pluginId?: string,
+  ): Promise<void> {
+    setBusy(`${clientId}:${pluginId ?? action}`);
+    setMessage(null);
+    try {
+      const response = await fetch(CONSOLE_PLUGINS_PATH, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(
+          action === "add"
+            ? { clientId, action, plugin }
+            : { clientId, action, pluginId },
+        ),
+      });
+      const body = (await response.json()) as { error?: string; delivered?: boolean };
+      if (!response.ok) {
+        setMessage(`操作失败：${body.error ?? response.status}`);
+        return;
+      }
+      const verb =
+        action === "add"
+          ? `已下发插件/skill「${plugin?.id}」`
+          : action === "remove"
+            ? `已下发移除「${pluginId}」`
+            : "已重新下发期望清单";
+      setMessage(
+        body.delivered ? `${verb}，等待 client 应用` : `${verb}（client 不在线，重连时需重推）`,
+      );
+      if (action === "add") {
+        setFormId("");
+        setFormUrl("");
+        setFormRef("");
+        setFormClient(null);
+      }
+    } catch (error) {
+      setMessage(`操作失败：${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const noClients = props.clients.length === 0;
+  if (noClients && diverged.length === 0) {
     return <></>;
   }
   return (
     <section className="console-panel">
-      <h3 className="console-panel-title">插件状态</h3>
+      <h3 className="console-panel-title">插件 & Skills</h3>
       {message ? <p className="console-warning">{message}</p> : null}
       {props.clients.map((client) => (
         <div key={client.clientId} className="console-plugin-client">
-          <strong>{client.name || client.clientId.slice(0, 8)}</strong>
+          <strong>
+            {client.name || client.clientId.slice(0, 8)}
+            <button
+              type="button"
+              className="console-plugin-add-toggle"
+              disabled={busy !== null}
+              onClick={() =>
+                setFormClient(formClient === client.clientId ? null : client.clientId)
+              }
+            >
+              {formClient === client.clientId ? "收起" : "添加插件/Skill"}
+            </button>
+            <button
+              type="button"
+              disabled={busy !== null}
+              onClick={() => manage("push", client.clientId)}
+            >
+              重新下发
+            </button>
+          </strong>
+          {formClient === client.clientId ? (
+            <form
+              className="console-plugin-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (!formId.trim() || !formUrl.trim()) return;
+                void manage("add", client.clientId, {
+                  id: formId.trim(),
+                  gitUrl: formUrl.trim(),
+                  ...(formRef.trim() ? { ref: formRef.trim() } : {}),
+                });
+              }}
+            >
+              <input
+                placeholder="id（小写 slug，如 my-skills）"
+                value={formId}
+                onChange={(event) => setFormId(event.target.value)}
+                required
+              />
+              <input
+                placeholder="Git 仓库地址（https/ssh）"
+                value={formUrl}
+                onChange={(event) => setFormUrl(event.target.value)}
+                required
+              />
+              <input
+                placeholder="分支/引用（可选）"
+                value={formRef}
+                onChange={(event) => setFormRef(event.target.value)}
+              />
+              <button type="submit" disabled={busy !== null}>
+                下发到该 client
+              </button>
+            </form>
+          ) : null}
+          {(client.plugins ?? []).length === 0 ? (
+            <p className="console-plugin-empty">尚未安装任何插件/skill</p>
+          ) : null}
           {(client.plugins ?? []).map((plugin) => (
             <div
               key={plugin.id}
@@ -665,6 +775,14 @@ export function PluginPanel(props: {
             >
               <span>
                 {plugin.id} @ {plugin.resolvedCommit.slice(0, 8)}
+                <em data-status={plugin.status}>
+                  {" "}
+                  {plugin.status === "active"
+                    ? "运行中"
+                    : plugin.status === "failed"
+                      ? `失败${plugin.lastError ? `：${plugin.lastError}` : ""}`
+                      : "已停用"}
+                </em>
                 {plugin.diverged ? (
                   <em>
                     {" "}
@@ -687,24 +805,33 @@ export function PluginPanel(props: {
                   </span>
                 ) : null}
               </span>
-              {plugin.diverged ? (
-                <span className="console-plugin-actions">
-                  <button
-                    type="button"
-                    disabled={busy !== null}
-                    onClick={() => act("force", client.clientId, plugin.id)}
-                  >
-                    强制覆盖
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busy !== null}
-                    onClick={() => act("keep", client.clientId, plugin.id)}
-                  >
-                    保留本地
-                  </button>
-                </span>
-              ) : null}
+              <span className="console-plugin-actions">
+                {plugin.diverged ? (
+                  <>
+                    <button
+                      type="button"
+                      disabled={busy !== null}
+                      onClick={() => act("force", client.clientId, plugin.id)}
+                    >
+                      强制覆盖
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy !== null}
+                      onClick={() => act("keep", client.clientId, plugin.id)}
+                    >
+                      保留本地
+                    </button>
+                  </>
+                ) : null}
+                <button
+                  type="button"
+                  disabled={busy !== null}
+                  onClick={() => manage("remove", client.clientId, undefined, plugin.id)}
+                >
+                  移除
+                </button>
+              </span>
             </div>
           ))}
         </div>

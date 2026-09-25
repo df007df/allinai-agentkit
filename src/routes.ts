@@ -29,6 +29,8 @@ export const CONSOLE_POLICY_APPROVAL_PATH = `${CONSOLE_PATH_PREFIX}/policy-appro
 export const CONSOLE_RUNS_PATH = `${CONSOLE_PATH_PREFIX}/runs`;
 /** Plugin divergence actions (force / keep) from the console. */
 export const CONSOLE_PLUGIN_ACTION_PATH = `${CONSOLE_PATH_PREFIX}/plugin-action`;
+/** Desired plugin/skill catalog management: view, upsert, remove, push. */
+export const CONSOLE_PLUGINS_PATH = `${CONSOLE_PATH_PREFIX}/plugins`;
 
 /** Reserved second-level segments under the umbrella prefix. */
 export const RESERVED_AGENTKIT_SEGMENTS = [
