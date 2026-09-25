@@ -5,6 +5,12 @@ import { validateCapabilityEntries } from "../capabilities/manifest.js";
 import { createGitClient, isAllowedGitOrigin, type GitClient } from "./git.js";
 import { isValidPluginId, parsePluginManifest } from "./manifest.js";
 import { validateDelivery } from "./delivery.js";
+import {
+  dispatchToPlatform,
+  targetPlatforms,
+  type PlatformDispatcherDeps,
+  type PlatformDispatchResult,
+} from "./dispatch.js";
 import type {
   ActivePluginSnapshot,
   InstalledPlugin,
@@ -28,6 +34,13 @@ export type PluginManagerOptions = {
   /** Tests must inject this to use a local fixture repository. */
   validateGitUrl?: (gitUrl: string) => boolean;
   stateStore?: PluginStateStore;
+  /**
+   * Platform delivery dispatcher deps. When absent (or when
+   * installedPlatforms is empty) no platform dispatch runs.
+   */
+  dispatcher?: PlatformDispatcherDeps;
+  /** Platforms detected on this machine (probe results); drives filtering. */
+  installedPlatforms?: ReadonlySet<string>;
 };
 
 function now(): string {
@@ -703,7 +716,61 @@ export class PluginManager {
     };
     await this.writePointer(config.id, plugin);
     this.activePlugins.set(config.id, plugin);
-    return { ...plugin, outcome };
+    // Platform delivery: install on every desired+installed platform. The
+    // warnings array stays owned by the caller — dispatch failures append
+    // to the merged result, not to the persisted plugin state (a platform
+    // install can be retried without touching the repo).
+    const dispatchWarnings = await this.dispatchToPlatforms(
+      config,
+      repo,
+      "install",
+    );
+    const mergedOutcome: PluginSyncOutcome & { warnings?: PluginWarning[] } = {
+      ...outcome,
+      ...(dispatchWarnings.length > 0
+        ? { warnings: [...(outcome.warnings ?? []), ...dispatchWarnings] }
+        : {}),
+    };
+    return { ...plugin, outcome: mergedOutcome };
+  }
+
+  /**
+   * Runs the platform dispatcher for the desired∩installed platforms.
+   * Never throws: a failing platform install is a warning, not a sync
+   * failure — the repo itself is already validated and active.
+   */
+  private async dispatchToPlatforms(
+    config: PluginConfig,
+    repo: string,
+    op: "install" | "remove",
+  ): Promise<PluginWarning[]> {
+    const { dispatcher, installedPlatforms } = this.options;
+    if (!dispatcher || !installedPlatforms || installedPlatforms.size === 0) {
+      return [];
+    }
+    const platforms = targetPlatforms(config.runtimes, installedPlatforms);
+    const warnings: PluginWarning[] = [];
+    const results: PlatformDispatchResult[] = [];
+    for (const platform of platforms) {
+      results.push(
+        await dispatchToPlatform(
+          platform,
+          op,
+          { id: config.id, repo },
+          dispatcher,
+        ),
+      );
+    }
+    for (const result of results) {
+      if (result.state === "failed") {
+        warnings.push({
+          platform: result.platform,
+          code: "manifest_unknown_fields",
+          message: `Plugin ${config.id}: ${result.platform} dispatch failed: ${result.detail ?? "unknown error"}`,
+        });
+      }
+    }
+    return warnings;
   }
 
   private async writePointer(
@@ -743,6 +810,14 @@ export class PluginManager {
     if (!active) return;
     await rm(activePointerPath(this.options.pluginsRoot, id), { force: true });
     this.activePlugins.delete(id);
+    // Best-effort platform removal: the repo may already be gone (cleanup
+    // path), and a failing uninstall must not block the state transition.
+    const repo = repositoryPath(this.options.pluginsRoot, id);
+    try {
+      await this.dispatchToPlatforms(active, repo, "remove");
+    } catch {
+      // Deactivation proceeds regardless.
+    }
     this.save({
       plugin: {
         ...active,

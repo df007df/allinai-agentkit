@@ -436,9 +436,18 @@ async function probeOrUnavailable(
   }
 }
 
+let cachedProbeRuntimes: RuntimeProbeResult[] | null = null;
+
 async function defaultProbeRuntimes(): Promise<RuntimeProbeResult[]> {
+  // The daemon probes once per process: platform installation is static
+  // for the daemon's lifetime, and concurrent callers (daemon assembly +
+  // inventory provider) must not each pay four `which` spawns.
+  if (cachedProbeRuntimes) return cachedProbeRuntimes;
   const registry = createPlatformAdapterRegistry();
-  return await Promise.all(registry.list().map(probeOrUnavailable));
+  cachedProbeRuntimes = await Promise.all(
+    registry.list().map(probeOrUnavailable),
+  );
+  return cachedProbeRuntimes;
 }
 
 /** Follow only the client-owned JSONL file and stream appended lines as-is. */
@@ -1259,10 +1268,35 @@ export async function createLocalAgentDaemon(
       paths.stateDb,
     );
     store.markRecoveryRequired();
+    // Platform delivery dispatch: probe which platform CLIs exist now and
+    // hand the set to the plugin manager so synced plugins install onto
+    // every desired+installed platform (claude consumes the repo at run
+    // time; codex/pi get marketplace/package commands).
+    const probeResults = await (
+      options.probeRuntimes ?? defaultProbeRuntimes
+    )();
+    const installedPlatforms = new Set(
+      (
+        await Promise.all(
+          probeResults.map(async ({ id, probe }) => {
+            try {
+              // A probe promise can reject (missing optional SDK); mirror
+              // probeOrUnavailable and treat it as not installed.
+              const result = await probe;
+              return result.installed ? id : null;
+            } catch {
+              return null;
+            }
+          }),
+        )
+      ).filter((id): id is string => id !== null),
+    );
     const plugins = new PluginManager({
       pluginsRoot: paths.pluginsRoot,
       allowedGitOrigins: config.policy.allowedGitOrigins,
       stateStore: store,
+      dispatcher: { which: defaultWhich },
+      installedPlatforms,
     });
     runner = (options.createRunner ?? createRunnerManager)({
       ...(config.proxy ? { proxyUrl: config.proxy } : {}),
