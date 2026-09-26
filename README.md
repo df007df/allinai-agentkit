@@ -139,7 +139,6 @@ Hub 无法自选任意路径——只能从本地注册的目录里按名字挑�
 - **多平台自动分发**：同步成功后按「期望平台 ∩ 本机已装」分发——codex marketplace 安装（版本钉死）、pi `pi install`（实时引用）、claude 运行时 `--plugin-dir` 直连；分发状态随 inventory 上报、Console 徽章可见。
 - **内置 agentkit-system 插件**：daemon 启动物化（免登记），提供 client-control 技能（教 agent 操作宿主）与三平台 ask-user hooks（高危工具先过本地审批桥 → Hub 人工确认；插件作用域，不做用户级安装）。
 - **完全授权执行**：claude `--permission-mode bypassPermissions`、codex `-s danger-full-access --ask-for-approval never`——门禁由自有审批层承担，平台层不拦。
-- 第三方技能推荐直接拷进自己插件仓库维护（vendor，拷入即 fork，默认不追上游）。
 
 ### 执行日志
 

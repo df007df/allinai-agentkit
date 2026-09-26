@@ -38,7 +38,6 @@
         <a href="#lifecycle-remove" class="sub">移除与回滚</a>
         <a href="#hooks">Ask-User 门禁</a>
         <a href="#system-plugin" class="sub">内置 agentkit-system</a>
-        <a href="#vendor">第三方技能（Vendor）</a>
         <a href="#console">控制台管理</a>
         <a href="#cli-reference" class="sub">CLI 速查</a>
         <a href="docs.html">← 返回完整文档</a>
@@ -180,20 +179,6 @@
               装插件/skill、查 daemon 状态与日志、项目注册、数据目录布局；</li>
             <li><strong>三平台 ask-user hooks</strong>：上一节的门禁载体，随本插件的分发自动进入受管项目；</li>
             <li><strong>幂等升级</strong>：内容随包版本变化重写，不变则 HEAD 纹丝不动（同步永远 on-target）。</li>
-          </ul>
-        </section>
-
-        <section id="vendor" class="doc-section">
-          <h2>第三方技能（Vendor）</h2>
-          <p>
-            部分技能不是你维护的——推荐做法是<strong>直接拷进自己的插件仓库维护</strong>（vendor）：
-          </p>
-          <ul>
-            <li><strong>拷入即 fork</strong>：上游改动、删库、改 license 都影响不到你；</li>
-            <li><strong>默认不追上游</strong>：同步机制本来就只认你登记的仓库，永不自动拉第三方更新；上游出安全修复时人工评估覆盖；</li>
-            <li><strong>改了就是你的</strong>：技能很小，不值得维护三方合并；</li>
-            <li><strong>建议记录来源</strong>：在仓库里放一行注释（来源 URL + commit + 日期），某天想对比上游时有迹可循；</li>
-            <li><strong>临时文件可丢</strong>：技能运行期写进自己目录的缓存属可丢状态，更新重装丢失无害——需要持久的数据应写会话工作区。</li>
           </ul>
         </section>
 
