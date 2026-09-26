@@ -119,27 +119,6 @@ export function cliManual(): CliManual {
         example: "allinai-agentkit install",
       },
       {
-        name: "codex-hooks",
-        summary:
-          "Deprecated. Tool ask-user hooks ship inside the built-in agentkit-system plugin (plugin-scoped, project-level) and are installed to managed projects by the daemon automatically. User-level installation is no longer supported.",
-        options: [],
-        example: "allinai-agentkit codex-hooks",
-      },
-      {
-        name: "claude-hooks",
-        summary:
-          "Deprecated. Tool ask-user hooks ship inside the built-in agentkit-system plugin (plugin-scoped, project-level) and are installed to managed projects by the daemon automatically. User-level installation is no longer supported.",
-        options: [],
-        example: "allinai-agentkit claude-hooks",
-      },
-      {
-        name: "pi-hooks",
-        summary:
-          "Deprecated. Tool ask-user hooks ship inside the built-in agentkit-system plugin (plugin-scoped, project-level) and are installed to managed projects by the daemon automatically. User-level installation is no longer supported.",
-        options: [],
-        example: "allinai-agentkit pi-hooks",
-      },
-      {
         name: "uninstall",
         summary: "Remove the user-level OS service.",
         options: [],

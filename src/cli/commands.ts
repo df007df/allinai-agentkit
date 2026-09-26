@@ -199,11 +199,6 @@ export const COMMAND_OPTIONS: Readonly<Record<string, CommandOptionSpec>> = {
   web: { values: ["port", "host", "config-dir"] },
   daemon: { values: ["config-dir"] },
   install: { values: ["config-dir"] },
-  // Deprecated user-level hook installers: accepted only to print the
-  // replacement pointer (hooks now ship with the agentkit-system plugin).
-  "codex-hooks": { values: ["config-dir"] },
-  "claude-hooks": { values: ["config-dir"] },
-  "pi-hooks": { values: ["config-dir"] },
   status: { values: ["config-dir"] },
   logs: { values: ["config-dir"], booleans: ["f"] },
   sync: { values: ["config-dir"] },
@@ -488,8 +483,6 @@ function help(): string {
     "  plugins --action force --id ID [--commit SHA]",
     "                                   force-switch one plugin to a commit, discarding tracked local edits",
     "  docs [--json]                    print the full CLI manual (Markdown; --json for structured output)",
-    "  (codex-hooks/claude-hooks/pi-hooks are deprecated: tool ask-user hooks",
-    "   now ship with the built-in agentkit-system plugin, project-scoped)",
   ].join("\n");
 }
 
@@ -682,18 +675,6 @@ export async function runCli(
         installed: true,
         platform: input.platform,
         configDir: input.configDir,
-      });
-      return { exitCode: 0, output };
-    }
-
-    if (command === "codex-hooks" || command === "claude-hooks" || command === "pi-hooks") {
-      // Deprecated: hooks are delivered with the built-in agentkit-system
-      // plugin (plugin-scoped, project-level), not at user level.
-      emit(output, write, {
-        deprecated: true,
-        replacement:
-          "hooks ship inside the agentkit-system plugin and are installed to managed projects by the daemon automatically; user-level installation is no longer supported",
-        removed: command,
       });
       return { exitCode: 0, output };
     }
