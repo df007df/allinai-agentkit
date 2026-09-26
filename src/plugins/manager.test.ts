@@ -320,7 +320,10 @@ describe("PluginManager", () => {
     await manager.sync([desired(fixture.root, fixture.goodCommit)]);
 
     // Advance upstream while the client carries a local commit of its own.
+    // CI runners have no global git identity — set it repo-locally first.
     const repo = path.join(root, "demo", "repo");
+    git(repo, ["config", "user.email", "local-edit@example.test"]);
+    git(repo, ["config", "user.name", "Local Edit"]);
     writeFileSync(path.join(repo, "local-note.txt"), "agent edit");
     git(repo, ["add", "local-note.txt"]);
     git(repo, ["commit", "-m", "local tweak"]);
