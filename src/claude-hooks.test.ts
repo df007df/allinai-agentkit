@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, describe, it } from "node:test";
 import {
   claudeHookScriptSource,
+  claudeHooksSettingsFragment,
   installClaudeHooks,
 } from "./claude-hooks.js";
 
@@ -17,15 +18,13 @@ afterEach(() => {
 });
 
 describe("claude hooks installer", () => {
-  it("writes the hook script and registers it in settings.json", () => {
+  it("writes the hook script and registers it under PermissionRequest", () => {
     const home = mkdtempSync(path.join(tmpdir(), "claude-hooks-"));
     directories.push(home);
-
     const result = installClaudeHooks({
       controlEndpoint: "http://127.0.0.1:8787",
       claudeHome: home,
     });
-
     assert.equal(result.settingsPath, path.join(home, "settings.json"));
     assert.equal(result.merged, false);
     assert.ok(existsSync(result.scriptPath));
@@ -35,15 +34,14 @@ describe("claude hooks installer", () => {
 
     const settings = JSON.parse(readFileSync(result.settingsPath, "utf8")) as {
       hooks: {
-        PreToolUse: Array<{
-          matcher: string;
+        PermissionRequest: Array<{
           hooks: Array<{ command: string; timeout: number }>;
         }>;
       };
     };
-    const group = settings.hooks.PreToolUse[0]!;
-    // Every tool call is reported — the matcher is the universal wildcard.
-    assert.equal(group.matcher, "*");
+    const group = settings.hooks.PermissionRequest[0]!;
+    // PermissionRequest fires only at the platform's ask-user moment —
+    // exactly what we relay. There is no matcher: the event itself scopes it.
     assert.equal(group.hooks[0]!.command, result.scriptPath);
     assert.match(result.trustNote, /no separate trust step/);
   });
@@ -58,10 +56,9 @@ describe("claude hooks installer", () => {
 
     // Operator had their own hook before ours.
     const settings = JSON.parse(readFileSync(first.settingsPath, "utf8")) as {
-      hooks: { PreToolUse: unknown[] };
+      hooks: { PermissionRequest: unknown[] };
     };
-    settings.hooks.PreToolUse.unshift({
-      matcher: "WebFetch",
+    settings.hooks.PermissionRequest.unshift({
       hooks: [{ type: "command", command: "/usr/bin/own-hook.sh" }],
     });
     writeFileSync(first.settingsPath, JSON.stringify(settings));
@@ -73,10 +70,12 @@ describe("claude hooks installer", () => {
 
     assert.equal(second.merged, true);
     const after = JSON.parse(readFileSync(first.settingsPath, "utf8")) as {
-      hooks: { PreToolUse: Array<{ hooks: Array<{ command: string }> }> };
+      hooks: {
+        PermissionRequest: Array<{ hooks: Array<{ command: string }> }>;
+      };
     };
-    assert.equal(after.hooks.PreToolUse.length, 2);
-    const commands = after.hooks.PreToolUse.flatMap((group) =>
+    assert.equal(after.hooks.PermissionRequest.length, 2);
+    const commands = after.hooks.PermissionRequest.flatMap((group) =>
       group.hooks.map((hook) => hook.command),
     );
     assert.equal(
@@ -87,9 +86,15 @@ describe("claude hooks installer", () => {
     assert.ok(commands.includes("/usr/bin/own-hook.sh"));
   });
 
-  it("the generated deny payload uses the hookSpecificOutput shape", () => {
+  it("the generated deny payload uses the PermissionRequest decision shape", () => {
     const script = claudeHookScriptSource("http://127.0.0.1:8787");
-    assert.match(script, /permissionDecision":"deny/);
-    assert.match(script, /hookEventName":"PreToolUse/);
+    assert.match(script, /hookEventName":"PermissionRequest/);
+    assert.match(script, /"behavior":"deny"/);
+  });
+
+  it("the settings fragment targets the PermissionRequest event only", () => {
+    const fragment = claudeHooksSettingsFragment("/path/hook.sh");
+    const hooks = fragment.hooks as Record<string, unknown>;
+    assert.deepEqual(Object.keys(hooks), ["PermissionRequest"]);
   });
 });

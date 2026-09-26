@@ -32,14 +32,20 @@ export type PiApprovalExtensionInstallResult = {
 export function piApprovalExtensionSource(
   controlEndpoint: string,
 ): string {
-  return `// Installed by allinai-agentkit: report Pi tool calls (tool ask-user)
-// to the local daemon. The daemon's synchronous reply is the human decision;
-// a decision to deny blocks, everything else passes through unchanged.
+  return `// Installed by allinai-agentkit: relay Pi tool-approval requests
+// (tool ask-user) to the local daemon. The daemon's synchronous reply is
+// the human decision; a decision to deny blocks, anything else passes
+// through unchanged. Read-only tools never prompt and are skipped.
 const CONTROL_ENDPOINT = ${JSON.stringify(controlEndpoint)};
+
+// Tools a human may want to weigh in on (mutations / execution). Read-only
+// tools never constitute an ask-user moment.
+const ASK_USER_TOOLS = /^(bash|edit|write|apply_patch|read_bash)/i;
 
 export default function agentkitToolApproval(pi) {
   pi.on("tool_call", async (event) => {
     const toolName = event?.toolName ?? "unknown";
+    if (!ASK_USER_TOOLS.test(toolName)) return;
 
     try {
       const response = await fetch(

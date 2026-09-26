@@ -154,18 +154,19 @@
             执行为<strong>完全授权模式</strong>（平台不拦：claude
             <code>--permission-mode bypassPermissions</code>，codex
             <code>-s danger-full-access --ask-for-approval never</code>）。
-            hooks 只做一件事：<strong>把 agent 的每次工具调用上报给本地审批桥，
-            供 Hub 侧人工确认</strong>——不做任何工具过滤，人工未拒绝即放行。
+            hooks 只负责一件事：<strong>在平台的 tool ask-user 时刻（需要人工确认工具执行时）
+            把请求上报给本地审批桥，供 Hub 侧人工决策</strong>。普通工具调用不产生任何上报。
           </p>
-          <pre class="code-block"><code>agent 调用任意工具
+          <pre class="code-block"><code>agent 请求执行需确认的工具（ask-user 时刻）
   → 平台 hooks（随 agentkit-system 插件进入受管项目）
   → POST 本地 daemon 审批桥（http://127.0.0.1:8787/control/tool-approval）
   → 请求经 Hub 上报 → Console 弹卡片 → 人工 allow/deny
-  → 决定回放给 hook → 人工拒绝才拦截，其余全部放行</code></pre>
+  → 决定回放给 hook → 人工拒绝才拦截，其余放行</code></pre>
           <ul>
-            <li><strong>只上报不拦截</strong>：hooks 没有"高危工具"概念，全部工具调用一视同仁上报；拦截只发生在人工明确 deny 时，daemon 不在线或无人工记录一律放行；</li>
+            <li><strong>只上报不拦截</strong>：拦截只发生在人工明确 deny 时，daemon 不在线或无人工记录一律放行；</li>
+            <li><strong>ask-user 时刻</strong>：claude = <code>PermissionRequest</code> 事件（平台准备向用户请求授权时）；codex = <code>pre_tool_use</code> 审批钩子；pi = 扩展对执行/写类工具（bash/edit/write）的 <code>tool_call</code> 拦截；</li>
             <li><strong>插件作用域</strong>：hooks 随插件进入受管项目目录，只对受管会话生效——用户在项目外裸用平台完全无感；</li>
-            <li><strong>三平台入口</strong>：claude = 插件 <code>hooks/hooks.json</code>（${CLAUDE_PLUGIN_ROOT}）；codex = 插件 manifest 的 hooks 组件（headless 路径自动托管信任）；pi = 包内 <code>pi.extensions</code> 扩展（tool_call 上报）；</li>
+            <li><strong>三平台入口</strong>：claude = 插件 <code>hooks/hooks.json</code>（${CLAUDE_PLUGIN_ROOT}）；codex = 插件 manifest 的 hooks 组件（headless 路径自动托管信任）；pi = 包内 <code>pi.extensions</code> 扩展；</li>
             <li><strong>不再有用户级安装</strong>：hooks 不是全局开关，跟插件走。</li>
           </ul>
         </section>

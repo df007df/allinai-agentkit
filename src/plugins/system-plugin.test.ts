@@ -140,9 +140,13 @@ describe("system plugin hooks delivery", () => {
 
     const claudeHooks = JSON.parse(
       readFileSync(path.join(result.repo, "hooks", "hooks.json"), "utf8"),
-    ) as { hooks: { PreToolUse: Array<{ hooks: Array<{ command: string }> }> } };
+    ) as {
+      hooks: {
+        PermissionRequest: Array<{ hooks: Array<{ command: string }> }>;
+      };
+    };
     assert.equal(
-      claudeHooks.hooks.PreToolUse[0]?.hooks[0]?.command,
+      claudeHooks.hooks.PermissionRequest[0]?.hooks[0]?.command,
       "${CLAUDE_PLUGIN_ROOT}/hooks/pre-tool-use.sh",
     );
     const claudeScript = readFileSync(

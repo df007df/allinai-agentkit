@@ -33,10 +33,10 @@ export type CodexHooksInstallResult = {
 
 export function codexHookScriptSource(controlEndpoint: string): string {
   return `#!/bin/bash
-# Installed by allinai-agentkit: report Codex tool calls (tool ask-user)
-# to the local daemon. The daemon's synchronous reply is the human decision;
-# a decision to deny blocks, everything else (including an unreachable
-# daemon) passes through unchanged — hooks only relay, they never gate.
+# Installed by allinai-agentkit: relay Codex tool-approval requests
+# (tool ask-user) to the local daemon. The daemon's synchronous reply is
+# the human decision; a decision to deny blocks, anything else (including
+# an unreachable daemon) leaves the platform's own flow unchanged.
 IN=$(cat)
 RESP=$(curl -s --max-time 300 -X POST -H 'content-type: application/json' \\
   --data "{\\"platform\\":\\"codex\\",\\"payload\\":$IN}" \\
@@ -63,11 +63,10 @@ export function codexHooksJsonSource(scriptPath: string): string {
   return `${JSON.stringify(
     {
       hooks: {
+        // pre_tool_use is Codex's tool-gating hook: this is where a tool
+        // approval decision (ask-user) is relayed to the daemon.
         PreToolUse: [
           {
-            // Every tool call is reported (ask-user is the only job);
-            // the daemon decides what, if anything, to do with it.
-            matcher: "*",
             hooks: [{ type: "command", command: scriptPath, timeout: 300 }],
           },
         ],

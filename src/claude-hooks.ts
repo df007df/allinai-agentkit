@@ -31,10 +31,10 @@ export type ClaudeHooksInstallResult = {
 
 export function claudeHookScriptSource(controlEndpoint: string): string {
   return `#!/bin/bash
-# Installed by allinai-agentkit: report Claude Code tool calls (tool ask-user)
-# to the local daemon. The daemon's synchronous reply is the human decision;
-# a decision to deny blocks, everything else (including an unreachable
-# daemon) passes through unchanged — hooks only relay, they never gate.
+# Installed by allinai-agentkit: relay Claude Code permission requests
+# (tool ask-user) to the local daemon. The daemon's synchronous reply is
+# the human decision; a decision to deny blocks, anything else (including
+# an unreachable daemon) leaves the platform's own flow unchanged.
 IN=$(cat)
 RESP=$(curl -s --max-time 300 -X POST -H 'content-type: application/json' \\
   --data "{\\"platform\\":\\"claude\\",\\"payload\\":$IN}" \\
@@ -50,7 +50,7 @@ try:
 except Exception:
   print('')" 2>/dev/null)
 if [ "$DEC" = "deny" ]; then
-  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}\\n' "$REASON"
+  printf '{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"deny","message":"%s"}}}\\n' "$REASON"
 else
   echo '{}'
 fi
@@ -62,11 +62,12 @@ export function claudeHooksSettingsFragment(
 ): Record<string, unknown> {
   return {
     hooks: {
-      PreToolUse: [
+      // PermissionRequest fires only when Claude Code is about to ask the
+      // user for a permission decision (or would auto-deny a call that
+      // cannot prompt) — exactly the tool ask-user moment. PreToolUse would
+      // fire on every tool call, which is not what we want.
+      PermissionRequest: [
         {
-          // Every tool call is reported (ask-user is the only job);
-          // the daemon decides what, if anything, to do with it.
-          matcher: "*",
           hooks: [{ type: "command", command: scriptPath, timeout: 300 }],
         },
       ],
@@ -96,14 +97,13 @@ export function installClaudeHooks(
     >;
   }
   const desired = claudeHooksSettingsFragment(scriptPath) as {
-    hooks: { PreToolUse: Array<Record<string, unknown>> };
+    hooks: { PermissionRequest: Array<Record<string, unknown>> };
   };
   const hooks = (settings.hooks ?? {}) as Record<string, unknown>;
-  const preToolUse = Array.isArray(hooks.PreToolUse)
-    ? hooks.PreToolUse
+  const permissionRequest = Array.isArray(hooks.PermissionRequest)
+    ? hooks.PermissionRequest
     : [];
-  const groups = preToolUse as Array<{
-    matcher?: string;
+  const groups = permissionRequest as Array<{
     hooks?: Array<{ command?: string }>;
   }>;
   const already = groups.some((group) =>
@@ -111,9 +111,9 @@ export function installClaudeHooks(
   );
   let merged = existsSync(settingsPath);
   if (!already) {
-    groups.push(desired.hooks.PreToolUse[0]!);
+    groups.push(desired.hooks.PermissionRequest[0]!);
   }
-  hooks.PreToolUse = groups;
+  hooks.PermissionRequest = groups;
   settings.hooks = hooks;
   writeFileSync(settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
 

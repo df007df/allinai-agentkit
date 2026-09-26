@@ -137,7 +137,7 @@ Hub 无法自选任意路径——只能从本地注册的目录里按名字挑�
 - **登记制**：中心经 Console 登记（`plugin.sync` 下发期望清单），或本地 `plugins --action install --git-url URL --id ID` 登记机器自有插件；两者互不覆盖（Hub 全量推送不移除本地登记）。
 - **单仓 checkout**：`plugins/<id>/repo/` 唯一常驻 clone，更新 = fetch + checkout，untracked 临时文件天然存活；tracked 改动或本地领先 commit → `diverged` 拒绝自动更新，Console 两按钮人工裁决（强制覆盖 / 保留本地）。
 - **多平台自动分发**：同步成功后按「期望平台 ∩ 本机已装」分发——codex marketplace 安装（版本钉死）、pi `pi install`（实时引用）、claude 运行时 `--plugin-dir` 直连；分发状态随 inventory 上报、Console 徽章可见。
-- **内置 agentkit-system 插件**：daemon 启动物化（免登记），提供 client-control 技能（教 agent 操作宿主）与三平台 tool ask-user hooks（工具调用上报本地审批桥 → Hub 人工确认，人未拒绝则全部放行；插件作用域，不做用户级安装）。
+- **内置 agentkit-system 插件**：daemon 启动物化（免登记），提供 client-control 技能（教 agent 操作宿主）与三平台 tool ask-user hooks（在平台需要人工确认工具执行时上报本地审批桥 → Hub 人工决策，未拒绝即放行；插件作用域，不做用户级安装）。
 - **完全授权执行**：claude `--permission-mode bypassPermissions`、codex `-s danger-full-access --ask-for-approval never`——门禁由自有审批层承担，平台层不拦。
 
 ### 执行日志
