@@ -121,3 +121,62 @@ describe("system plugin", () => {
     assert.ok(existsSync(path.join(installed.repo, "skills", "client-control", "SKILL.md")));
   });
 });
+
+describe("system plugin hooks delivery", () => {
+  const manual: Pick<CliManual, "commands" | "filesystem"> = {
+    commands: [{ name: "status", summary: "Show daemon status" }],
+    filesystem: [],
+  } as unknown as Pick<CliManual, "commands" | "filesystem">;
+
+  it("materializes claude and codex hook components with the approval endpoint", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "allinai-system-hooks-"));
+    directories.push(root);
+    const result = installSystemPlugin({
+      pluginsRoot: root,
+      manual,
+      version: "1.0.0",
+      approvalEndpoint: "http://127.0.0.1:8787",
+    });
+
+    const claudeHooks = JSON.parse(
+      readFileSync(path.join(result.repo, "hooks", "hooks.json"), "utf8"),
+    ) as { hooks: { PreToolUse: Array<{ hooks: Array<{ command: string }> }> } };
+    assert.equal(
+      claudeHooks.hooks.PreToolUse[0]?.hooks[0]?.command,
+      "${CLAUDE_PLUGIN_ROOT}/hooks/pre-tool-use.sh",
+    );
+    const claudeScript = readFileSync(
+      path.join(result.repo, "hooks", "pre-tool-use.sh"),
+      "utf8",
+    );
+    assert.match(claudeScript, /http:\/\/127\.0\.0\.1:8787\/control\/tool-approval/);
+
+    const codexHooks = JSON.parse(
+      readFileSync(path.join(result.repo, "codex", "hooks", "hooks.json"), "utf8"),
+    ) as { hooks: { PreToolUse: Array<{ hooks: Array<{ command: string }> }> } };
+    assert.match(
+      codexHooks.hooks.PreToolUse[0]?.hooks[0]?.command ?? "",
+      /PLUGIN_ROOT/,
+    );
+    const codexScript = readFileSync(
+      path.join(result.repo, "codex", "hooks", "pre-tool-use.sh"),
+      "utf8",
+    );
+    assert.match(codexScript, /control\/tool-approval/);
+
+    const manifest = JSON.parse(
+      readFileSync(path.join(result.repo, ".codex-plugin", "plugin.json"), "utf8"),
+    ) as { hooks: string; skills: string };
+    assert.equal(manifest.hooks, "./codex/hooks/hooks.json");
+    assert.equal(manifest.skills, "./skills/");
+  });
+
+  it("is idempotent across boots (no content churn)", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "allinai-system-hooks-"));
+    directories.push(root);
+    const first = installSystemPlugin({ pluginsRoot: root, manual, version: "1.0.0" });
+    const second = installSystemPlugin({ pluginsRoot: root, manual, version: "1.0.0" });
+    assert.equal(first.updated, true);
+    assert.equal(second.updated, false);
+  });
+});

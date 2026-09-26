@@ -7,13 +7,15 @@ import {
 } from "./claude-cli.js";
 
 describe("claude CLI executor", () => {
-  it("builds print args with stream-json, verbose, and prompt", () => {
+  it("builds print args with stream-json, verbose, bypass permissions, and prompt", () => {
     assert.deepEqual(buildClaudePrintArgs({ prompt: "hello" }), [
       "-p",
       "hello",
       "--output-format",
       "stream-json",
       "--verbose",
+      "--permission-mode",
+      "bypassPermissions",
       "--max-turns",
       "1",
     ]);

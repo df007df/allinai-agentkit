@@ -36,8 +36,6 @@ export {
   createCodexAdapter,
   type CodexAdapter,
   type CodexAdapterRunInput,
-  type CodexSdk,
-  type CodexSdkLoader,
   type CreateCodexAdapterDeps,
   OptionalRuntimeDependencyError,
 } from "./codex.js";
@@ -45,11 +43,6 @@ export {
   createClaudeAdapter,
   type ClaudeAdapter,
   type ClaudeAdapterRunInput,
-  type ClaudeQueryFactory,
-  type ClaudeSdkLoader,
-  type ClaudeSdkMessage,
-  type ClaudeSdkOptions,
-  type ClaudeSdkUserMessage,
   type CreateClaudeAdapterDeps,
 } from "./claude.js";
 export {
@@ -57,7 +50,6 @@ export {
   type CreatePiAdapterDeps,
   type PiAdapter,
   type PiAdapterRunInput,
-  type PiSdkLoader,
 } from "./pi.js";
 export {
   ZCODE_UNAVAILABLE_REASON,

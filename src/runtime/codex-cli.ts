@@ -17,14 +17,28 @@ export type CodexCliProcess = {
 
 /**
  * Builds the `codex exec` argument vector for a run. JSONL output keeps the
- * event mapping parseable; read-only default sandbox matches the SDK-era
- * policy (approval callbacks do not exist on this path either).
+ * event mapping parseable. Full-permission execution (`-s
+ * danger-full-access`, `--ask-for-approval never`): the daemon's own
+ * approval layer (plugin-delivered hooks + hub decisions) is the gate,
+ * not the CLI sandbox.
  */
 export function buildCodexExecArgs(
   input: CodexCliSpawn,
   envOverrides: string[] = [],
 ): string[] {
-  const args = ["exec", "--json", "--skip-git-repo-check", "-s", "read-only"];
+  const args = [
+    "exec",
+    "--json",
+    "--skip-git-repo-check",
+    "-s",
+    "danger-full-access",
+    "--ask-for-approval",
+    "never",
+    // Plugin-delivered hooks cannot be trusted interactively by an
+    // unattended run; the scripts come from the agentkit-system plugin we
+    // materialized ourselves, so托管信任 is the headless equivalent.
+    "--dangerously-bypass-hook-trust",
+  ];
   args.push(...envOverrides);
   if (input.cwd) args.push("-C", input.cwd);
   if (input.resumeThreadId) {

@@ -23,9 +23,6 @@ import {
 } from "../logger.js";
 import { resolveAgentPaths, type AgentPaths } from "../paths.js";
 import { renderManualMarkdown, cliManual } from "./docs.js";
-import { installCodexHooks } from "../codex-hooks.js";
-import { installClaudeHooks } from "../claude-hooks.js";
-import { installPiApprovalExtension } from "../pi-approval-extension.js";
 import { readCodexHookTrustStatus } from "../codex-hooks-trust.js";
 import {
   startToolApprovalHttpBridge,
@@ -202,9 +199,11 @@ export const COMMAND_OPTIONS: Readonly<Record<string, CommandOptionSpec>> = {
   web: { values: ["port", "host", "config-dir"] },
   daemon: { values: ["config-dir"] },
   install: { values: ["config-dir"] },
-  "codex-hooks": { values: ["control-endpoint", "codex-home", "config-dir"] },
-  "claude-hooks": { values: ["control-endpoint", "claude-home", "config-dir"] },
-  "pi-hooks": { values: ["control-endpoint", "pi-agent-dir", "config-dir"] },
+  // Deprecated user-level hook installers: accepted only to print the
+  // replacement pointer (hooks now ship with the agentkit-system plugin).
+  "codex-hooks": { values: ["config-dir"] },
+  "claude-hooks": { values: ["config-dir"] },
+  "pi-hooks": { values: ["config-dir"] },
   status: { values: ["config-dir"] },
   logs: { values: ["config-dir"], booleans: ["f"] },
   sync: { values: ["config-dir"] },
@@ -476,7 +475,7 @@ async function defaultFollowLog(
 
 function help(): string {
   return [
-    "Usage: allinai-agentkit <init|login|web|daemon|install|codex-hooks|status|logs|sync|restart|uninstall|doctor|projects|project|plugins|docs> [--config-dir PATH]",
+    "Usage: allinai-agentkit <init|login|web|daemon|install|status|logs|sync|restart|uninstall|doctor|projects|project|plugins|docs> [--config-dir PATH]",
     "  project --name NAME --path DIR   register a local project working directory",
     "  project --name NAME --remove     remove a registered project",
     "  plugins [--refresh]              list installed plugins; --refresh re-reports them to the Hub",
@@ -488,10 +487,9 @@ function help(): string {
     "  plugins --action update          fetch + update plugins locally (works while the Hub is offline)",
     "  plugins --action force --id ID [--commit SHA]",
     "                                   force-switch one plugin to a commit, discarding tracked local edits",
-    "  codex-hooks                      install the Codex PreToolUse approval hook (then trust it via /hooks in codex)",
-  "  claude-hooks                     install the Claude Code PreToolUse approval hook (settings.json)",
-  "  pi-hooks                         install the Pi tool-approval extension (~/.pi/agent/extensions)",
     "  docs [--json]                    print the full CLI manual (Markdown; --json for structured output)",
+    "  (codex-hooks/claude-hooks/pi-hooks are deprecated: tool ask-user hooks",
+    "   now ship with the built-in agentkit-system plugin, project-scoped)",
   ].join("\n");
 }
 
@@ -688,43 +686,14 @@ export async function runCli(
       return { exitCode: 0, output };
     }
 
-    if (command === "codex-hooks") {
-      const endpoint = flagValue(parsed.flags, "control-endpoint") ?? "http://127.0.0.1:8787";
-      const codexHome = flagValue(parsed.flags, "codex-home");
-      const result = installCodexHooks({ controlEndpoint: endpoint, codexHome });
+    if (command === "codex-hooks" || command === "claude-hooks" || command === "pi-hooks") {
+      // Deprecated: hooks are delivered with the built-in agentkit-system
+      // plugin (plugin-scoped, project-level), not at user level.
       emit(output, write, {
-        installed: true,
-        hooksPath: result.hooksPath,
-        scriptPath: result.scriptPath,
-        merged: result.merged,
-        nextStep: result.trustNote,
-      });
-      return { exitCode: 0, output };
-    }
-
-    if (command === "claude-hooks") {
-      const endpoint = flagValue(parsed.flags, "control-endpoint") ?? "http://127.0.0.1:8787";
-      const claudeHome = flagValue(parsed.flags, "claude-home");
-      const result = installClaudeHooks({ controlEndpoint: endpoint, claudeHome });
-      emit(output, write, {
-        installed: true,
-        settingsPath: result.settingsPath,
-        scriptPath: result.scriptPath,
-        merged: result.merged,
-        nextStep: result.trustNote,
-      });
-      return { exitCode: 0, output };
-    }
-
-    if (command === "pi-hooks") {
-      const endpoint = flagValue(parsed.flags, "control-endpoint") ?? "http://127.0.0.1:8787";
-      const piAgentDir = flagValue(parsed.flags, "pi-agent-dir");
-      const result = installPiApprovalExtension({ controlEndpoint: endpoint, piAgentDir });
-      emit(output, write, {
-        installed: true,
-        extensionPath: result.extensionPath,
-        replaced: result.replaced,
-        nextStep: result.note,
+        deprecated: true,
+        replacement:
+          "hooks ship inside the agentkit-system plugin and are installed to managed projects by the daemon automatically; user-level installation is no longer supported",
+        removed: command,
       });
       return { exitCode: 0, output };
     }

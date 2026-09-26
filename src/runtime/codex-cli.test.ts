@@ -12,10 +12,20 @@ async function* lines(lines: string[]): AsyncIterable<string> {
 }
 
 describe("codex CLI executor", () => {
-  it("builds exec args with json output, sandbox, and prompt", () => {
+  it("builds exec args with json output, full access, no approvals, and prompt", () => {
     assert.deepEqual(
       buildCodexExecArgs({ args: [], prompt: "hello" }),
-      ["exec", "--json", "--skip-git-repo-check", "-s", "read-only", "hello"],
+      [
+        "exec",
+        "--json",
+        "--skip-git-repo-check",
+        "-s",
+        "danger-full-access",
+        "--ask-for-approval",
+        "never",
+        "--dangerously-bypass-hook-trust",
+        "hello",
+      ],
     );
   });
 
@@ -31,7 +41,10 @@ describe("codex CLI executor", () => {
       "--json",
       "--skip-git-repo-check",
       "-s",
-      "read-only",
+      "danger-full-access",
+      "--ask-for-approval",
+      "never",
+      "--dangerously-bypass-hook-trust",
       "-C",
       "/work/project",
       "resume",

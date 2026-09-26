@@ -3,6 +3,15 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { join } from "node:path";
 import type { PluginConfig } from "./types.js";
 import type { CliManual } from "../cli/docs.js";
+import {
+  claudeHookScriptSource,
+  claudeHooksSettingsFragment,
+} from "../claude-hooks.js";
+import {
+  codexHookScriptSource,
+  codexHooksJsonSource,
+} from "../codex-hooks.js";
+import { piApprovalExtensionSource } from "../pi-approval-extension.js";
 
 /**
  * The built-in agentkit-system plugin: a local (non-git) plugin that ships
@@ -12,9 +21,17 @@ import type { CliManual } from "../cli/docs.js";
  * root idempotently on daemon start and synced like any other plugin, but
  * it has no gitUrl: its content is generated from the CLI manual data and
  * refreshed whenever the package version changes.
+ *
+ * The plugin also carries per-platform tool ask-user hooks (claude
+ * hooks/hooks.json + script, codex hooks/hooks.json + script) so gating is
+ * delivered by enabling the plugin — scoped to the plugin, never installed
+ * at user level.
  */
 
 export const SYSTEM_PLUGIN_ID = "agentkit-system";
+
+/** Loopback approval bridge URL; the daemon listens on this fixed port. */
+export const DEFAULT_APPROVAL_ENDPOINT = "http://127.0.0.1:8787";
 
 export function systemPluginConfig(): PluginConfig {
   return {
@@ -82,6 +99,8 @@ export type InstallSystemPluginInput = {
   pluginsRoot: string;
   manual: Pick<CliManual, "commands" | "filesystem">;
   version: string;
+  /** Loopback approval bridge URL baked into the generated hook scripts. */
+  approvalEndpoint?: string;
 };
 
 export type InstallSystemPluginResult = {
@@ -119,6 +138,12 @@ function ensureGitCommit(repo: string): void {
  * generated content differs (package upgrade), leaves runtime scratch files
  * alone, and never touches git — the manager treats an existing repo as an
  * update target and this plugin's sentinel gitUrl is never fetched.
+ *
+ * Generated layout:
+ * - skills/client-control/SKILL.md        — client-operation guidance
+ * - hooks/hooks.json + hooks/pre-tool-use.sh — claude plugin hooks component
+ * - codex/hooks/hooks.json + codex/hooks/pre-tool-use.sh — codex plugin hooks
+ *   (referenced from .codex-plugin/plugin.json "hooks")
  */
 export function installSystemPlugin(
   input: InstallSystemPluginInput,
@@ -126,16 +151,81 @@ export function installSystemPlugin(
   const repo = join(input.pluginsRoot, SYSTEM_PLUGIN_ID, "repo");
   const skillMd = join(repo, "skills", "client-control", "SKILL.md");
   const next = renderSystemSkill(input.manual, input.version);
+  const endpoint = input.approvalEndpoint ?? DEFAULT_APPROVAL_ENDPOINT;
 
-  const updated =
-    !existsSync(skillMd) || readFileSync(skillMd, "utf8") !== next;
-  if (updated || !existsSync(join(repo, ".git"))) {
-    if (existsSync(skillMd)) {
-      // Content changed (package upgrade): replace generated files only.
-      rmSync(join(repo, "skills"), { recursive: true, force: true });
+  // Claude hooks component: hooks/hooks.json (plugin-scoped) + script.
+  // ${CLAUDE_PLUGIN_ROOT} resolves to this repo at platform load time.
+  const claudeHookScript = join("${CLAUDE_PLUGIN_ROOT}", "hooks", "pre-tool-use.sh");
+  const claudeHooksJson = `${JSON.stringify(
+    claudeHooksSettingsFragment(claudeHookScript),
+    null,
+    2,
+  )}\n`;
+  const claudeScriptBody = claudeHookScriptSource(endpoint);
+  const codexHooksJson = codexHooksJsonSource(
+    join("${PLUGIN_ROOT}", "codex", "hooks", "pre-tool-use.sh"),
+  );
+  const codexScriptBody = codexHookScriptSource(endpoint);
+  const piExtensionBody = piApprovalExtensionSource(endpoint);
+  const piPackageJson = `${JSON.stringify(
+    {
+      name: "agentkit-system-bundle",
+      keywords: ["pi-package"],
+      pi: {
+        skills: ["./skills"],
+        extensions: ["./pi/extension.ts"],
+      },
+    },
+    null,
+    2,
+  )}\n`;
+
+  const generated: Array<{ path: string; body: string; mode?: number }> = [
+    { path: skillMd, body: next },
+    { path: join(repo, "hooks", "hooks.json"), body: claudeHooksJson },
+    {
+      path: join(repo, "hooks", "pre-tool-use.sh"),
+      body: claudeScriptBody,
+      mode: 0o755,
+    },
+    { path: join(repo, "codex", "hooks", "hooks.json"), body: codexHooksJson },
+    {
+      path: join(repo, "codex", "hooks", "pre-tool-use.sh"),
+      body: codexScriptBody,
+      mode: 0o755,
+    },
+    { path: join(repo, "pi", "extension.ts"), body: piExtensionBody },
+    { path: join(repo, "package.json"), body: piPackageJson },
+    // Codex plugin manifest: registers skills + the bundled hooks component
+    // (plugin-scoped; trust still happens once in the codex TUI, or the
+    // runner passes --dangerously-bypass-hook-trust for headless runs).
+    {
+      path: join(repo, ".codex-plugin", "plugin.json"),
+      body: `${JSON.stringify(
+        {
+          name: SYSTEM_PLUGIN_ID,
+          version: input.version,
+          description: "AllInAI AgentKit built-in system plugin",
+          author: { name: "AllInAI AgentKit" },
+          skills: "./skills/",
+          hooks: "./codex/hooks/hooks.json",
+        },
+        null,
+        2,
+      )}\n`,
+    },
+  ];
+
+  const changed = generated.filter(
+    (file) =>
+      !existsSync(file.path) || readFileSync(file.path, "utf8") !== file.body,
+  );
+  const updated = changed.length > 0 || !existsSync(join(repo, ".git"));
+  if (changed.length > 0) {
+    for (const file of changed) {
+      mkdirSync(join(file.path, ".."), { recursive: true });
+      writeFileSync(file.path, file.body, { mode: file.mode ?? 0o644 });
     }
-    mkdirSync(join(repo, "skills", "client-control"), { recursive: true });
-    writeFileSync(skillMd, next);
   }
   // The repo must be a git repo with a HEAD: the plugin manager resolves
   // resolvedCommit from it on every sync.

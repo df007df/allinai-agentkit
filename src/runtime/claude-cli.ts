@@ -15,6 +15,8 @@ export type ClaudeCliSpawn = {
 /**
  * Builds the `claude -p` argument vector. stream-json requires --verbose;
  * --output-style is left at default so hooks/events stay consistent.
+ * Full-permission execution: the daemon's own approval layer (plugin-
+ * delivered PreToolUse hooks + hub decisions) is the gate, not the CLI.
  */
 export function buildClaudePrintArgs(input: ClaudeCliSpawn): string[] {
   const args = [
@@ -23,6 +25,8 @@ export function buildClaudePrintArgs(input: ClaudeCliSpawn): string[] {
     "--output-format",
     "stream-json",
     "--verbose",
+    "--permission-mode",
+    "bypassPermissions",
     "--max-turns",
     String(input.maxTurns ?? 1),
   ];

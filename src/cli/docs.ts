@@ -121,56 +121,23 @@ export function cliManual(): CliManual {
       {
         name: "codex-hooks",
         summary:
-          "Install the Codex PreToolUse approval hook: tool calls post to the local daemon and its synchronous reply allows or blocks them. Codex has no SDK approval callback, so this out-of-process hook is the only gating channel. After installing, run `codex` and trust the hook via /hooks (untrusted hooks are skipped).",
-        options: [
-          {
-            flag: "control-endpoint",
-            description:
-              "Daemon control endpoint base URL; default http://127.0.0.1:8787.",
-          },
-          {
-            flag: "codex-home",
-            description: "Codex home directory; default ~/.codex.",
-          },
-        ],
-        example:
-          "allinai-agentkit codex-hooks --control-endpoint http://127.0.0.1:8787",
+          "Deprecated. Tool ask-user hooks ship inside the built-in agentkit-system plugin (plugin-scoped, project-level) and are installed to managed projects by the daemon automatically. User-level installation is no longer supported.",
+        options: [],
+        example: "allinai-agentkit codex-hooks",
       },
       {
         name: "claude-hooks",
         summary:
-          "Install the Claude Code PreToolUse approval hook into settings.json: tool calls post to the local daemon and its synchronous reply allows or blocks them. Shares the daemon approval bridge with codex-hooks. Takes effect on the next claude session; no separate trust step is required.",
-        options: [
-          {
-            flag: "control-endpoint",
-            description:
-              "Daemon control endpoint base URL; default http://127.0.0.1:8787.",
-          },
-          {
-            flag: "claude-home",
-            description: "Claude config directory; default ~/.claude.",
-          },
-        ],
-        example:
-          "allinai-agentkit claude-hooks --control-endpoint http://127.0.0.1:8787",
+          "Deprecated. Tool ask-user hooks ship inside the built-in agentkit-system plugin (plugin-scoped, project-level) and are installed to managed projects by the daemon automatically. User-level installation is no longer supported.",
+        options: [],
+        example: "allinai-agentkit claude-hooks",
       },
       {
         name: "pi-hooks",
         summary:
-          "Install the Pi tool-approval extension into ~/.pi/agent/extensions/: high-risk tool calls (bash/edit/write) post to the local daemon and its synchronous reply allows or blocks them. Auto-discovered on the next pi session start; /reload reloads it in a running session.",
-        options: [
-          {
-            flag: "control-endpoint",
-            description:
-              "Daemon control endpoint base URL; default http://127.0.0.1:8787.",
-          },
-          {
-            flag: "pi-agent-dir",
-            description: "Pi agent directory; default ~/.pi/agent.",
-          },
-        ],
-        example:
-          "allinai-agentkit pi-hooks --control-endpoint http://127.0.0.1:8787",
+          "Deprecated. Tool ask-user hooks ship inside the built-in agentkit-system plugin (plugin-scoped, project-level) and are installed to managed projects by the daemon automatically. User-level installation is no longer supported.",
+        options: [],
+        example: "allinai-agentkit pi-hooks",
       },
       {
         name: "uninstall",
