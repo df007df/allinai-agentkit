@@ -44,7 +44,7 @@ function stubFail(name: string, message: string): string {
     script,
     [
       "#!/bin/sh",
-      `printf '%s' "$(printf '%s' ${b64} | base64 -D)" >&2`,
+      `printf '%s' "$(printf '%s' ${b64} | (base64 -d 2>/dev/null || base64 -D))" >&2`,
       "exit 1",
     ].join("\n"),
     { mode: 0o755 },

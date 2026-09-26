@@ -29,7 +29,7 @@ describe("Pi adapter", () => {
       script,
       [
         "#!/bin/sh",
-        `[ -n "${outputB64}" ] && printf '%s' "$(printf '%s' ${outputB64} | base64 -D)"`,
+        `[ -n "${outputB64}" ] && printf '%s' "$(printf '%s' ${outputB64} | (base64 -d 2>/dev/null || base64 -D))"`,
         "exit 0",
       ].join("\n"),
       { mode: 0o755 },
@@ -46,7 +46,7 @@ describe("Pi adapter", () => {
       script,
       [
         "#!/bin/sh",
-        `printf '%s' "$(printf '%s' ${stderrB64} | base64 -D)" >&2`,
+        `printf '%s' "$(printf '%s' ${stderrB64} | (base64 -d 2>/dev/null || base64 -D))" >&2`,
         "exit 1",
       ].join("\n"),
       { mode: 0o755 },

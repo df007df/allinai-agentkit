@@ -87,8 +87,8 @@ function makeStubScript(
     [
       "#!/bin/sh",
       `printf '%s ' "$@" >> "${dir}/args.txt"`,
-      `[ -n "${outputB64}" ] && printf '%s' "$(printf '%s' ${outputB64} | base64 -D)"`,
-      `[ -n "${stderrB64}" ] && printf '%s' "$(printf '%s' ${stderrB64} | base64 -D)" >&2`,
+      `[ -n "${outputB64}" ] && printf '%s' "$(printf '%s' ${outputB64} | (base64 -d 2>/dev/null || base64 -D))"`,
+      `[ -n "${stderrB64}" ] && printf '%s' "$(printf '%s' ${stderrB64} | (base64 -d 2>/dev/null || base64 -D))" >&2`,
       `exit ${exitCode}`,
       "",
     ].join("\n"),
