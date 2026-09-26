@@ -117,6 +117,7 @@ allinai-agentkit project --name web --path /work/web    # 注册项目工作目�
 allinai-agentkit project --name web --remove            # 移除
 allinai-agentkit projects                               # 列出已注册项目
 allinai-agentkit plugins [--refresh]                    # 查看已装插件；--refresh 重新上报 Hub
+allinai-agentkit plugins --action install --git-url URL --id ID   # 本地登记插件
 allinai-agentkit docs [--json]                          # 输出完整 CLI 使用手册（Markdown；--json 为结构化输出，适合 AI agent 读取）
 ```
 
@@ -129,12 +130,16 @@ allinai-agentkit docs [--json]                          # 输出完整 CLI 使�
 
 Hub 无法自选任意路径——只能从本地注册的目录里按名字挑选。运行中的 daemon 会在下一条 `agent.run` 时重读项目注册（无需重启）。项目名单随 `inventory.report` 上报（仅名字），Console 的发起执行表单据此渲染项目下拉。
 
-### 插件
+### 插件（技能载体）
 
-- Hub 主动推送：`hub.syncPlugins({ principal, targetClientId, revision, plugins })`（经已认证的 Hub WebSocket 下行 `plugin.sync` 下发；Console 的 HTTP 写端点只有回环地址可用的 tool-approval / login 授权 / 发起执行中继）。
-- client 侧默认信任任何 HTTPS/SSH 仓库地址（`policy.allowedGitOrigins` 留空时）；填入主机名或 authority 即切换为白名单严格模式。克隆后仍强制 manifest 校验（id 匹配、capability schema），失败不上激活、保留旧版本继续运行。
-- client 收到后校验清单、克隆到不可变修订目录并原子激活，随后回 `plugin.sync.ack`（含每个插件的 resolvedCommit）。
-- 本地随时查看：`allinai-agentkit plugins`；重新上报：`allinai-agentkit plugins --refresh`。
+插件 = 一个 Git 仓库 = 一组技能 + 平台入口清单，是技能的唯一载体（详细机制见[官网插件专页](https://df007df.github.io/allinai-agentkit/plugins.html)）：
+
+- **登记制**：中心经 Console 登记（`plugin.sync` 下发期望清单），或本地 `plugins --action install --git-url URL --id ID` 登记机器自有插件；两者互不覆盖（Hub 全量推送不移除本地登记）。
+- **单仓 checkout**：`plugins/<id>/repo/` 唯一常驻 clone，更新 = fetch + checkout，untracked 临时文件天然存活；tracked 改动或本地领先 commit → `diverged` 拒绝自动更新，Console 两按钮人工裁决（强制覆盖 / 保留本地）。
+- **多平台自动分发**：同步成功后按「期望平台 ∩ 本机已装」分发——codex marketplace 安装（版本钉死）、pi `pi install`（实时引用）、claude 运行时 `--plugin-dir` 直连；分发状态随 inventory 上报、Console 徽章可见。
+- **内置 agentkit-system 插件**：daemon 启动物化（免登记），提供 client-control 技能（教 agent 操作宿主）与三平台 ask-user hooks（高危工具先过本地审批桥 → Hub 人工确认；插件作用域，不做用户级安装）。
+- **完全授权执行**：claude `--permission-mode bypassPermissions`、codex `-s danger-full-access --ask-for-approval never`——门禁由自有审批层承担，平台层不拦。
+- 第三方技能推荐直接拷进自己插件仓库维护（vendor，拷入即 fork，默认不追上游）。
 
 ### 执行日志
 

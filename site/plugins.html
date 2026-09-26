@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>插件机制 · allinai-agentkit</title>
+    <link rel="stylesheet" href="style.css" />
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-34YL8806XL"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag() { dataLayer.push(arguments); }
+      gtag("js", new Date());
+      gtag("config", "G-34YL8806XL");
+    </script>
+  </head>
+  <body>
+    <nav class="nav">
+      <a class="brand" href="index.html">allinai-agentkit</a>
+      <div class="nav-links">
+        <a href="index.html">官网</a>
+        <a href="docs.html">文档</a>
+        <a href="https://www.npmjs.com/package/@allin-ai/agentkit" target="_blank" rel="noreferrer">npm</a>
+        <a href="https://github.com/df007df/allinai-agentkit" target="_blank" rel="noreferrer">GitHub</a>
+      </div>
+    </nav>
+
+    <div class="docs-wrap">
+      <aside class="docs-toc">
+        <p class="docs-toc-title">插件机制</p>
+        <a href="#overview">概览</a>
+        <a href="#model" class="sub">核心模型</a>
+        <a href="#structure" class="sub">插件仓库结构</a>
+        <a href="#lifecycle">变动流程</a>
+        <a href="#lifecycle-register" class="sub">登记（两个入口）</a>
+        <a href="#lifecycle-sync" class="sub">同步与分叉裁决</a>
+        <a href="#lifecycle-dispatch" class="sub">多平台分发</a>
+        <a href="#lifecycle-remove" class="sub">移除与回滚</a>
+        <a href="#hooks">Ask-User 门禁</a>
+        <a href="#system-plugin" class="sub">内置 agentkit-system</a>
+        <a href="#vendor">第三方技能（Vendor）</a>
+        <a href="#console">控制台管理</a>
+        <a href="#cli-reference" class="sub">CLI 速查</a>
+        <a href="docs.html">← 返回完整文档</a>
+      </aside>
+
+      <main class="docs-content">
+        <section id="overview" class="doc-section">
+          <h1>插件机制</h1>
+          <p>
+            allinai-agentkit 以<strong>插件（plugin）为技能（skills）的唯一载体</strong>：
+            一个插件 = 一个 Git 仓库 = 一组技能 + 平台入口清单。中心（Hub/Console）与
+            client 对插件的全部操作都是<strong>登记</strong>——登记 Git 地址与分支，
+            内容永远以仓库为准。技能不单独安装、不做用户级散装分发。
+          </p>
+          <ul>
+            <li><strong>Git 为真相源</strong>：hub 零 Git 权限，只发同步信号 + 记台账；凭据与拉取都在 client 本地，中心挂了不影响更新。</li>
+            <li><strong>登记制</strong>：中心登记的插件与本地 CLI 登记的插件互不覆盖，各自管各自的所有权。</li>
+            <li><strong>多平台一次分发</strong>：同步成功后自动装进本机已安装的平台（codex / pi），claude 运行时直连，状态全程可见。</li>
+            <li><strong>结构合规由登记人保证</strong>：平台侧做非破坏校验（缺 SKILL.md、缺描述、入口文件缺失 → 警告随上报可见），不阻断安装。</li>
+          </ul>
+        </section>
+
+        <section id="model" class="doc-section">
+          <h2>核心模型</h2>
+          <h3 id="structure">插件仓库结构</h3>
+          <pre class="code-block"><code>my-plugin/                          ← 一个 Git 仓库
+├── allinai-plugin.json             ← agentkit manifest（声明 skills）
+├── skills/                         ← 顶层 skills/ 目录，三平台原生直吃
+│   ├── code-review/
+│   │   └── SKILL.md                ← name/description front-matter 必填
+│   └── deploy-helper/
+│       └── SKILL.md
+├── .claude-plugin/marketplace.json ← claude 入口（可选；分发到 claude 需要）
+├── .codex-plugin/plugin.json       ← codex 入口（可选；可声明自带 hooks）
+└── package.json                    ← pi 入口（pi.skills 指向 skills/）</code></pre>
+          <p>
+            manifest 最小形态：<code>{ "id": "my-plugin", "skills": ["skills/code-review", "skills/deploy-helper"] }</code>。
+            技能遵循 Claude SKILL.md 格式（YAML front-matter 的
+            <code>name:</code> 小写 slug、<code>description:</code> 必填——Pi 等平台会跳过无描述的技能）。
+            一个插件放多少个技能都可以：相关技能打包维护正是推荐用法，多技能一次同步、一次分发。
+          </p>
+
+          <h3>目录布局（client 侧）</h3>
+          <pre class="code-block"><code>~/.allinai/agent/plugins/&lt;id&gt;/repo/   ← 唯一常驻 clone（单仓 checkout 模型）
+                                      "active 目录"就是 repo working tree</code></pre>
+          <p>
+            更新 = <code>fetch + checkout</code>，从不重建目录——技能运行期写入的
+            untracked 文件（缓存等）天然存活。旧版本永远在 Git 历史里，checkout 回去即回滚。
+          </p>
+        </section>
+
+        <section id="lifecycle" class="doc-section">
+          <h2>变动流程</h2>
+
+          <h3 id="lifecycle-register">登记（两个入口，互不覆盖）</h3>
+          <table>
+            <tr><th>入口</th><th>操作</th><th>所有权</th></tr>
+            <tr>
+              <td>中心登记</td>
+              <td>Console 插件面板添加（id + Git 地址 + 分支），经 <code>plugin.sync</code> 下发期望清单</td>
+              <td><code>origin: hub</code>——由中心清单管理增删</td>
+            </tr>
+            <tr>
+              <td>本地登记</td>
+              <td><code>plugins --action install --git-url URL --id ID [--ref REF]</code></td>
+              <td><code>origin: local</code>——Hub 全量推送<strong>不会</strong>移除它，只有本地 remove 能卸</td>
+            </tr>
+          </table>
+          <p>
+            两个入口走同一条同步管线（<code>syncOne()</code>），登记后即刻同步激活并分发。
+            同 id 冲突时中心下发的优先（在线真相）；client 重连时 Console 自动补推期望清单（离线编辑重连即达）。
+          </p>
+
+          <h3 id="lifecycle-sync">同步与分叉裁决</h3>
+          <p>每次同步（中心信号 / 重连拉平 / CLI 手动，无定时器）执行三分支对比：</p>
+          <ul>
+            <li><strong>干净且落后</strong> → 自动 fast-forward 到目标 commit；</li>
+            <li><strong>untracked 新文件</strong> → 不算分叉，照常更新（临时文件存活）；</li>
+            <li><strong>tracked 改动 或 本地领先 commit</strong> → <code>diverged</code>：拒绝自动更新、上报待裁决。</li>
+          </ul>
+          <p>
+            diverged 后 Console 出两个裁决按钮：<strong>强制覆盖</strong>（checkout --force 到中心目标，
+            本地 commit 仍在历史可找回）或 <strong>保留本地</strong>（刷新基线等人工合并）。
+            也可用 <code>plugins --action force --id ID [--commit SHA]</code> 钉死任意 commit（即回滚通道）。
+          </p>
+
+          <h3 id="lifecycle-dispatch">多平台分发</h3>
+          <p>
+            同步成功后按「插件期望平台 ∩ 本机已装平台」自动分发（探针 = <code>which</code> 命令存在性）：
+          </p>
+          <table>
+            <tr><th>平台</th><th>方式</th><th>升级语义</th></tr>
+            <tr><td>codex</td><td><code>codex plugin marketplace add</code> + <code>plugin add</code></td><td>拷贝进 cache——每次同步重装，版本钉死在安装时刻</td></tr>
+            <tr><td>pi</td><td><code>pi install &lt;repo&gt;</code></td><td>本地路径引用——仓库更新实时生效</td></tr>
+            <tr><td>claude</td><td>运行时 <code>--plugin-dir &lt;repo&gt;</code></td><td>直连，无需安装</td></tr>
+          </table>
+          <p>
+            每个平台的分发结果（installed / removed / skipped / failed）持久化并随
+            <code>inventory.report</code> 上报，Console 插件行内以徽章展示（悬停看失败详情）。
+          </p>
+
+          <h3 id="lifecycle-remove">移除与回滚</h3>
+          <ul>
+            <li>中心登记的插件：从中心清单删条目 → 下次同步 deactivate（自动逐平台卸载）；</li>
+            <li>本地登记的插件：<code>plugins --action remove --id ID</code>；</li>
+            <li>本地 remove 对 hub 登记的插件会拒绝（防止下次推送又装回来）；</li>
+            <li>回滚 = <code>force --commit &lt;旧sha&gt;</code>，单仓模型下任意历史版本一步切回。</li>
+          </ul>
+        </section>
+
+        <section id="hooks" class="doc-section">
+          <h2>Ask-User 门禁（hooks）</h2>
+          <p>
+            执行为<strong>完全授权模式</strong>（平台不拦：claude
+            <code>--permission-mode bypassPermissions</code>，codex
+            <code>-s danger-full-access --ask-for-approval never</code>），
+            门禁由 agentkit 自有审批层承担：<strong>agent 要用高危工具（bash/edit/write 等）时，
+            先经过插件分发的 hooks 问人</strong>。
+          </p>
+          <pre class="code-block"><code>agent 调用高危工具
+  → 平台 hooks（随 agentkit-system 插件进入受管项目）
+  → POST 本地 daemon 审批桥（http://127.0.0.1:8787/control/tool-approval）
+  → 请求经 Hub 上报 → Console 弹卡片 → 人工 allow/deny
+  → 决定回放给 hook → 放行或拒绝（fail-closed：无人工记录一律 deny）</code></pre>
+          <ul>
+            <li><strong>插件作用域</strong>：hooks 随插件进入受管项目目录，只对受管会话生效——用户在项目外裸用平台完全无感；</li>
+            <li><strong>三平台入口</strong>：claude = 插件 <code>hooks/hooks.json</code>（${CLAUDE_PLUGIN_ROOT}）；codex = 插件 manifest 的 hooks 组件（headless 路径自动托管信任）；pi = 包内 <code>pi.extensions</code> 扩展（tool_call 拦截）；</li>
+            <li><strong>不再有用户级安装</strong>：hooks 不是全局开关，跟插件走。</li>
+          </ul>
+        </section>
+
+        <section id="system-plugin" class="doc-section">
+          <h2>内置 agentkit-system 插件</h2>
+          <p>
+            daemon 启动时自动物化（无需登记、Hub 推送不删、inventory 恒可见），内容：
+          </p>
+          <ul>
+            <li><strong>client-control 技能</strong>：从 CLI 手册生成，教 agent 操作宿主——
+              装插件/skill、查 daemon 状态与日志、项目注册、数据目录布局；</li>
+            <li><strong>三平台 ask-user hooks</strong>：上一节的门禁载体，随本插件的分发自动进入受管项目；</li>
+            <li><strong>幂等升级</strong>：内容随包版本变化重写，不变则 HEAD 纹丝不动（同步永远 on-target）。</li>
+          </ul>
+        </section>
+
+        <section id="vendor" class="doc-section">
+          <h2>第三方技能（Vendor）</h2>
+          <p>
+            部分技能不是你维护的——推荐做法是<strong>直接拷进自己的插件仓库维护</strong>（vendor）：
+          </p>
+          <ul>
+            <li><strong>拷入即 fork</strong>：上游改动、删库、改 license 都影响不到你；</li>
+            <li><strong>默认不追上游</strong>：同步机制本来就只认你登记的仓库，永不自动拉第三方更新；上游出安全修复时人工评估覆盖；</li>
+            <li><strong>改了就是你的</strong>：技能很小，不值得维护三方合并；</li>
+            <li><strong>建议记录来源</strong>：在仓库里放一行注释（来源 URL + commit + 日期），某天想对比上游时有迹可循；</li>
+            <li><strong>临时文件可丢</strong>：技能运行期写进自己目录的缓存属可丢状态，更新重装丢失无害——需要持久的数据应写会话工作区。</li>
+          </ul>
+        </section>
+
+        <section id="console" class="doc-section">
+          <h2>控制台管理</h2>
+          <p>Console 插件面板提供全生命周期操作：</p>
+          <ul>
+            <li><strong>查看</strong>：每插件状态（运行中 / 失败+错误原文 / 已停用）、当前 commit、每平台分发徽章；</li>
+            <li><strong>登记</strong>：表单添加（id + Git 地址 + 可选分支），下发到选中 client；</li>
+            <li><strong>裁决</strong>：diverged 插件两按钮（强制覆盖 / 保留本地）；</li>
+            <li><strong>移除 / 重推</strong>：删条目或把整份期望清单重新下发（client 离线时用）。</li>
+          </ul>
+
+          <h3 id="cli-reference">CLI 速查</h3>
+          <pre class="code-block"><code>allinai-agentkit plugins                                   # 列出已装插件（含每平台分发摘要）
+allinai-agentkit plugins --refresh                         # 重新上报 Hub
+allinai-agentkit plugins --action install \
+  --git-url https://github.com/me/skills.git --id my-skills  # 本地登记（机器自有）
+allinai-agentkit plugins --action remove --id my-skills      # 卸载本地登记
+allinai-agentkit plugins --action check                     # 对比上游（不动本地）
+allinai-agentkit plugins --action update                    # 拉取更新（离线可用）
+allinai-agentkit plugins --action force --id my-skills \
+  --commit &lt;sha&gt;                                             # 钉死/回滚到任意 commit</code></pre>
+          <p>
+            编程接入：<code>@allinai-ai/agentkit/plugins</code> 的
+            <code>PluginManager</code>（<code>sync / check / forceTo / remove</code>），
+            中心侧 <code>hub.syncPlugins()</code> 与 Console HTTP 端点
+            <code>GET/POST /_agentkit/console/plugins</code>。完整 API 见
+            <a href="docs.html">完整文档</a>。
+          </p>
+        </section>
+      </main>
+    </div>
+
+    <footer class="footer">
+      <span>MIT License · Node.js ≥ 22.18</span>
+      <span class="footer-links">
+        <a href="index.html">官网</a>
+        <a href="https://www.npmjs.com/package/@allin-ai/agentkit" target="_blank" rel="noreferrer">npm</a>
+        <a href="https://github.com/df007df/allinai-agentkit" target="_blank" rel="noreferrer">GitHub</a>
+        <span>@allin-ai/agentkit</span>
+      </span>
+    </footer>
+  </body>
+</html>

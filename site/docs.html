@@ -276,19 +276,43 @@ node bin/allinai-agentkit --help</code></pre>
 
           <h3 id="features-runtime">5.3 运行时适配</h3>
           <p>
-            <code>/runtime</code> 提供 codex / claude / pi / zcode 四个适配器，全部是可选 peer 依赖：
-            装了哪个 agent SDK 就启用哪个，未装的自动降级并在清单上报中说明原因，
-            <code>/client</code> 与 CLI 本身不依赖任何 agent SDK。<code>doctor</code>
-            会逐个探测并给出安装/缺失原因报告。各 SDK 的事件词汇在适配器内归一为
+            <code>/runtime</code> 提供 codex / claude / pi / zcode 四个适配器，
+            全部通过各平台官方 CLI 的 headless 模式执行（零 SDK 依赖）：
+            <code>codex exec --json</code>、<code>claude -p --output-format stream-json</code>、
+            <code>pi -p --mode json</code>。探针以命令存在性（<code>which</code>）为准，
+            <code>doctor</code> 逐个探测并报告。执行为<strong>完全授权模式</strong>
+            （claude <code>--permission-mode bypassPermissions</code>、
+            codex <code>-s danger-full-access --ask-for-approval never</code>），
+            门禁由 agentkit 自有审批层承担：高危工具调用经插件分发的 hooks
+            先过本地 daemon 审批桥，人工决定经 Hub 下发回放（见
+            <a href="#features-plugins">插件体系</a>）。各平台事件在适配器内归一为
             统一的事件模型后上报（详见<a href="#architecture-events">事件模型</a>）。
           </p>
 
           <h3 id="features-plugins">5.4 插件体系</h3>
           <p>
-            Hub 可向在线 client 下发 <code>plugin.sync</code> 期望状态（Git 插件仓库列表）。
-            daemon 校验 Git origin 是否在本地策略白名单内，然后拉取仓库、解析 manifest、
-            校验能力清单，逐 revision 同步并回报确认水位；失败的重试，不影响进行中的 run。
-            <code>plugins</code> 命令查看本地已装插件，<code>--refresh</code> 主动重新上报。
+            插件是技能（skills）的唯一载体，<strong>登记制</strong>管理：
+            中心侧由 Console 登记期望清单（id + Git 地址 + 可选分支）经
+            <code>plugin.sync</code> 下发；本地侧用
+            <code>plugins --action install --git-url URL --id ID</code> 登记机器自有插件。
+            两者互不覆盖——Hub 全量推送不会移除本地登记的插件。
+          </p>
+          <p>
+            同步为<strong>单仓 checkout 模型</strong>：<code>plugins/&lt;id&gt;/repo/</code>
+            唯一常驻 clone，更新 = fetch + checkout（untracked 临时文件天然存活）；
+            三分支对比（tracked 改动或本地领先 commit → <code>diverged</code> 拒绝自动更新，
+            Console 出两按钮人工裁决：强制覆盖 / 保留本地）。同步成功后按
+            「插件期望平台 ∩ 本机已装平台」自动分发：codex 走 marketplace 安装、
+            pi 走 <code>pi install</code>、claude 运行时 <code>--plugin-dir</code> 直连，
+            各平台分发状态（installed/skipped/failed）随 inventory 上报、Console 可见。
+          </p>
+          <p>
+            内置 <code>agentkit-system</code> 插件随 daemon 自动物化（无需登记）：
+            提供 client-control 技能（教 agent 操作宿主 CLI 与文件布局），
+            并携带三平台的 tool ask-user hooks——高危工具调用先过本地审批桥、
+            Hub 人工确认后回放决定；hooks 为插件作用域（随插件进入受管项目），
+            不做用户级全局安装。详见
+            <a href="plugins.html">插件机制专页</a>。
           </p>
 
           <h3 id="features-security">5.5 凭据与安全</h3>
