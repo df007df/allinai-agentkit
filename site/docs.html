@@ -280,9 +280,10 @@ node bin/allinai-agentkit --help</code></pre>
             全部通过各平台官方 CLI 的 headless 模式执行（零 SDK 依赖）：
             <code>codex exec --json</code>、<code>claude -p --output-format stream-json</code>、
             <code>pi -p --mode json</code>。探针以命令存在性（<code>which</code>）为准，
-            <code>doctor</code> 逐个探测并报告。执行为<strong>完全授权模式</strong>
-            （claude <code>--permission-mode bypassPermissions</code>、
-            codex <code>-s danger-full-access --ask-for-approval never</code>），
+            <code>doctor</code> 逐个探测并报告。实际效果等同于<strong>完全授权执行</strong>
+            （codex <code>-s danger-full-access --ask-for-approval never</code>；
+            claude 跑默认权限模式——实测 bypassPermissions 会压掉
+            <code>PermissionRequest</code> 钩子，由钩子对每次询问显式回 allow 实现放权），
             tool ask-user 上报经插件分发的 hooks
             先达本地 daemon 审批桥，人工决定经 Hub 下发回放（见
             <a href="#features-plugins">插件体系</a>）。各平台事件在适配器内归一为

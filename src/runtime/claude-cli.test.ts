@@ -7,15 +7,17 @@ import {
 } from "./claude-cli.js";
 
 describe("claude CLI executor", () => {
-  it("builds print args with stream-json, verbose, bypass permissions, and prompt", () => {
+  it("builds print args with stream-json, verbose, default permission mode, and prompt", () => {
     assert.deepEqual(buildClaudePrintArgs({ prompt: "hello" }), [
       "-p",
       "hello",
       "--output-format",
       "stream-json",
       "--verbose",
+      // Default, not bypass: PermissionRequest hooks never fire under
+      // bypassPermissions, so bypass would kill the ask-user relay.
       "--permission-mode",
-      "bypassPermissions",
+      "default",
       "--max-turns",
       "1",
     ]);

@@ -3,11 +3,14 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 
 /**
- * Claude Code gates tools through the same hook protocol family as Codex:
- * a PreToolUse hook in the settings file receives the tool call JSON on
- * stdin and its stdout decision decides the call. The daemon's HTTP
- * approval bridge (shared with codex-hooks) is the decision source —
- * fail-closed replay of a human decision made in the console.
+ * Claude Code's ask-user moment in headless (-p) runs is the permission
+ * moment: a PermissionRequest hook receives the tool call when the platform
+ * is about to ask the user for a decision, and its stdout reply is that
+ * decision. Verified live (claude 2.1.278): under default mode the hook
+ * fires on every would-prompt call (tool_name/tool_input in the payload);
+ * under bypassPermissions it never fires at all; an empty reply means the
+ * platform auto-denies; {"behavior":"allow"} passes the call through. The
+ * daemon's HTTP approval bridge is the decision source — deny-only relay.
  */
 
 export const CLAUDE_HOOKS_DOC_NOTE =
@@ -32,9 +35,10 @@ export type ClaudeHooksInstallResult = {
 export function claudeHookScriptSource(controlEndpoint: string): string {
   return `#!/bin/bash
 # Installed by allinai-agentkit: relay Claude Code permission requests
-# (tool ask-user) to the local daemon. The daemon's synchronous reply is
-# the human decision; a decision to deny blocks, anything else (including
-# an unreachable daemon) leaves the platform's own flow unchanged.
+# (the headless ask-user moment) to the local daemon. The daemon's
+# synchronous reply is the human decision; a decision to deny blocks,
+# anything else allows. Allow must be explicit — an empty hook reply makes
+# the platform auto-deny the call.
 IN=$(cat)
 RESP=$(curl -s --max-time 300 -X POST -H 'content-type: application/json' \\
   --data "{\\"platform\\":\\"claude\\",\\"payload\\":$IN}" \\
@@ -52,7 +56,7 @@ except Exception:
 if [ "$DEC" = "deny" ]; then
   printf '{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"deny","message":"%s"}}}\\n' "$REASON"
 else
-  echo '{}'
+  printf '{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}\\n'
 fi
 `;
 }
@@ -62,10 +66,11 @@ export function claudeHooksSettingsFragment(
 ): Record<string, unknown> {
   return {
     hooks: {
-      // PermissionRequest fires only when Claude Code is about to ask the
-      // user for a permission decision (or would auto-deny a call that
-      // cannot prompt) — exactly the tool ask-user moment. PreToolUse would
-      // fire on every tool call, which is not what we want.
+      // PermissionRequest fires exactly when the platform is about to ask
+      // for a permission decision — the only ask-user moment headless runs
+      // have. NOTE: it never fires under bypassPermissions, so runs must
+      // use the default permission mode and let hooks decide (allow by
+      // default, deny only on a human decision).
       PermissionRequest: [
         {
           hooks: [{ type: "command", command: scriptPath, timeout: 300 }],

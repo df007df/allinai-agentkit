@@ -92,6 +92,14 @@ describe("claude hooks installer", () => {
     assert.match(script, /"behavior":"deny"/);
   });
 
+  it("the non-deny reply is an explicit allow (empty reply auto-denies)", () => {
+    const script = claudeHookScriptSource("http://127.0.0.1:8787");
+    // Verified live: an empty hook reply makes the platform auto-deny the
+    // call, so the pass-through path must send behavior:"allow" itself.
+    assert.match(script, /"behavior":"allow"/);
+    assert.doesNotMatch(script, /echo '\{\}'/);
+  });
+
   it("the settings fragment targets the PermissionRequest event only", () => {
     const fragment = claudeHooksSettingsFragment("/path/hook.sh");
     const hooks = fragment.hooks as Record<string, unknown>;
