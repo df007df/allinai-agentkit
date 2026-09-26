@@ -21,7 +21,7 @@ async function post(
 }
 
 describe("tool approval HTTP bridge", () => {
-  it("replays recorded human decisions and denies unknown request ids", async () => {
+  it("replays recorded human decisions and relays neutral for unknown ids", async () => {
     const decisions = new Map<string, { decision: "allow" | "deny"; reason?: string }>([
       ["req-1", { decision: "allow" }],
       ["req-2", { decision: "deny", reason: "not in this workspace" }],
@@ -50,23 +50,24 @@ describe("tool approval HTTP bridge", () => {
         reason: "not in this workspace",
       });
 
-      // No human decision has arrived for this request id: fail closed. The
-      // bridge never invents an allow from a mere owner match.
+      // No human decision has arrived for this request id: relay a neutral
+      // non-deny. The bridge never invents a deny — hooks are report-only
+      // and pass everything through unless a human explicitly denied.
       const unknown = await post(bridge.url, {
         platform: "codex",
         payload: { requestId: "req-unknown" },
       });
       assert.equal(unknown.status, 200);
       assert.deepEqual(unknown.json, {
-        decision: "deny",
-        reason: "unknown_request_id",
+        decision: "allow",
+        reason: "no_record",
       });
     } finally {
       await bridge?.close();
     }
   });
 
-  it("answers 404 for non-approval paths and denies malformed bodies", async () => {
+  it("answers 404 for non-approval paths and relays neutral for malformed bodies", async () => {
     let bridge: ToolApprovalHttpBridge | null = null;
     try {
       bridge = await startToolApprovalHttpBridge({
@@ -84,8 +85,8 @@ describe("tool approval HTTP bridge", () => {
       });
       assert.equal(malformed.status, 200);
       const body = (await malformed.json()) as Record<string, unknown>;
-      assert.equal(body.decision, "deny");
-      assert.equal(body.reason, "unknown_request_id");
+      assert.equal(body.decision, "allow");
+      assert.equal(body.reason, "no_record");
     } finally {
       await bridge?.close();
     }

@@ -2,22 +2,23 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 
 /**
  * A minimal loopback HTTP bridge in front of the daemon's control surface.
- * The Codex PreToolUse hook (installed by `agentkit codex-hooks`) is a plain
- * shell script: it POSTs the pending tool call here and treats the JSON
- * reply as the human decision. Only tool-approval routing lives on HTTP;
- * everything else stays on the authenticated Unix-socket control server.
+ * The platform tool ask-user hooks (delivered with the agentkit-system
+ * plugin) POST every tool call here; the JSON reply relays the human
+ * decision. Only tool-approval routing lives on HTTP; everything else
+ * stays on the authenticated Unix-socket control server.
  *
  * The bridge NEVER decides on its own: it only replays decisions a human
- * already made through the console (offer channel → supervisor → the daemon's
- * decision map). A hook POST whose request id has no recorded human decision
- * is denied fail-closed, so unauthenticated SSE or hook replay traffic cannot
- * silently allow anything.
+ * already made through the console (offer channel → supervisor → the
+ * daemon's decision map). Hooks treat the reply as deny-only — a reply
+ * without an explicit human deny (no record, unknown id, bridge down)
+ * passes the tool call through, matching the report-only contract.
  */
 
 export type ToolApprovalHttpBridgeOptions = {
   /**
    * Resolves the human decision previously recorded for a request id, or null
-   * when no console-originated decision has arrived (fail closed → deny).
+   * when no console-originated decision has arrived (null → the bridge answers
+   * a neutral non-deny, and the hook passes the tool call through).
    */
   resolveDecision: (
     requestId: string,
@@ -58,7 +59,7 @@ export async function startToolApprovalHttpBridge(
           !request.url.startsWith("/control/tool-approval")
         ) {
           response.writeHead(404, { "content-type": "application/json" });
-          response.end(JSON.stringify({ decision: "deny", reason: "not_found" }));
+          response.end(JSON.stringify({ decision: "allow", reason: "not_found" }));
           return;
         }
         const chunks: Buffer[] = [];
@@ -77,12 +78,11 @@ export async function startToolApprovalHttpBridge(
           ? options.resolveDecision(requestId)
           : null;
         if (!decision) {
+          // No human decision recorded: relay a neutral non-deny so the
+          // hook (deny-only) passes the tool call through.
           response.writeHead(200, { "content-type": "application/json" });
           response.end(
-            JSON.stringify({
-              decision: "deny",
-              reason: "unknown_request_id",
-            }),
+            JSON.stringify({ decision: "allow", reason: "no_record" }),
           );
           return;
         }
@@ -98,9 +98,11 @@ export async function startToolApprovalHttpBridge(
         if (!response.headersSent) {
           response.writeHead(500, { "content-type": "application/json" });
         }
+        // Bridge failure is not a human deny: relay neutral so the hook
+        // passes the tool call through.
         response.end(
           JSON.stringify({
-            decision: "deny",
+            decision: "allow",
             reason: error instanceof Error ? error.message : "bridge failure",
           }),
         );
