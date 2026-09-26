@@ -283,8 +283,8 @@ node bin/allinai-agentkit --help</code></pre>
             <code>doctor</code> 逐个探测并报告。执行为<strong>完全授权模式</strong>
             （claude <code>--permission-mode bypassPermissions</code>、
             codex <code>-s danger-full-access --ask-for-approval never</code>），
-            门禁由 agentkit 自有审批层承担：高危工具调用经插件分发的 hooks
-            先过本地 daemon 审批桥，人工决定经 Hub 下发回放（见
+            tool ask-user 上报经插件分发的 hooks
+            先达本地 daemon 审批桥，人工决定经 Hub 下发回放（见
             <a href="#features-plugins">插件体系</a>）。各平台事件在适配器内归一为
             统一的事件模型后上报（详见<a href="#architecture-events">事件模型</a>）。
           </p>
@@ -309,8 +309,8 @@ node bin/allinai-agentkit --help</code></pre>
           <p>
             内置 <code>agentkit-system</code> 插件随 daemon 自动物化（无需登记）：
             提供 client-control 技能（教 agent 操作宿主 CLI 与文件布局），
-            并携带三平台的 tool ask-user hooks——高危工具调用先过本地审批桥、
-            Hub 人工确认后回放决定；hooks 为插件作用域（随插件进入受管项目），
+            并携带三平台的 tool ask-user hooks——工具调用上报本地审批桥、
+            Hub 人工确认后回放决定（人工未拒绝即放行）；hooks 为插件作用域（随插件进入受管项目），
             不做用户级全局安装。详见
             <a href="plugins.html">插件机制专页</a>。
           </p>

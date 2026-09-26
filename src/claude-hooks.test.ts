@@ -42,7 +42,8 @@ describe("claude hooks installer", () => {
       };
     };
     const group = settings.hooks.PreToolUse[0]!;
-    assert.match(group.matcher, /Bash/);
+    // Every tool call is reported — the matcher is the universal wildcard.
+    assert.equal(group.matcher, "*");
     assert.equal(group.hooks[0]!.command, result.scriptPath);
     assert.match(result.trustNote, /no separate trust step/);
   });

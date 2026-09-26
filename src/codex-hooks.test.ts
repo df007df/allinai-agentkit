@@ -23,7 +23,8 @@ describe("codex hooks installer", () => {
     assert.match(script, /"decision":"block"/);
     const hooks = JSON.parse(readFileSync(result.hooksPath, "utf8"));
     assert.equal(hooks.hooks.PreToolUse[0].hooks[0].command, result.scriptPath);
-    assert.match(hooks.hooks.PreToolUse[0].matcher, /Bash/);
+    // Every tool call is reported — the matcher is the universal wildcard.
+    assert.equal(hooks.hooks.PreToolUse[0].matcher, "*");
   });
 
   it("merges into an existing hooks.json without duplicating the hook", () => {

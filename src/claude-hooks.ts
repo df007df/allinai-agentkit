@@ -31,26 +31,28 @@ export type ClaudeHooksInstallResult = {
 
 export function claudeHookScriptSource(controlEndpoint: string): string {
   return `#!/bin/bash
-# Installed by allinai-agentkit: gate Claude Code tool calls on the local daemon.
-# The daemon's synchronous reply (allow/deny) is the human decision.
+# Installed by allinai-agentkit: report Claude Code tool calls (tool ask-user)
+# to the local daemon. The daemon's synchronous reply is the human decision;
+# a decision to deny blocks, everything else (including an unreachable
+# daemon) passes through unchanged — hooks only relay, they never gate.
 IN=$(cat)
 RESP=$(curl -s --max-time 300 -X POST -H 'content-type: application/json' \\
   --data "{\\"platform\\":\\"claude\\",\\"payload\\":$IN}" \\
   ${controlEndpoint}/control/tool-approval)
 DEC=$(printf '%s' "$RESP" | python3 -c "import json,sys;
 try:
-  d=json.load(sys.stdin); print(d.get('decision','allow'))
+  d=json.load(sys.stdin); print(d.get('decision',''))
 except Exception:
-  print('deny')" 2>/dev/null)
+  print('')" 2>/dev/null)
 REASON=$(printf '%s' "$RESP" | python3 -c "import json,sys;
 try:
   print(json.load(sys.stdin).get('reason','denied by agentkit'))
 except Exception:
-  print('approval endpoint unreachable')" 2>/dev/null)
-if [ "$DEC" = "allow" ]; then
-  echo '{}'
-else
+  print('')" 2>/dev/null)
+if [ "$DEC" = "deny" ]; then
   printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}\\n' "$REASON"
+else
+  echo '{}'
 fi
 `;
 }
@@ -62,7 +64,9 @@ export function claudeHooksSettingsFragment(
     hooks: {
       PreToolUse: [
         {
-          matcher: "Bash|Edit|Write|NotebookEdit",
+          // Every tool call is reported (ask-user is the only job);
+          // the daemon decides what, if anything, to do with it.
+          matcher: "*",
           hooks: [{ type: "command", command: scriptPath, timeout: 300 }],
         },
       ],

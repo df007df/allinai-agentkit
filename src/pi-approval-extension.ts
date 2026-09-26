@@ -32,16 +32,14 @@ export type PiApprovalExtensionInstallResult = {
 export function piApprovalExtensionSource(
   controlEndpoint: string,
 ): string {
-  return `// Installed by allinai-agentkit: gate Pi tool calls on the local daemon.
-// The daemon's synchronous reply (allow/deny) is the human decision.
+  return `// Installed by allinai-agentkit: report Pi tool calls (tool ask-user)
+// to the local daemon. The daemon's synchronous reply is the human decision;
+// a decision to deny blocks, everything else passes through unchanged.
 const CONTROL_ENDPOINT = ${JSON.stringify(controlEndpoint)};
 
 export default function agentkitToolApproval(pi) {
   pi.on("tool_call", async (event) => {
     const toolName = event?.toolName ?? "unknown";
-    // High-risk tools only: shell commands and file mutations.
-    const highRisk = /^(bash|edit|write|apply_patch|read_bash)/i.test(toolName);
-    if (!highRisk) return;
 
     try {
       const response = await fetch(
@@ -60,14 +58,15 @@ export default function agentkitToolApproval(pi) {
         decision?: string;
         reason?: string;
       };
-      if (decision.decision === "allow") return;
+      if (decision.decision !== "deny") return;
       return {
         block: true,
         reason: decision.reason ?? "denied by agentkit",
       };
     } catch {
-      // Fail closed: an unreachable bridge must not silently allow.
-      return { block: true, reason: "approval endpoint unreachable" };
+      // Bridge unreachable: there is no human answer to wait for, so the
+      // tool call proceeds — hooks only relay, they never gate on their own.
+      return undefined;
     }
   });
 }

@@ -33,26 +33,28 @@ export type CodexHooksInstallResult = {
 
 export function codexHookScriptSource(controlEndpoint: string): string {
   return `#!/bin/bash
-# Installed by allinai-agentkit: gate Codex tool calls on the local daemon.
-# The daemon's synchronous reply (allow/deny) is the human decision.
+# Installed by allinai-agentkit: report Codex tool calls (tool ask-user)
+# to the local daemon. The daemon's synchronous reply is the human decision;
+# a decision to deny blocks, everything else (including an unreachable
+# daemon) passes through unchanged — hooks only relay, they never gate.
 IN=$(cat)
 RESP=$(curl -s --max-time 300 -X POST -H 'content-type: application/json' \\
   --data "{\\"platform\\":\\"codex\\",\\"payload\\":$IN}" \\
   ${controlEndpoint}/control/tool-approval)
 DEC=$(printf '%s' "$RESP" | python3 -c "import json,sys;
 try:
-  d=json.load(sys.stdin); print(d.get('decision','allow'))
+  d=json.load(sys.stdin); print(d.get('decision',''))
 except Exception:
-  print('deny')" 2>/dev/null)
+  print('')" 2>/dev/null)
 REASON=$(printf '%s' "$RESP" | python3 -c "import json,sys;
 try:
   print(json.load(sys.stdin).get('reason','denied by agentkit'))
 except Exception:
-  print('approval endpoint unreachable')" 2>/dev/null)
-if [ "$DEC" = "allow" ]; then
-  echo '{}'
-else
+  print('')" 2>/dev/null)
+if [ "$DEC" = "deny" ]; then
   printf '{"decision":"block","reason":"%s"}\\n' "$REASON"
+else
+  echo '{}'
 fi
 `;
 }
@@ -63,7 +65,9 @@ export function codexHooksJsonSource(scriptPath: string): string {
       hooks: {
         PreToolUse: [
           {
-            matcher: "Bash|apply_patch|Edit|Write",
+            // Every tool call is reported (ask-user is the only job);
+            // the daemon decides what, if anything, to do with it.
+            matcher: "*",
             hooks: [{ type: "command", command: scriptPath, timeout: 300 }],
           },
         ],
