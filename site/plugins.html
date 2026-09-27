@@ -153,17 +153,19 @@
           <p>
             实际效果等同于<strong>完全授权执行</strong>：工具调用默认全部放行，
             hooks 只负责一件事——<strong>在平台的 ask-user 时刻（准备请求人工确认工具执行时）
-            把请求上报给本地审批桥，供 Hub 侧人工决策</strong>。人工未拒绝即放行，
-            普通工具调用不产生任何上报。
+            以两段式对接本地审批桥</strong>：先注册换取 requestId，再挂等人工决定。
+            人工未拒绝即放行，普通工具调用不产生任何上报。
           </p>
           <pre class="code-block"><code>agent 请求执行需确认的工具（ask-user 时刻）
   → 平台 hooks（随 agentkit-system 插件进入受管项目）
-  → POST 本地 daemon 审批桥（http://127.0.0.1:8787/control/tool-approval）
-  → 请求经 Hub 上报 → Console 弹卡片 → 人工 allow/deny
-  → 决定回放给 hook → 人工拒绝才拦截，其余显式放行</code></pre>
+  → 段1：POST 审批桥注册 → 桥签发 requestId 并弹卡
+  → 段2：hook 携 requestId 挂等 → Console 人工 allow/deny
+  → 决定经 respond_tool_approval 原路唤醒 hook
+  → 人工拒绝才拦截，其余显式放行</code></pre>
           <ul>
-            <li><strong>只上报不拦截</strong>：拦截只发生在人工明确 deny 时；daemon 不在线或无人工记录一律放行（claude 侧放行为显式回包——平台语义是 hook 空回复即自动拒绝）；</li>
-            <li><strong>ask-user 时刻</strong>：claude = <code>PermissionRequest</code> 事件（平台准备请求授权时；实测 bypassPermissions 下该事件<strong>不触发</strong>，因此 claude 运行采用默认权限模式、由 hook 回包实现放权）；codex = <code>pre_tool_use</code> 审批钩子（<code>danger-full-access</code>）；pi = 扩展对执行/写类工具（bash/edit/write）的 <code>tool_call</code> 拦截；</li>
+            <li><strong>只上报不拦截</strong>：拦截只发生在人工明确 deny 时；daemon 不在线、超时或无人工记录一律放行（claude 侧放行为显式回包——平台语义是 hook 空回复即自动拒绝）；</li>
+            <li><strong>ask-user 时刻</strong>：claude = <code>PermissionRequest</code> 事件（平台准备请求授权时；实测 bypassPermissions 下该事件<strong>不触发</strong>，因此 claude 运行采用默认权限模式、由 hook 回包实现放权）；codex = <code>pre_tool_use</code> 审批钩子（<code>danger-full-access</code> 沙箱不影响其触发）；pi = 扩展对执行/写类工具（bash/edit/write）的 <code>tool_call</code> 拦截；</li>
+            <li><strong>两段式闭环</strong>：requestId 把 Console 的卡片和挂起的 hook 一一对应，人工决定经现有 <code>respond_tool_approval</code> 通道回放——没有 requestId 转发就到不了 hook；</li>
             <li><strong>插件作用域</strong>：hooks 随插件进入受管项目目录，只对受管会话生效——用户在项目外裸用平台完全无感；</li>
             <li><strong>三平台入口</strong>：claude = 插件 <code>hooks/hooks.json</code>（${CLAUDE_PLUGIN_ROOT}）；codex = 插件 manifest 的 hooks 组件（headless 路径自动托管信任）；pi = 包内 <code>pi.extensions</code> 扩展；</li>
             <li><strong>不再有用户级安装</strong>：hooks 不是全局开关，跟插件走。</li>

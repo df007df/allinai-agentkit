@@ -33,9 +33,11 @@ export function piApprovalExtensionSource(
   controlEndpoint: string,
 ): string {
   return `// Installed by allinai-agentkit: relay Pi tool-approval requests
-// (tool ask-user) to the local daemon. The daemon's synchronous reply is
-// the human decision; a decision to deny blocks, anything else passes
-// through unchanged. Read-only tools never prompt and are skipped.
+// (tool ask-user) to the local daemon in two phases. Phase 1 registers the
+// call and mints a requestId; phase 2 parks until the human decision made
+// in the console arrives under that id. A decision to deny blocks, anything
+// else passes through unchanged. Read-only tools never prompt and are
+// skipped.
 const CONTROL_ENDPOINT = ${JSON.stringify(controlEndpoint)};
 
 // Tools a human may want to weigh in on (mutations / execution). Read-only
@@ -48,6 +50,20 @@ export default function agentkitToolApproval(pi) {
     if (!ASK_USER_TOOLS.test(toolName)) return;
 
     try {
+      const register = await fetch(
+        \`\${CONTROL_ENDPOINT}/control/tool-approval\`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            platform: "pi",
+            payload: { request: { toolName, input: event?.input ?? {} } },
+          }),
+          signal: AbortSignal.timeout(30_000),
+        },
+      );
+      const { requestId } = (await register.json()) as { requestId?: string };
+
       const response = await fetch(
         \`\${CONTROL_ENDPOINT}/control/tool-approval\`,
         {
@@ -55,9 +71,9 @@ export default function agentkitToolApproval(pi) {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             platform: "pi",
-            payload: { toolName, input: event?.input ?? {} },
+            payload: { toolName, input: event?.input ?? {}, requestId },
           }),
-          signal: AbortSignal.timeout(300_000),
+          signal: AbortSignal.timeout(330_000),
         },
       );
       const decision = (await response.json()) as {

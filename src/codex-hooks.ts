@@ -33,13 +33,28 @@ export type CodexHooksInstallResult = {
 
 export function codexHookScriptSource(controlEndpoint: string): string {
   return `#!/bin/bash
-# Installed by allinai-agentkit: relay Codex tool-approval requests
-# (tool ask-user) to the local daemon. The daemon's synchronous reply is
-# the human decision; a decision to deny blocks, anything else (including
-# an unreachable daemon) leaves the platform's own flow unchanged.
+# Installed by allinai-agentkit: relay the Codex PreToolUse hook (the tool
+# ask-user moment) to the local daemon in two phases. Phase 1 registers the
+# call and mints a requestId; phase 2 parks until the human decision made in
+# the console arrives under that id. A decision to deny blocks, everything
+# else (including an unreachable daemon) passes through — hooks only relay,
+# they never gate.
 IN=$(cat)
-RESP=$(curl -s --max-time 300 -X POST -H 'content-type: application/json' \\
-  --data "{\\"platform\\":\\"codex\\",\\"payload\\":$IN}" \\
+REG=$(curl -s --max-time 30 -X POST -H 'content-type: application/json' \\
+  --data "{\\"platform\\":\\"codex\\",\\"payload\\":{\\"request\\":$IN}}" \\
+  ${controlEndpoint}/control/tool-approval)
+RID=$(printf '%s' "$REG" | python3 -c "import json,sys;
+try:
+  print(json.load(sys.stdin).get('requestId',''))
+except Exception:
+  print('')" 2>/dev/null)
+PAYLOAD=$(python3 -c "import json,sys;
+inj=json.dumps({'requestId':'$RID'})
+inner=json.loads(sys.argv[1])
+inner.update(json.loads(inj))
+print(json.dumps(inner))" "$IN" 2>/dev/null)
+RESP=$(curl -s --max-time 330 -X POST -H 'content-type: application/json' \\
+  --data "{\\"platform\\":\\"codex\\",\\"payload\\":$PAYLOAD}" \\
   ${controlEndpoint}/control/tool-approval)
 DEC=$(printf '%s' "$RESP" | python3 -c "import json,sys;
 try:

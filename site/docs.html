@@ -281,11 +281,12 @@ node bin/allinai-agentkit --help</code></pre>
             <code>codex exec --json</code>、<code>claude -p --output-format stream-json</code>、
             <code>pi -p --mode json</code>。探针以命令存在性（<code>which</code>）为准，
             <code>doctor</code> 逐个探测并报告。实际效果等同于<strong>完全授权执行</strong>
-            （codex <code>-s danger-full-access --ask-for-approval never</code>；
+            （codex <code>-s danger-full-access</code>——实测不影响 hooks 触发；
             claude 跑默认权限模式——实测 bypassPermissions 会压掉
             <code>PermissionRequest</code> 钩子，由钩子对每次询问显式回 allow 实现放权），
-            tool ask-user 上报经插件分发的 hooks
-            先达本地 daemon 审批桥，人工决定经 Hub 下发回放（见
+            tool ask-user 经插件分发的 hooks 以<strong>两段式</strong>对接本地 daemon 审批桥：
+            先注册换取 requestId，再挂等人工决定；Console 的决定经 Hub 原路下发，
+            人工拒绝才真正拦截（见
             <a href="#features-plugins">插件体系</a>）。各平台事件在适配器内归一为
             统一的事件模型后上报（详见<a href="#architecture-events">事件模型</a>）。
           </p>

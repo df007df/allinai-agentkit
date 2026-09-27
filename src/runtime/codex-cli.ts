@@ -17,10 +17,13 @@ export type CodexCliProcess = {
 
 /**
  * Builds the `codex exec` argument vector for a run. JSONL output keeps the
- * event mapping parseable. Full-permission execution (`-s
- * danger-full-access`, `--ask-for-approval never`): the daemon's own
- * approval layer (plugin-delivered hooks + hub decisions) is the gate,
- * not the CLI sandbox.
+ * event mapping parseable. Full-permission execution via `-s
+ * danger-full-access`: verified live on codex 0.156.1 — commands run
+ * immediately and the PreToolUse hook still fires (the sandbox policy and
+ * the hooks system are independent). `--ask-for-approval` no longer exists
+ * on `codex exec` in this version (it errors out), so it must not be passed.
+ * The daemon's own approval layer (plugin-delivered hooks + hub decisions)
+ * is the gate, not the CLI sandbox.
  */
 export function buildCodexExecArgs(
   input: CodexCliSpawn,
@@ -32,8 +35,6 @@ export function buildCodexExecArgs(
     "--skip-git-repo-check",
     "-s",
     "danger-full-access",
-    "--ask-for-approval",
-    "never",
     // Plugin-delivered hooks cannot be trusted interactively by an
     // unattended run; the scripts come from the agentkit-system plugin we
     // materialized ourselves, so托管信任 is the headless equivalent.

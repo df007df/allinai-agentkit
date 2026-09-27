@@ -1409,6 +1409,11 @@ export async function createLocalAgentDaemon(
     // prototype methods, which an object spread would drop from the wrapper.
     const baseRunner = runner;
     const approvalDecisions = new ToolApprovalDecisionMap();
+    // Set once the bridge exists; the wrapper wakes parked hook waiters so a
+    // console decision reaches the blocking hook POST immediately.
+    let notifyApprovalDecision:
+      | ((requestId: string, decision: { decision: "allow" | "deny"; reason?: string } | null) => void)
+      | null = null;
     const supportsApprovalRelay =
       typeof baseRunner.respondToolApproval === "function" &&
       typeof baseRunner.ownerOfToolApproval === "function";
@@ -1420,7 +1425,9 @@ export async function createLocalAgentDaemon(
         decision: "allow" | "deny",
         reason?: string,
       ) => {
+        const recorded = { decision, ...(reason !== undefined ? { reason } : {}) };
         approvalDecisions.record(requestId, decision, reason);
+        notifyApprovalDecision?.(requestId, recorded);
         baseRunner.respondToolApproval?.(
           executionId,
           requestId,
@@ -1490,7 +1497,22 @@ export async function createLocalAgentDaemon(
         approvalBridge = await (options.startToolApprovalBridge ??
           startToolApprovalHttpBridge)({
           resolveDecision: (requestId) => approvalDecisions.resolve(requestId),
+          // Hook-initiated approvals log at the bridge: the bridge is the
+          // only witness of the tool call itself. The human decision later
+          // lands through the normal respond_tool_approval path.
+          onRequestRegistered: (hookRequest) => {
+            bridgeLog.info("daemon", "tool_approval_hook_request", {
+              requestId: hookRequest.requestId,
+              platform: hookRequest.platform,
+              toolName: hookRequest.toolName,
+            });
+          },
         });
+        const bridgeWithNotify = approvalBridge as typeof approvalBridge & {
+          notifyDecision?: NonNullable<typeof notifyApprovalDecision>;
+        };
+        notifyApprovalDecision =
+          bridgeWithNotify.notifyDecision ?? null;
       } catch (error) {
         // The bridge is an optional convenience for hook-based approvals; a
         // listen failure (port taken, no loopback) must not fail daemon boot.

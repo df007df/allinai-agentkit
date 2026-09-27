@@ -34,14 +34,27 @@ export type ClaudeHooksInstallResult = {
 
 export function claudeHookScriptSource(controlEndpoint: string): string {
   return `#!/bin/bash
-# Installed by allinai-agentkit: relay Claude Code permission requests
-# (the headless ask-user moment) to the local daemon. The daemon's
-# synchronous reply is the human decision; a decision to deny blocks,
-# anything else allows. Allow must be explicit — an empty hook reply makes
-# the platform auto-deny the call.
+# Installed by allinai-agentkit: relay the Claude Code PermissionRequest
+# hook (the headless ask-user moment) to the local daemon in two phases.
+# Phase 1 registers the call and mints a requestId; phase 2 parks until the
+# human decision made in the console arrives under that id. A decision to
+# deny blocks, anything else allows. Allow must be explicit — an empty hook
+# reply makes the platform auto-deny the call.
 IN=$(cat)
-RESP=$(curl -s --max-time 300 -X POST -H 'content-type: application/json' \\
-  --data "{\\"platform\\":\\"claude\\",\\"payload\\":$IN}" \\
+REG=$(curl -s --max-time 30 -X POST -H 'content-type: application/json' \\
+  --data "{\\"platform\\":\\"claude\\",\\"payload\\":{\\"request\\":$IN}}" \\
+  ${controlEndpoint}/control/tool-approval)
+RID=$(printf '%s' "$REG" | python3 -c "import json,sys;
+try:
+  print(json.load(sys.stdin).get('requestId',''))
+except Exception:
+  print('')" 2>/dev/null)
+PAYLOAD=$(python3 -c "import json,sys;
+inner=json.loads(sys.argv[1])
+inner['requestId']='$RID'
+print(json.dumps(inner))" "$IN" 2>/dev/null)
+RESP=$(curl -s --max-time 330 -X POST -H 'content-type: application/json' \\
+  --data "{\\"platform\\":\\"claude\\",\\"payload\\":$PAYLOAD}" \\
   ${controlEndpoint}/control/tool-approval)
 DEC=$(printf '%s' "$RESP" | python3 -c "import json,sys;
 try:
