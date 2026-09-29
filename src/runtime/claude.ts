@@ -30,6 +30,8 @@ export type CreateClaudeAdapterDeps = {
   which?: WhichFn;
   /** Claude CLI command; defaults to "claude". Tests inject a stub script. */
   claudeCommand?: string;
+  /** Environment the CLI child inherits; defaults to process.env. */
+  childEnv?: NodeJS.ProcessEnv;
 };
 
 function errorMessage(error: unknown): string {
@@ -89,6 +91,7 @@ export function createClaudeAdapter(
             : [],
         },
         signal,
+        deps.childEnv,
       );
 
       let sawDone = false;

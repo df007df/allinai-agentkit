@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
-import { EventEmitter } from "node:events";
 import { describe, it } from "node:test";
 import {
   createRunnerManager,
-  type RunnerChildProcess,
-  type RunnerSpawn,
+  InProcessRunnerManager,
+  type PlatformAdapterLookup,
+  type RunnerManagerOptions,
 } from "./runner-manager.js";
-import type { PlatformRunInput } from "./types.js";
+import type { PlatformEvent, PlatformId, PlatformRunInput } from "./types.js";
 
 function runInput(platform: PlatformRunInput["platform"]): PlatformRunInput {
   return {
@@ -23,41 +23,16 @@ async function collect<T>(iterable: AsyncIterable<T>): Promise<T[]> {
   return values;
 }
 
-class FakeChild extends EventEmitter implements RunnerChildProcess {
-  pid: number | undefined;
-  readonly stdin = {
-    writes: [] as string[],
-    write: (chunk: string) => {
-      this.stdin.writes.push(chunk);
-      return true;
-    },
-  };
-  stdout: EventEmitter | null = new EventEmitter();
-  readonly stderr = new EventEmitter();
-  killSignal: NodeJS.Signals | undefined;
-  killSignals: NodeJS.Signals[] = [];
+function tick(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
 
-  kill(signal?: NodeJS.Signals): boolean {
-    this.killSignal = signal;
-    if (signal) this.killSignals.push(signal);
-    return true;
-  }
-
-  writeEvent(event: unknown): void {
-    this.stdout?.emit("data", `${JSON.stringify({ type: "event", event })}\n`);
-  }
-
-  writeRaw(line: string): void {
-    this.stdout?.emit("data", line);
-  }
-
-  writeChunk(chunk: Uint8Array): void {
-    this.stdout?.emit("data", chunk);
-  }
-
-  close(code: number | null, signal: NodeJS.Signals | null = null): void {
-    this.emit("close", code, signal);
-  }
+function isAbortError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error.name === "AbortError" ||
+      (error as NodeJS.ErrnoException).code === "ABORT_ERR")
+  );
 }
 
 type ScheduledTimer = {
@@ -89,40 +64,178 @@ class FakeTimers {
   }
 }
 
-function fakeSpawner(): {
-  spawn: RunnerSpawn;
-  children: FakeChild[];
-  calls: Array<{ command: string; args: string[]; options: unknown }>;
+/**
+ * A push-controlled fake adapter: tests emit/end/fail the underlying stream
+ * while the manager drains it like a real platform adapter.
+ */
+type ControlledAdapter = {
+  readonly id: PlatformId;
+  emit(event: PlatformEvent): void;
+  end(): void;
+  fail(error: Error): void;
+  readonly signal: AbortSignal | undefined;
+  readonly startedInputs: readonly PlatformRunInput[];
+};
+
+function fakeAdapters(): {
+  lookup: PlatformAdapterLookup;
+  forPlatform(platform: PlatformId): ControlledAdapter;
 } {
-  const children: FakeChild[] = [];
-  const calls: Array<{ command: string; args: string[]; options: unknown }> =
-    [];
+  const adapters = new Map<
+    PlatformId,
+    ReturnType<PlatformAdapterLookup["get"]>
+  >();
+  const controlled = new Map<PlatformId, ControlledAdapter>();
+
+  const lookup: PlatformAdapterLookup = {
+    get(id) {
+      const existing = adapters.get(id);
+      if (existing) return existing;
+      const state = {
+        signal: undefined as AbortSignal | undefined,
+        inputs: [] as PlatformRunInput[],
+        sinks: [] as PushQueue<PlatformEvent>[],
+      };
+      const platformAdapter = {
+        id,
+        async probe() {
+          return { installed: true, version: "test" };
+        },
+        async *start(input: PlatformRunInput, signal: AbortSignal) {
+          state.signal = signal;
+          state.inputs.push(input);
+          const queue = new PushQueue<PlatformEvent>();
+          state.sinks.push(queue);
+          try {
+            for await (const event of queue.stream()) {
+              yield event;
+            }
+          } catch (error) {
+            if (signal.aborted && isAbortError(error)) {
+              yield { type: "done", payload: { aborted: true } };
+              return;
+            }
+            throw error;
+          }
+        },
+      };
+      adapters.set(
+        id,
+        platformAdapter as unknown as ReturnType<
+          PlatformAdapterLookup["get"]
+        >,
+      );
+      controlled.set(id, {
+        id,
+        emit(event) {
+          for (const sink of state.sinks) sink.push(event);
+        },
+        end() {
+          for (const sink of state.sinks) sink.close();
+        },
+        fail(error) {
+          for (const sink of state.sinks) sink.fail(error);
+        },
+        get signal() {
+          return state.signal;
+        },
+        get startedInputs() {
+          return state.inputs;
+        },
+      });
+      return adapters.get(id)!;
+    },
+  };
+
   return {
-    children,
-    calls,
-    spawn: (command, args, options) => {
-      const child = new FakeChild();
-      children.push(child);
-      calls.push({ command, args, options });
-      return child;
+    lookup,
+    forPlatform(platform) {
+      lookup.get(platform); // ensure registered
+      return controlled.get(platform)!;
     },
   };
 }
 
-describe("RunnerManager", () => {
-  it("forwards ordered events from one child and leaves the manager alive when it exits with an error", async () => {
-    const fake = fakeSpawner();
-    const manager = createRunnerManager({
-      spawn: fake.spawn,
-      childEntrypoint: "/client-owned/runner-child.js",
-    });
+/** Minimal push/pull queue driving a fake adapter's generator. */
+class PushQueue<T> {
+  private readonly values: T[] = [];
+  private readonly waiters: Array<(result: IteratorResult<T>) => void> = [];
+  private state: "open" | "closed" | "failed" = "open";
+  private failure: Error | null = null;
+
+  push(value: T): void {
+    if (this.state !== "open") return;
+    const waiter = this.waiters.shift();
+    if (waiter) {
+      waiter({ value, done: false });
+      return;
+    }
+    this.values.push(value);
+  }
+
+  close(): void {
+    if (this.state !== "open") return;
+    this.state = "closed";
+    for (const waiter of this.waiters.splice(0)) {
+      waiter({ value: undefined, done: true });
+    }
+  }
+
+  fail(error: Error): void {
+    if (this.state !== "open") return;
+    this.state = "failed";
+    this.failure = error;
+    for (const waiter of this.waiters.splice(0)) {
+      waiter({ value: undefined, done: true });
+    }
+  }
+
+  async *stream(): AsyncIterable<T> {
+    while (true) {
+      if (this.values.length > 0) {
+        yield this.values.shift() as T;
+        continue;
+      }
+      if (this.state === "failed") throw this.failure;
+      if (this.state === "closed") return;
+      const result = await new Promise<IteratorResult<T>>((resolve) =>
+        this.waiters.push(resolve),
+      );
+      // A waiter wakes as done only via close()/fail(); re-reading state
+      // catches the failure either way.
+      const settled = this.state as "open" | "closed" | "failed";
+      if (settled === "failed") throw this.failure;
+      if (result.done) return;
+      yield result.value;
+    }
+  }
+}
+
+function managerOptions(
+  lookup: PlatformAdapterLookup,
+  timers: FakeTimers,
+): RunnerManagerOptions {
+  return {
+    adapters: lookup,
+    firstEventTimeoutMs: 10,
+    stallTimeoutMs: 50,
+    totalTimeoutMs: 300,
+    scheduleTimeout: timers.schedule,
+    clearScheduledTimeout: timers.clear,
+  };
+}
+
+describe("InProcessRunnerManager", () => {
+  it("forwards ordered adapter events and leaves the manager healthy after an error event", async () => {
+    const fake = fakeAdapters();
+    const manager = createRunnerManager({ adapters: fake.lookup });
+    const adapter = fake.forPlatform("codex");
 
     const stream = manager.start("e1", runInput("codex"));
-    const child = fake.children[0]!;
-    child.writeEvent({ type: "init", payload: { sessionId: "s1" } });
-    child.writeEvent({ type: "text_delta", payload: { text: "hello" } });
-    child.writeEvent({ type: "error", payload: { reason: "adapter_failed" } });
-    child.close(1);
+    await tick();
+    adapter.emit({ type: "init", payload: { sessionId: "s1" } });
+    adapter.emit({ type: "text_delta", payload: { text: "hello" } });
+    adapter.emit({ type: "error", payload: { reason: "adapter_failed" } });
 
     const events = await collect(stream);
 
@@ -131,362 +244,71 @@ describe("RunnerManager", () => {
       ["init", "text_delta", "error"],
     );
     assert.equal(manager.isHealthy(), true);
+    assert.equal(manager.hasActiveExecution("e1"), false);
   });
 
-  it("injects proxy env into the child when proxyUrl is configured", async () => {
-    const fake = fakeSpawner();
-    const manager = createRunnerManager({
-      spawn: fake.spawn,
-      childEntrypoint: "/client-owned/runner-child.js",
-      proxyUrl: "http://127.0.0.1:7900",
-    });
+  it("resolves the adapter by input.platform and passes the run input through", async () => {
+    const fake = fakeAdapters();
+    const manager = createRunnerManager({ adapters: fake.lookup });
+    const expected = runInput("claude");
+
+    const stream = manager.start("e1", expected);
+    await tick();
+    const adapter = fake.forPlatform("claude");
+    assert.equal(adapter.startedInputs.length, 1);
+    assert.equal(adapter.startedInputs[0], expected);
+    assert.ok(adapter.signal instanceof AbortSignal);
+    adapter.emit({ type: "done", payload: { text: "ok" } });
+    await collect(stream);
+  });
+
+  it("fails closed when no adapter registry is configured", async () => {
+    const manager = createRunnerManager();
+    const events = await collect(manager.start("e1", runInput("pi")));
+    assert.equal(events.length, 1);
+    assert.equal(events[0]?.type, "error");
+    assert.equal(events[0]?.payload?.reason, "platform_adapter_unavailable");
+  });
+
+  it("reports a failure when the adapter stream ends before a terminal event", async () => {
+    const fake = fakeAdapters();
+    const manager = createRunnerManager({ adapters: fake.lookup });
+    const adapter = fake.forPlatform("codex");
 
     const stream = manager.start("e1", runInput("codex"));
-    const child = fake.children[0]!;
-    child.writeEvent({ type: "init", payload: { sessionId: "s1" } });
-    child.close(0);
-    await collect(stream);
+    await tick();
+    adapter.emit({ type: "init", payload: {} });
+    adapter.end();
 
-    const options = fake.calls[0].options as {
-      env: Record<string, string>;
-    };
-    const env = options.env;
-    assert.equal(env.HTTPS_PROXY, "http://127.0.0.1:7900");
-    assert.equal(env.HTTP_PROXY, "http://127.0.0.1:7900");
-    assert.equal(env.NO_PROXY, "localhost,127.0.0.1");
-  });
-
-  it("leaves the child env untouched when no proxyUrl is configured", async () => {
-    const fake = fakeSpawner();
-    const manager = createRunnerManager({
-      spawn: fake.spawn,
-      childEntrypoint: "/client-owned/runner-child.js",
-    });
-
-    const stream = manager.start("e1", runInput("codex"));
-    const child = fake.children[0]!;
-    child.writeEvent({ type: "init", payload: { sessionId: "s1" } });
-    child.close(0);
-    await collect(stream);
-
-    const spawnOptions = fake.calls[0].options as { env: Record<string, string> };
-    assert.equal(spawnOptions.env.HTTPS_PROXY, undefined);
-    assert.equal(spawnOptions.env.PATH, process.env.PATH);
-  });
-
-  it("cancels the child process group for the requested execution only", async () => {
-    const fake = fakeSpawner();
-    const manager = createRunnerManager({
-      spawn: fake.spawn,
-      childEntrypoint: "/client-owned/runner-child.js",
-    });
-
-    manager.start("e1", runInput("codex"));
-    manager.start("e2", runInput("claude"));
-    await manager.cancel("e1");
-
-    assert.equal(fake.children[0]?.killSignal, "SIGTERM");
-    assert.equal(fake.children[1]?.killSignal, undefined);
-    fake.children[0]?.close(null, "SIGTERM");
-    fake.children[1]?.close(0);
-  });
-
-  it("waits for a terminal child's close before reporting the runner idle", async () => {
-    const fake = fakeSpawner();
-    const manager = createRunnerManager({
-      spawn: fake.spawn,
-      childEntrypoint: "/client-owned/runner-child.js",
-    });
-
-    const stream = manager.start("e1", runInput("codex"));
-    const idle = manager.waitForIdle();
-    let idleResolved = false;
-    void idle.then(() => {
-      idleResolved = true;
-    });
-
-    fake.children[0]?.writeEvent({ type: "done" });
-    await collect(stream);
-    await new Promise<void>((resolve) => setImmediate(resolve));
-    assert.equal(idleResolved, false);
-
-    fake.children[0]?.close(0);
-    await idle;
-    assert.equal(idleResolved, true);
-  });
-
-  it("uses a fixed client-owned entrypoint with shell disabled and sends Hub input only over JSONL", () => {
-    const fake = fakeSpawner();
-    const manager = createRunnerManager({
-      spawn: fake.spawn,
-      childEntrypoint: "/client-owned/runner-child.js",
-    });
-
-    manager.start("e1", runInput("pi"));
-
-    const spawnOptions = fake.calls[0].options as { env: Record<string, string> };
-    assert.equal(spawnOptions.env.HTTPS_PROXY, undefined);
-    assert.equal(spawnOptions.env.PATH, process.env.PATH);
+    const events = await collect(stream);
+    assert.deepEqual(
+      events.map((event) => event.type),
+      ["init", "error"],
+    );
     assert.match(
-      fake.children[0]!.stdin.writes[0]!,
-      /Summarise the local project/,
+      String(events.at(-1)?.payload?.reason),
+      /runner_stream_ended/,
     );
-    assert.doesNotMatch(
-      fake.calls[0]!.args.join(" "),
-      /Summarise the local project/,
-    );
-    fake.children[0]?.close(0);
-  });
-
-  it("turns malformed child JSONL into one error event without poisoning later runs", async () => {
-    const fake = fakeSpawner();
-    const manager = createRunnerManager({
-      spawn: fake.spawn,
-      childEntrypoint: "/client-owned/runner-child.js",
-    });
-
-    const first = manager.start("e1", runInput("zcode"));
-    fake.children[0]?.writeRaw("not json\n");
-    fake.children[0]?.close(1);
-    const firstEvents = await collect(first);
-
-    const second = manager.start("e2", runInput("codex"));
-    fake.children[1]?.writeEvent({ type: "done" });
-    fake.children[1]?.close(0);
-    const secondEvents = await collect(second);
-
-    assert.deepEqual(
-      firstEvents.map((event) => event.type),
-      ["error"],
-    );
-    assert.deepEqual(
-      secondEvents.map((event) => event.type),
-      ["done"],
-    );
-    assert.equal(manager.isHealthy(), true);
-  });
-
-  it("cleans an active execution when a stdout-less child later closes", async () => {
-    const timers = new FakeTimers();
-    const child = new FakeChild();
-    child.stdout = null;
-    const spawn = () => child;
-    const noStdoutManager = createRunnerManager({
-      spawn,
-      childEntrypoint: "/client-owned/runner-child.js",
-      terminationGraceMs: 25,
-      scheduleTimeout: timers.schedule,
-      clearScheduledTimeout: timers.clear,
-    });
-
-    const events = await collect(
-      noStdoutManager.start("e1", runInput("codex")),
-    );
-    assert.deepEqual(
-      events.map((event) => event.type),
-      ["error"],
-    );
-    assert.equal(noStdoutManager.hasActiveExecution("e1"), true);
-    assert.deepEqual(child.killSignals, ["SIGTERM"]);
-
-    child.close(null, "SIGTERM");
-    assert.equal(noStdoutManager.hasActiveExecution("e1"), false);
-    timers.run(25);
-    assert.deepEqual(child.killSignals, ["SIGTERM"]);
-  });
-
-  it("preserves Chinese text when a UTF-8 character is split between stdout chunks", async () => {
-    const fake = fakeSpawner();
-    const manager = createRunnerManager({
-      spawn: fake.spawn,
-      childEntrypoint: "/client-owned/runner-child.js",
-    });
-
-    const stream = manager.start("e1", runInput("codex"));
-    const line = Buffer.from(
-      `${JSON.stringify({ type: "event", event: { type: "text_delta", payload: { text: "中文" } } })}\n`,
-      "utf8",
-    );
-    const firstChineseByte = line.indexOf(Buffer.from("中", "utf8"));
-    fake.children[0]?.writeChunk(line.subarray(0, firstChineseByte + 1));
-    fake.children[0]?.writeChunk(line.subarray(firstChineseByte + 1));
-    fake.children[0]?.writeEvent({ type: "done" });
-    fake.children[0]?.close(0);
-
-    const events = await collect(stream);
-    assert.equal(events[0]?.payload?.text, "中文");
-    assert.equal(events[1]?.type, "done");
-  });
-
-  it("escalates an ignored cancellation to SIGKILL and keeps its child tracked until close", async () => {
-    const fake = fakeSpawner();
-    const timers = new FakeTimers();
-    const processGroupSignals: NodeJS.Signals[] = [];
-    const manager = createRunnerManager({
-      spawn: fake.spawn,
-      childEntrypoint: "/client-owned/runner-child.js",
-      terminationGraceMs: 25,
-      scheduleTimeout: timers.schedule,
-      clearScheduledTimeout: timers.clear,
-      killProcessGroup: (_pid, signal) => processGroupSignals.push(signal),
-    });
-
-    manager.start("e1", runInput("codex"));
-    fake.children[0]!.pid = 123;
-    await manager.cancel("e1");
-
-    assert.deepEqual(processGroupSignals, ["SIGTERM"]);
-    assert.deepEqual(fake.children[0]?.killSignals, []);
-    assert.equal(manager.hasActiveExecution("e1"), true);
-    manager.start("e1", runInput("codex"));
-    assert.equal(fake.children.length, 1);
-
-    timers.run(25);
-    assert.deepEqual(processGroupSignals, ["SIGTERM", "SIGKILL"]);
-    assert.equal(manager.hasActiveExecution("e1"), true);
-
-    fake.children[0]?.close(null, "SIGKILL");
-    assert.equal(manager.hasActiveExecution("e1"), false);
-  });
-
-  it("escalates timeout and protocol failures while emitting only one terminal error", async () => {
-    const fake = fakeSpawner();
-    const timers = new FakeTimers();
-    const manager = createRunnerManager({
-      spawn: fake.spawn,
-      childEntrypoint: "/client-owned/runner-child.js",
-      stallTimeoutMs: 100,
-      terminationGraceMs: 25,
-      scheduleTimeout: timers.schedule,
-      clearScheduledTimeout: timers.clear,
-    });
-
-    const stream = manager.start("e1", runInput("codex"));
-    timers.run(100);
-    const events = await collect(stream);
-
-    assert.deepEqual(
-      events.map((event) => event.type),
-      ["error"],
-    );
-    assert.equal(fake.children[0]?.killSignal, "SIGTERM");
-    assert.equal(events[0]?.payload?.reason, "runner_timeout");
-    assert.equal(manager.hasActiveExecution("e1"), true);
-    timers.run(25);
-    assert.deepEqual(fake.children[0]?.killSignals, ["SIGTERM", "SIGKILL"]);
-    fake.children[0]?.close(null, "SIGKILL");
-
-    const protocolStream = manager.start("e2", runInput("claude"));
-    fake.children[1]?.writeRaw("invalid-json\n");
-    const protocolEvents = await collect(protocolStream);
-    assert.deepEqual(
-      protocolEvents.map((event) => event.type),
-      ["error"],
-    );
-    assert.deepEqual(fake.children[1]?.killSignals, ["SIGTERM"]);
-    timers.run(25);
-    assert.deepEqual(fake.children[1]?.killSignals, ["SIGTERM", "SIGKILL"]);
-    fake.children[1]?.close(null, "SIGKILL");
-
-    const streamError = manager.start("e3", runInput("pi"));
-    fake.children[2]?.stdout?.emit("error", new Error("stream broke"));
-    const streamEvents = await collect(streamError);
-    assert.deepEqual(
-      streamEvents.map((event) => event.type),
-      ["error"],
-    );
-    assert.deepEqual(fake.children[2]?.killSignals, ["SIGTERM"]);
-    timers.run(25);
-    assert.deepEqual(fake.children[2]?.killSignals, ["SIGTERM", "SIGKILL"]);
-    fake.children[2]?.close(null, "SIGKILL");
-  });
-
-  it("fires a first-event watchdog with the captured stderr tail when the child stays silent", async () => {
-    const fake = fakeSpawner();
-    const timers = new FakeTimers();
-    const manager = createRunnerManager({
-      spawn: fake.spawn,
-      childEntrypoint: "/client-owned/runner-child.js",
-      firstEventTimeoutMs: 200,
-      terminationGraceMs: 25,
-      scheduleTimeout: timers.schedule,
-      clearScheduledTimeout: timers.clear,
-    });
-
-    const stream = manager.start("e1", runInput("codex"));
-    fake.children[0]?.stderr?.emit(
-      "data",
-      "stream error: ECONNRESET against api.example.com",
-    );
-    timers.run(200);
-    const events = await collect(stream);
-
-    assert.deepEqual(
-      events.map((event) => event.type),
-      ["error"],
-    );
-    assert.equal(events[0]?.payload?.reason, "runner_timeout");
-    assert.equal(events[0]?.payload?.phase, "first_event");
-    assert.equal(
-      events[0]?.payload?.stderrTail,
-      "stream error: ECONNRESET against api.example.com",
-    );
-    assert.equal(fake.children[0]?.killSignal, "SIGTERM");
-    // The total ceiling must not fire a second failure afterwards.
-    timers.run(25);
-    fake.children[0]?.close(null, "SIGKILL");
-    assert.equal(manager.hasActiveExecution("e1"), false);
-  });
-
-  it("disarms the first-event watchdog once the first event arrives", async () => {
-    const fake = fakeSpawner();
-    const timers = new FakeTimers();
-    const manager = createRunnerManager({
-      spawn: fake.spawn,
-      childEntrypoint: "/client-owned/runner-child.js",
-      firstEventTimeoutMs: 50,
-      stallTimeoutMs: 500,
-      terminationGraceMs: 25,
-      scheduleTimeout: timers.schedule,
-      clearScheduledTimeout: timers.clear,
-    });
-
-    const stream = manager.start("e1", runInput("claude"));
-    fake.children[0]?.writeEvent({ type: "init", payload: {} });
-    timers.run(50);
-    fake.children[0]?.writeEvent({ type: "done", payload: {} });
-    const events = await collect(stream);
-
-    assert.deepEqual(
-      events.map((event) => event.type),
-      ["init", "done"],
-    );
-    timers.run(500);
-    fake.children[0]?.close(null);
-    assert.equal(manager.hasActiveExecution("e1"), false);
   });
 
   it("keeps the run alive while events flow and fails on the stall and total limits", async () => {
-    const fake = fakeSpawner();
+    const fake = fakeAdapters();
     const timers = new FakeTimers();
-    const manager = createRunnerManager({
-      spawn: fake.spawn,
-      childEntrypoint: "/client-owned/runner-child.js",
-      firstEventTimeoutMs: 10,
-      stallTimeoutMs: 50,
-      totalTimeoutMs: 300,
-      terminationGraceMs: 25,
-      scheduleTimeout: timers.schedule,
-      clearScheduledTimeout: timers.clear,
-    });
+    const manager = createRunnerManager(managerOptions(fake.lookup, timers));
+    const adapter = fake.forPlatform("codex");
 
     const stream = manager.start("e1", runInput("codex"));
-    fake.children[0]?.writeEvent({ type: "init", payload: {} });
+    await tick();
+    adapter.emit({ type: "init", payload: {} });
     // Events keep arriving just inside the stall window: no stall failure.
-    for (let tick = 1; tick <= 3; tick += 1) {
-      fake.children[0]?.writeEvent({ type: "tool", payload: { n: tick } });
+    // Each emit wakes drain on a microtask; tick first so the manager has
+    // actually processed the event (and restarted the stall clock) before
+    // firing the fake clock.
+    for (let n = 1; n <= 3; n += 1) {
+      await tick();
+      adapter.emit({ type: "tool", payload: { n } });
+      await tick();
       timers.run(49);
-      assert.equal(fake.children[0]?.killSignal, undefined);
     }
     // Total ceiling still fires even though the last event was recent.
     timers.run(300);
@@ -498,27 +320,54 @@ describe("RunnerManager", () => {
     const totalEvent = events.at(-1);
     assert.equal(totalEvent?.payload?.phase, "total");
     assert.match(String(totalEvent?.payload?.message), /total limit/);
-    timers.run(25);
-    fake.children[0]?.close(null, "SIGKILL");
+  });
+
+  it("fires a first-event watchdog when the adapter stays silent and aborts the run", async () => {
+    const fake = fakeAdapters();
+    const timers = new FakeTimers();
+    const manager = createRunnerManager(managerOptions(fake.lookup, timers));
+    const adapter = fake.forPlatform("claude");
+
+    const stream = manager.start("e1", runInput("claude"));
+    await tick();
+    timers.run(10);
+    const events = await collect(stream);
+
+    assert.equal(events.length, 1);
+    assert.equal(events[0]?.type, "error");
+    assert.equal(events[0]?.payload?.phase, "first_event");
+    assert.equal(adapter.signal?.aborted, true);
+  });
+
+  it("disarms the first-event watchdog once the first event arrives", async () => {
+    const fake = fakeAdapters();
+    const timers = new FakeTimers();
+    const manager = createRunnerManager(managerOptions(fake.lookup, timers));
+    const adapter = fake.forPlatform("codex");
+
+    const stream = manager.start("e1", runInput("codex"));
+    await tick();
+    adapter.emit({ type: "init", payload: {} });
+    await tick(); // let drain process init and disarm the first-event timer
+    timers.run(10); // would be the first-event deadline
+    adapter.emit({ type: "done", payload: {} });
+    const events = await collect(stream);
+    assert.deepEqual(
+      events.map((event) => event.type),
+      ["init", "done"],
+    );
   });
 
   it("fails with phase=stall when the event flow goes silent mid-run", async () => {
-    const fake = fakeSpawner();
+    const fake = fakeAdapters();
     const timers = new FakeTimers();
-    const manager = createRunnerManager({
-      spawn: fake.spawn,
-      childEntrypoint: "/client-owned/runner-child.js",
-      firstEventTimeoutMs: 10,
-      stallTimeoutMs: 50,
-      totalTimeoutMs: 10_000,
-      terminationGraceMs: 25,
-      scheduleTimeout: timers.schedule,
-      clearScheduledTimeout: timers.clear,
-    });
+    const manager = createRunnerManager(managerOptions(fake.lookup, timers));
+    const adapter = fake.forPlatform("claude");
 
     const stream = manager.start("e1", runInput("claude"));
-    fake.children[0]?.writeEvent({ type: "init", payload: {} });
-    fake.children[0]?.stderr?.emit("data", "connection stalled: ECONNRESET");
+    await tick();
+    adapter.emit({ type: "init", payload: {} });
+    await tick(); // let drain process init before arming the fake clock
     timers.run(50);
     const events = await collect(stream);
 
@@ -526,111 +375,145 @@ describe("RunnerManager", () => {
       events.map((event) => event.type),
       ["init", "error"],
     );
-    const errorEvent = events.at(-1);
-    assert.equal(errorEvent?.payload?.phase, "stall");
+    assert.equal(events.at(-1)?.payload?.phase, "stall");
+  });
+
+  it("turns a thrown adapter error into one terminal error without poisoning later runs", async () => {
+    const fake = fakeAdapters();
+    const manager = createRunnerManager({ adapters: fake.lookup });
+    const adapter = fake.forPlatform("codex");
+
+    const first = manager.start("e1", runInput("codex"));
+    await tick();
+    adapter.fail(new Error("adapter exploded"));
+    const firstEvents = await collect(first);
+    assert.deepEqual(
+      firstEvents.map((event) => event.type),
+      ["error"],
+    );
     assert.equal(
-      errorEvent?.payload?.stderrTail,
-      "connection stalled: ECONNRESET",
+      firstEvents[0]?.payload?.reason,
+      "platform_adapter_failed",
     );
-    timers.run(25);
-    fake.children[0]?.close(null, "SIGKILL");
+
+    const second = manager.start("e2", runInput("codex"));
+    await tick();
+    fake.forPlatform("codex").emit({ type: "done", payload: {} });
+    const secondEvents = await collect(second);
+    assert.deepEqual(
+      secondEvents.map((event) => event.type),
+      ["done"],
+    );
+    assert.equal(manager.isHealthy(), true);
   });
-});
 
-describe("RunnerManager tool approvals", () => {
-  it("does not close child stdin after run.start so decisions can be sent later", async () => {
-    const fake = fakeSpawner();
-    const manager = createRunnerManager({
-      spawn: fake.spawn,
-      childEntrypoint: "/client-owned/runner-child.js",
-    });
+  it("cancel aborts the adapter signal and the run finishes gracefully", async () => {
+    const fake = fakeAdapters();
+    const manager = createRunnerManager({ adapters: fake.lookup });
+    const adapter = fake.forPlatform("pi");
 
-    const stream = manager.start("e1", runInput("claude"));
-    const child = fake.children[0]!;
-    child.writeEvent({ type: "done" });
+    const stream = manager.start("e1", runInput("pi"));
+    await tick();
+    const collected = collect(stream);
+    await manager.cancel("e1");
+    assert.equal(adapter.signal?.aborted, true);
+    // The fake adapter surfaces abort as a done event.
+    adapter.emit({ type: "done", payload: { aborted: true } });
+    const events = await collected;
+    assert.deepEqual(
+      events.map((event) => event.type),
+      ["done"],
+    );
+    assert.equal(manager.hasActiveExecution("e1"), false);
+  });
+
+  it("cancel of an unknown or already-settled execution is a no-op", async () => {
+    const fake = fakeAdapters();
+    const manager = createRunnerManager({ adapters: fake.lookup });
+    await manager.cancel("missing");
+
+    const stream = manager.start("e1", runInput("codex"));
+    await tick();
+    fake.forPlatform("codex").emit({ type: "done", payload: {} });
     await collect(stream);
-
-    assert.equal(child.stdin.writes.length, 1);
-    // The FakeChild stdin surface has no end(): its absence in the writes
-    // history is the assertion that run.start was not followed by a close.
-    assert.ok(!child.stdin.writes.join("").includes('"end"'));
+    // Settled: cancel must not resurrect or throw.
+    await manager.cancel("e1");
+    assert.equal(manager.hasActiveExecution("e1"), false);
   });
 
-  it("surfaces a tool_approval.request as a tool progress event and forwards the decision to the child", async () => {
-    const fake = fakeSpawner();
-    const manager = createRunnerManager({
-      spawn: fake.spawn,
-      childEntrypoint: "/client-owned/runner-child.js",
-    });
+  it("an AbortError surfacing after cancel lands as a graceful aborted done, not a failure", async () => {
+    const fake = fakeAdapters();
+    const manager = createRunnerManager({ adapters: fake.lookup });
+    const adapter = fake.forPlatform("codex");
 
-    const iterator = manager.start("e2", runInput("pi"))[Symbol.asyncIterator]();
-    const child = fake.children[0]!;
-    // Drain nothing manually; instead emit the approval request directly.
-    child.writeRaw(
-      `${JSON.stringify({
-        type: "tool_approval.request",
-        requestId: "req-7",
-        toolName: "Bash",
-        toolInput: { command: "rm -rf /tmp/x" },
-      })}\n`,
-    );
-    const approvalEvent = await iterator.next();
-    assert.equal(approvalEvent.value?.type, "tool");
-    assert.deepEqual(approvalEvent.value?.payload?.toolApproval, {
-      requestId: "req-7",
-      toolName: "Bash",
-      toolInput: { command: "rm -rf /tmp/x" },
-    });
-
-    manager.respondToolApproval?.("e2", "req-7", "deny", "not today");
-    const decisionLine = JSON.parse(child.stdin.writes[1]!);
-    assert.equal(decisionLine.type, "tool_approval.response");
-    assert.equal(decisionLine.requestId, "req-7");
-    assert.equal(decisionLine.decision, "deny");
-    assert.equal(decisionLine.reason, "not today");
-
-    child.writeEvent({ type: "done" });
-    const final = await iterator.next();
-    assert.equal(final.value?.type, "done");
-    // The queue closes after the terminal event; the next read reports done.
-    const closed = await iterator.next();
-    assert.equal(closed.done, true);
+    const stream = manager.start("e1", runInput("codex"));
+    await tick();
+    const collected = collect(stream);
+    await manager.cancel("e1");
+    const abortError = new Error("The operation was aborted");
+    abortError.name = "AbortError";
+    // The fake adapter mirrors the real CLI adapters: an abort surfaces as a
+    // terminal done(aborted) event, never as a platform failure.
+    adapter.fail(abortError);
+    await tick();
+    const events = await collected;
+    assert.deepEqual(events, [
+      { type: "done", payload: { aborted: true } },
+    ]);
+    assert.equal(manager.hasActiveExecution("e1"), false);
   });
 
-  it("ignores decisions for unknown request ids and denies every pending approval on cancel", async () => {
-    const fake = fakeSpawner();
-    const manager = createRunnerManager({
-      spawn: fake.spawn,
-      childEntrypoint: "/client-owned/runner-child.js",
+  it("waitForIdle resolves once the last stream settles and tracks concurrent runs separately", async () => {
+    const fake = fakeAdapters();
+    const manager = new InProcessRunnerManager({ adapters: fake.lookup });
+    const codex = fake.forPlatform("codex");
+    const claude = fake.forPlatform("claude");
+
+    const s1 = manager.start("e1", runInput("codex"));
+    const s2 = manager.start("e2", runInput("claude"));
+    await tick();
+
+    let idle = false;
+    void manager.waitForIdle().then(() => {
+      idle = true;
     });
+    await tick();
+    assert.equal(idle, false);
 
-    const iterator = manager.start("e3", runInput("claude"))[Symbol.asyncIterator]();
-    const child = fake.children[0]!;
-    child.writeRaw(
-      `${JSON.stringify({
-        type: "tool_approval.request",
-        requestId: "req-a",
-        toolName: "Edit",
-        toolInput: { path: "a.ts" },
-      })}\n`,
+    codex.emit({ type: "done", payload: {} });
+    await collect(s1);
+    await tick();
+    assert.equal(idle, false, "claude run is still active");
+
+    claude.emit({ type: "done", payload: {} });
+    await collect(s2);
+    await tick();
+    assert.equal(idle, true);
+    assert.equal(manager.hasActiveExecution("e1"), false);
+    assert.equal(manager.hasActiveExecution("e2"), false);
+  });
+
+  it("respondToolApproval and ownerOfToolApproval stay as bridge-compatibility no-ops", async () => {
+    const fake = fakeAdapters();
+    const manager = createRunnerManager({ adapters: fake.lookup });
+    const stream = manager.start("e1", runInput("codex"));
+    await tick();
+    assert.doesNotThrow(() =>
+      manager.respondToolApproval("e1", "req-1", "deny", "not today"),
     );
-    await iterator.next();
+    assert.equal(manager.ownerOfToolApproval("req-1"), null);
+    assert.equal(manager.ownerOfToolApproval("req-unknown"), null);
+    fake.forPlatform("codex").emit({ type: "done", payload: {} });
+    await collect(stream);
+  });
 
-    manager.respondToolApproval?.("e3", "req-unknown", "allow");
-    const writesAfterUnknown = child.stdin.writes.length;
-    manager.cancel("e3");
-
-    // Unknown request ids must not write anything; cancel denies the one
-    // pending approval so the child can settle before termination.
-    assert.equal(child.stdin.writes.length, writesAfterUnknown + 1);
-    const decisionLine = JSON.parse(
-      child.stdin.writes[child.stdin.writes.length - 1]!,
-    );
-    assert.equal(decisionLine.type, "tool_approval.response");
-    assert.equal(decisionLine.requestId, "req-a");
-    assert.equal(decisionLine.decision, "deny");
-    assert.equal(decisionLine.reason, "Execution cancelled");
-    child.close(0, null);
-    await iterator.next();
+  it("starting the same executionId twice returns the same stream", async () => {
+    const fake = fakeAdapters();
+    const manager = createRunnerManager({ adapters: fake.lookup });
+    const stream = manager.start("e1", runInput("codex"));
+    assert.equal(manager.start("e1", runInput("codex")), stream);
+    await tick();
+    fake.forPlatform("codex").emit({ type: "done", payload: {} });
+    await collect(stream);
   });
 });

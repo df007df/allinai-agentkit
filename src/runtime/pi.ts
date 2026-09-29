@@ -26,6 +26,8 @@ export type CreatePiAdapterDeps = {
   which?: WhichFn;
   /** Pi CLI command; defaults to "pi". Tests inject a stub script. */
   piCommand?: string;
+  /** Environment the CLI child inherits; defaults to process.env. */
+  childEnv?: NodeJS.ProcessEnv;
 };
 
 function errorMessage(error: unknown): string {
@@ -71,6 +73,7 @@ export function createPiAdapter(
 
       const child = spawn(deps.piCommand ?? "pi", args, {
         cwd: input.cwd,
+        env: deps.childEnv,
         shell: false,
         stdio: ["ignore", "pipe", "pipe"],
         signal,

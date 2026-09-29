@@ -56,6 +56,7 @@ import type {
 import {
   createPlatformAdapterRegistry,
   createRunnerManager,
+  platformChildEnv,
   type PlatformProbe,
   type RegisteredPlatformAdapter,
   type RunnerManager,
@@ -1328,7 +1329,11 @@ export async function createLocalAgentDaemon(
     });
     const basePlugins: PluginConfig[] = [systemPluginConfig()];
     runner = (options.createRunner ?? createRunnerManager)({
-      ...(config.proxy ? { proxyUrl: config.proxy } : {}),
+      // The manager runs adapters in-process now; the registry carries the
+      // proxy-merged child env that the old runner-child spawn used to.
+      adapters: createPlatformAdapterRegistry({
+        ...(config.proxy ? { childEnv: platformChildEnv(config.proxy) } : {}),
+      }),
     });
     const token = await (
       options.credentials ?? createCredentialStore({ paths })

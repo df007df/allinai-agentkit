@@ -14,24 +14,12 @@ export {
   platformErrorEvent,
 } from "./events.js";
 export {
-  DEFAULT_RUNNER_CHILD_ENTRYPOINT,
   createRunnerManager,
-  IsolatedRunnerManager,
-  type RunnerChildProcess,
+  InProcessRunnerManager,
+  platformChildEnv,
+  type PlatformAdapterLookup,
   type RunnerManagerOptions,
-  type RunnerSpawn,
-  type RunnerSpawnOptions,
 } from "./runner-manager.js";
-export {
-  encodeJsonLine,
-  encodeRunnerEvent,
-  encodeRunnerStart,
-  JsonlDecoder,
-  parseRunnerChildMessage,
-  parseRunnerStart,
-  type RunnerChildMessage,
-  type RunnerStartMessage,
-} from "./runner-wire.js";
 export {
   createCodexAdapter,
   type CodexAdapter,

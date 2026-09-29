@@ -55,6 +55,8 @@ export type CreateCodexAdapterDeps = {
   which?: WhichFn;
   /** Codex CLI command; defaults to "codex". Tests inject a stub script. */
   codexCommand?: string;
+  /** Environment the CLI child inherits; defaults to process.env. */
+  childEnv?: NodeJS.ProcessEnv;
 };
 
 function payload(values: Record<string, unknown>): PlatformEvent["payload"] {
@@ -111,6 +113,7 @@ export function createCodexAdapter(
           prompt: input.prompt,
         },
         signal,
+        deps.childEnv,
       );
 
       let terminal = false;

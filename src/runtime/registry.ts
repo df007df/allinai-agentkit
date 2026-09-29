@@ -36,16 +36,32 @@ export type CreatePlatformAdapterRegistryDeps = {
   codex?: CreateCodexAdapterDeps;
   claude?: CreateClaudeAdapterDeps;
   pi?: CreatePiAdapterDeps;
+  /**
+   * Environment every CLI child inherits across all platforms (proxy merge
+   * happens before this). Per-platform deps still win when they set their
+   * own childEnv.
+   */
+  childEnv?: NodeJS.ProcessEnv;
 };
 
 /** Creates one explicit adapter per supported runtime without vendor fallback. */
 export function createPlatformAdapterRegistry(
   deps: CreatePlatformAdapterRegistryDeps = {},
 ): PlatformAdapterRegistry {
+  const sharedEnv = deps.childEnv;
   const adapters = {
-    codex: createCodexAdapter(deps.codex),
-    claude: createClaudeAdapter(deps.claude),
-    pi: createPiAdapter(deps.pi),
+    codex: createCodexAdapter({
+      ...(sharedEnv ? { childEnv: sharedEnv } : {}),
+      ...deps.codex,
+    }),
+    claude: createClaudeAdapter({
+      ...(sharedEnv ? { childEnv: sharedEnv } : {}),
+      ...deps.claude,
+    }),
+    pi: createPiAdapter({
+      ...(sharedEnv ? { childEnv: sharedEnv } : {}),
+      ...deps.pi,
+    }),
     zcode: createZCodeAdapter(),
   };
 
