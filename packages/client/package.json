@@ -10,7 +10,7 @@
     "node": ">=22.18.0"
   },
   "name": "@allin-ai/agentkit-client",
-  "description": "Standalone persistent Agent Client: connect to a Hub, durably execute local platform agents and policy-gated capabilities, and report state upstream.",
+  "description": "Run local AI agents for a connected Hub, with project selection, plugin delivery, execution records, connection recovery, and local approvals.",
   "private": false,
   "main": "./src/index.ts",
   "files": [

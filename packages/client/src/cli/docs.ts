@@ -53,17 +53,22 @@ export function cliManual(): CliManual {
     schema: "allinai-agentkit.cli-manual",
     package: "@allin-ai/agentkit-client",
     overview:
-      "Standalone persistent Agent Client: connect to a Hub over WebSocket, " +
-      "durably execute local platform agents (codex / claude / pi / zcode) " +
-      "and policy-gated capabilities, and report state upstream. This manual " +
-      "covers every allinai-agentkit subcommand so an agent can configure, " +
-      "run and diagnose the client without reading the source.",
+      "allinai-agentkit connects applications to local AI agents. The Hub " +
+      "dispatches tasks and provides a web console; this Client runs Codex, " +
+      "Claude, Pi or zcode on the execution machine and reports progress and results. " +
+      "Use it to work in registered projects, share plugin skills, recover connections, " +
+      "handle approvals and collaborate through Issues. Install and authenticate " +
+      "the platform CLI separately. This manual covers Client setup, daily operations " +
+      "and troubleshooting.",
     quickstart: [
       "npm install -g @allin-ai/agentkit-hub    # Hub machine: SDK and Console; Client is installed separately",
       "npm install -g @allin-ai/agentkit-client # execution machine: persistent Client and CLI",
       "allinai-agentkit-hub web    # terminal A: local Console (Hub + web UI) on http://127.0.0.1:4317; provided by @allin-ai/agentkit-hub",
       "allinai-agentkit login --hub http://127.0.0.1:4317   # terminal B: browser pairing; requires the Console running",
+      "# optional: register an existing project before starting the Client; replace the path with a real absolute directory",
+      "allinai-agentkit project --name web --path /absolute/path/to/your-project",
       "allinai-agentkit daemon  # terminal B: run the persistent client in the foreground",
+      "# in the Console, select the online Client, an installed platform and the optional project, then submit a task",
       "# headless / CI: skip the browser and pair directly:",
       "allinai-agentkit init --hub http://127.0.0.1:4317 --token <TOKEN>",
       "allinai-agentkit doctor  # verify git, config, pairing and runtime detection",
@@ -219,7 +224,7 @@ export function cliManual(): CliManual {
         description: "Pre-approved capability permissions (e.g. network, workspace:write)",
       },
       { field: "policy.allowedGitOrigins", description: "Optional stricter allowlist of Git origins; empty trusts any HTTPS/SSH URL (post-clone validation still applies)" },
-      { field: "policy.deniedPluginIds", description: "Plugin IDs that must never activate" },
+      { field: "policy.deniedPluginIds", description: "Plugin IDs blocked for capability invocations by local policy" },
       { field: "policy.allowedWorkspaceRoots", description: "Roots capability invocations may use as workspace" },
       { field: "projects", description: "Locally registered { name, path, dir } working directories; dir is the session-record suffix generated at registration" },
     ],
@@ -246,12 +251,15 @@ export function cliManual(): CliManual {
         ],
       },
       {
-        title: "First-time setup with the local Console",
-        description: "Bring up a local Hub and pair a client against it.",
+        title: "Run your first task from the local Console",
+        description: "Use the Console to send a code review, investigation or documentation task to this machine. Pair the Client, optionally register a project, then keep it running while you watch task progress in the browser.",
         steps: [
           "allinai-agentkit-hub web",
           "allinai-agentkit login --hub http://127.0.0.1:4317",
+          "allinai-agentkit project --name web --path /absolute/path/to/your-project   # optional; replace the path",
           "allinai-agentkit daemon",
+          "# open the Console, select the Client, platform and project, then submit your task",
+          "# in another terminal, check the running Client:",
           "allinai-agentkit status",
         ],
       },
@@ -266,19 +274,31 @@ export function cliManual(): CliManual {
       },
       {
         title: "Register a project directory for Hub runs",
-        description: "agent.run payloads may then select it via payload.project; the run's cwd is the configured path and its session records land under projects/<name>-<dir>/sessions/.",
+        description: "Use a named project when tasks should inspect or edit an existing repository. Runs use its registered directory; session records stay in the Client data directory. Register before daemon startup so the initial inventory includes the project.",
         steps: [
           "allinai-agentkit project --name web --path /work/web",
           "allinai-agentkit projects",
-          "allinai-agentkit restart   # optional; running daemons also pick it up on the next agent.run",
+          "# if the Client is already running, reconnect it to refresh the Console's project list; runs read the latest local registration",
+          "allinai-agentkit restart   # for a Client installed as a user service",
         ],
       },
       {
         title: "Trigger a run from the Console",
-        description: "The Console UI's run form posts to /_agentkit/console/runs, which enqueues an agent.run offer; the client's local policy still gates it.",
+        description: "Choose where a task runs and which installed Agent handles it, then watch its status and events in the Console. If task-start approval is enabled on that Client, approve the task before it begins.",
         steps: [
           "allinai-agentkit-hub web",
           "# open http://127.0.0.1:4317, pick a client, runtime and project, then submit a prompt",
+        ],
+      },
+      {
+        title: "Follow an Issue and report your conclusion",
+        description: "Use Issues when a task needs background, discussion and a continuing work record. A comment mentioning a connected Agent starts an execution with Issue context; the Agent can read the full discussion, post findings and update status with these commands.",
+        steps: [
+          "allinai-agentkit issue list",
+          "allinai-agentkit issue show ISSUE-12 --json",
+          "allinai-agentkit issue comment ISSUE-12 --body \"Findings and verification results\"",
+          "allinai-agentkit issue update ISSUE-12 --status in_review",
+          "allinai-agentkit issue inbox",
         ],
       },
       {
@@ -293,13 +313,13 @@ export function cliManual(): CliManual {
       },
     ],
     agentNotes: [
-      "Every command prints one JSON document per line; parse the last stdout line as JSON.",
+      "Use docs --json and issue show ISSUE-12 --json for structured output; docs defaults to Markdown and logs streams the original log.",
       "--config-dir PATH works on every command and replaces the default home ~/.allinai/agent.",
       "--help on any command prints this style of usage text and never executes side effects.",
-      "daemon and logs -f block the foreground until interrupted; everything else returns immediately.",
-      "Commands that talk to the daemon (status, sync, logs, plugins, doctor credentials) require it to be running, except doctor which also works standalone.",
+      "login waits for browser authorization. daemon and logs -f keep the foreground running until interrupted.",
+      "Commands that query or control the daemon require it to be running. doctor can inspect the environment and config standalone; logs reads the saved log file.",
       "login/init write mode-0600 config and token files under the Agent home; tokens stay on this machine — do not echo them into shared channels.",
-      "agent runtimes (codex / claude / pi / zcode) are optional peer dependencies: doctor reports which are installed.",
+      "Install and authenticate a supported platform CLI (codex / claude / pi / zcode) on the execution machine before running tasks; doctor reports which commands are detected.",
     ],
   };
 }

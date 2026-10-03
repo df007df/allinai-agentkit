@@ -13,7 +13,7 @@
     if (/^\s*(npx|npm|sh|git|node|allinai-agentkit)\b/.test(text) && !/[{;]/.test(text.split("\n")[0] + text.split("\n")[1])) {
       return "terminal.sh";
     }
-    if (/import\s+.*from\s+"@allin-ai\/agentkit\/console(-ui)?"/.test(text)) return "console.ts";
+    if (/import\s+.*from\s+"@allin-ai\/agentkit-hub\/console(-ui)?"/.test(text)) return "console.ts";
     if (/createMemoryHub/.test(text)) return "memory-hub.ts";
     if (/HubStore\s*<|implements HubStore/.test(text)) return "store.ts";
     if (/ClientSupervisor|WsClientTransport/.test(text)) return "supervisor.ts";

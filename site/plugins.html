@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
     <meta name="agentkit-version" content="0.6.0" />
-    <title>插件机制 · allinai-agentkit</title>
+    <meta name="description" content="用 Git 插件统一维护并分发 Agent 技能：了解共享技能、机器自有插件、版本更新与回退，以及人工确认的使用场景和操作方案。" />
+    <title>插件与技能 · allinai-agentkit</title>
     <link rel="stylesheet" href="style.css" />
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-34YL8806XL"></script>
     <script>
@@ -29,16 +30,20 @@
 
     <div class="docs-wrap">
       <aside class="docs-toc">
-        <p class="docs-toc-title">插件机制</p>
+        <p class="docs-toc-title">插件与技能</p>
         <a href="#overview">概览</a>
-        <a href="#model" class="sub">核心模型</a>
+        <a href="#use-cases">场景与方案</a>
+        <a href="#use-shared" class="sub">分发共享技能</a>
+        <a href="#use-local" class="sub">机器专用插件</a>
+        <a href="#use-version" class="sub">更新与回退</a>
+        <a href="#model">结构与存放位置</a>
         <a href="#structure" class="sub">插件仓库结构</a>
-        <a href="#lifecycle">变动流程</a>
+        <a href="#lifecycle">操作与管理</a>
         <a href="#lifecycle-register" class="sub">登记（两个入口）</a>
         <a href="#lifecycle-sync" class="sub">同步与分叉裁决</a>
         <a href="#lifecycle-dispatch" class="sub">多平台分发</a>
         <a href="#lifecycle-remove" class="sub">移除与回滚</a>
-        <a href="#hooks">Tool Ask-User</a>
+        <a href="#hooks">执行中的人工确认</a>
         <a href="#system-plugin" class="sub">内置 agentkit-system</a>
         <a href="#console">控制台管理</a>
         <a href="#cli-reference" class="sub">CLI 速查</a>
@@ -47,28 +52,45 @@
 
       <main class="docs-content">
         <section id="overview" class="doc-section">
-          <h1>插件机制</h1>
-          <p>
-            v0.6.0 中，插件执行与管理属于 <code>@allin-ai/agentkit-client</code>，中心控制台属于 <code>@allin-ai/agentkit-hub</code>。
-            allinai-agentkit 以<strong>插件（plugin）为技能（skills）的唯一载体</strong>：
-            一个插件 = 一个 Git 仓库 = 一组技能 + 平台入口清单。中心（Hub/Console）与
-            client 对插件的全部操作都是<strong>登记</strong>——登记 Git 地址与分支，
-            内容永远以仓库为准。技能不单独安装、不做用户级散装分发。
-          </p>
-          <ul>
-            <li><strong>Git 为真相源</strong>：hub 零 Git 权限，只发同步信号 + 记台账；凭据与拉取都在 client 本地，中心挂了不影响更新。</li>
-            <li><strong>登记制</strong>：中心登记的插件与本地 CLI 登记的插件互不覆盖，各自管各自的所有权。</li>
-            <li><strong>多平台一次分发</strong>：同步成功后自动装进本机已安装的平台（codex / pi），claude 运行时直连，状态全程可见。</li>
-            <li><strong>结构合规由登记人保证</strong>：平台侧做非破坏校验（缺 SKILL.md、缺描述、入口文件缺失 → 警告随上报可见），不阻断安装。</li>
-          </ul>
+          <h1>插件与技能</h1>
+          <p class="docs-lead">把一组技能作为插件统一维护，分发到执行机器上的 Codex、Claude、Pi，查看安装状态，并处理版本更新与本地修改。</p>
+          <p>插件是一个 Git 仓库，包含技能与平台入口清单。Hub 管理需要分发的插件清单，Client 拉取仓库并向本机支持的平台分发；机器也可以登记自己的插件。当前版本：v0.6.0。</p>
+          <p>插件管理与执行位于 <code>@allin-ai/agentkit-client</code>，中心控制台位于 <code>@allin-ai/agentkit-hub</code>。项目的其他能力见<a href="docs.html#features">七组主要功能</a>。</p>
+        </section>
+
+        <section id="use-cases" class="doc-section">
+          <h2>使用场景、问题与方案</h2>
+          <h3 id="use-shared">给多台机器分发共享技能</h3>
+          <p><strong>使用场景：</strong>代码审查、排错或部署指引需要在多台执行机器、多个 Agent 平台上重复使用。</p>
+          <p><strong>解决问题：</strong>手工复制技能容易遗漏更新，也难以确认每台机器和每个平台实际使用的版本。</p>
+          <p><strong>提供方案：</strong>将相关技能放入一个 Git 插件，在 Hub 登记后向选中的 Client 下发；Client 根据插件声明与本机平台分发，控制台显示同步和安装结果。</p>
+
+          <h3 id="use-local">保留机器专用的插件</h3>
+          <p><strong>使用场景：</strong>统一技能之外，某台开发机需要自己的工作流程或试验中的技能。</p>
+          <p><strong>解决问题：</strong>机器自己的插件与中心管理的插件，需要分别维护登记与移除，避免中心清单更新时丢失本地登记。</p>
+          <p><strong>提供方案：</strong>通过 Client CLI 登记机器自有插件，由本地维护增删；Hub 维护的清单按中心登记管理。日常建议使用不同插件 ID，同 ID 的优先级规则见下方参考。</p>
+
+          <h3 id="use-version">更新技能并处理本地修改</h3>
+          <p><strong>使用场景：</strong>上游技能发布了新版本，但执行机器的插件仓库可能有自己的修改；新版本有问题时还需要回退。</p>
+          <p><strong>解决问题：</strong>自动覆盖会丢失本地修改，更新前也需要知道版本差异与冲突原因。</p>
+          <p><strong>提供方案：</strong>检查上游后同步版本；受版本控制的本地修改或领先提交会暂停自动更新，控制台提供覆盖或保留的选择。需要固定或回退版本时，指定目标 commit。</p>
+
+          <h3>从登记到使用</h3>
+          <ol>
+            <li>准备包含技能和平台入口的 Git 插件仓库。</li>
+            <li>在 Hub 控制台登记并选择执行机器，或在 Client 本地登记专用插件。</li>
+            <li>Client 同步仓库，向已安装且支持的 Agent 平台分发。</li>
+            <li>查看同步和平台分发状态，再发起需要这些技能的任务。</li>
+            <li>后续检查更新，遇到本地修改时决定处理方式，必要时回退版本。</li>
+          </ol>
         </section>
 
         <section id="model" class="doc-section">
-          <h2>核心模型</h2>
+          <h2>插件结构与存放位置</h2>
           <h3 id="structure">插件仓库结构</h3>
           <pre class="code-block"><code>my-plugin/                          ← 一个 Git 仓库
 ├── allinai-plugin.json             ← agentkit manifest（声明 skills）
-├── skills/                         ← 顶层 skills/ 目录，三平台原生直吃
+├── skills/                         ← 顶层 skills/ 目录，供支持的平台加载
 │   ├── code-review/
 │   │   └── SKILL.md                ← name/description front-matter 必填
 │   └── deploy-helper/
@@ -80,7 +102,7 @@
             manifest 最小形态：<code>{ "id": "my-plugin", "skills": ["skills/code-review", "skills/deploy-helper"] }</code>。
             技能遵循 Claude SKILL.md 格式（YAML front-matter 的
             <code>name:</code> 小写 slug、<code>description:</code> 必填——Pi 等平台会跳过无描述的技能）。
-            一个插件放多少个技能都可以：相关技能打包维护正是推荐用法，多技能一次同步、一次分发。
+            一个插件放多少个技能都可以：相关技能可以放在同一插件内维护，随插件一起同步和分发。
           </p>
 
           <h3>目录布局（client 侧）</h3>
@@ -93,10 +115,10 @@
         </section>
 
         <section id="lifecycle" class="doc-section">
-          <h2>变动流程</h2>
+          <h2>操作与管理参考</h2>
 
           <h3 id="lifecycle-register">登记（两个入口，互不覆盖）</h3>
-          <table>
+          <table class="doc-table">
             <tr><th>入口</th><th>操作</th><th>所有权</th></tr>
             <tr>
               <td>中心登记</td>
@@ -111,7 +133,7 @@
           </table>
           <p>
             两个入口走同一条同步管线（<code>syncOne()</code>），登记后即刻同步激活并分发。
-            同 id 冲突时中心下发的优先（在线真相）；client 重连时 Console 自动补推期望清单（离线编辑重连即达）。
+            同 ID 冲突时中心下发的配置优先；client 重连时 Console 自动补推期望清单（离线编辑重连即达）。
           </p>
 
           <h3 id="lifecycle-sync">同步与分叉裁决</h3>
@@ -131,7 +153,7 @@
           <p>
             同步成功后按「插件期望平台 ∩ 本机已装平台」自动分发（探针 = <code>which</code> 命令存在性）：
           </p>
-          <table>
+          <table class="doc-table">
             <tr><th>平台</th><th>方式</th><th>升级语义</th></tr>
             <tr><td>codex</td><td><code>codex plugin marketplace add</code> + <code>plugin add</code></td><td>拷贝进 cache——每次同步重装，版本钉死在安装时刻</td></tr>
             <tr><td>pi</td><td><code>pi install &lt;repo&gt;</code></td><td>本地路径引用——仓库更新实时生效</td></tr>
@@ -152,39 +174,42 @@
         </section>
 
         <section id="hooks" class="doc-section">
-          <h2>Tool Ask-User（hooks）</h2>
-          <p>
-            实际效果等同于<strong>完全授权执行</strong>：工具调用默认全部放行，
-            hooks 只负责一件事——<strong>在平台的 ask-user 时刻（准备请求人工确认工具执行时）
-            以两段式对接本地审批桥</strong>：先注册换取 requestId，再挂等人工决定。
-            人工未拒绝即放行，普通工具调用不产生任何上报。
-          </p>
-          <pre class="code-block"><code>agent 请求执行需确认的工具（ask-user 时刻）
+          <h2>执行中的人工确认</h2>
+          <p><strong>使用场景：</strong>Agent 执行任务时提出工具确认请求，需要人在控制台决定是否继续相关操作。</p>
+          <p><strong>解决问题：</strong>确认请求产生在本地 Agent 中，而操作人员可能正在 Hub 控制台观察任务，需要将请求和决定对应起来。</p>
+          <p><strong>提供方案：</strong>内置系统插件为 Codex、Claude、Pi 提供确认接入，通过本地审批桥把支持的请求展示到控制台，再把允许或拒绝决定回传到等待中的请求。</p>
+          <p>任务启动前审批由 Client 本地配置单独控制，默认自动启动；工具确认接入处理平台发出的确认请求。两者的使用说明见<a href="docs.html#features-security">授权、策略与人工审批</a>。</p>
+          <details class="doc-details">
+            <summary>平台 hooks、审批桥与默认行为参考</summary>
+            <p>当前适配的工具调用默认放行；接入的确认请求通过两段式审批桥登记并等待决定，人工明确拒绝时拦截相关操作。daemon 不在线、等待超时等情况的回退规则如下。</p>
+            <pre class="code-block"><code>agent 请求执行需确认的工具（ask-user 时刻）
   → 平台 hooks（随 agentkit-system 插件进入受管项目）
   → 段1：POST 审批桥注册 → 桥签发 requestId 并弹卡
   → 段2：hook 携 requestId 挂等 → Console 人工 allow/deny
   → 决定经 respond_tool_approval 原路唤醒 hook
   → 人工拒绝才拦截，其余显式放行</code></pre>
           <ul>
-            <li><strong>只上报不拦截</strong>：拦截只发生在人工明确 deny 时；daemon 不在线、超时或无人工记录一律放行（claude 侧放行为显式回包——平台语义是 hook 空回复即自动拒绝）；</li>
-            <li><strong>ask-user 时刻</strong>：claude = <code>PermissionRequest</code> 事件（平台准备请求授权时；实测 bypassPermissions 下该事件<strong>不触发</strong>，因此 claude 运行采用默认权限模式、由 hook 回包实现放权）；codex = <code>pre_tool_use</code> 审批钩子（<code>danger-full-access</code> 沙箱不影响其触发）；pi = 扩展对执行/写类工具（bash/edit/write）的 <code>tool_call</code> 拦截；</li>
+            <li><strong>默认行为与回退</strong>：拦截只发生在人工明确 deny 时；daemon 不在线、超时或无人工记录一律放行（claude 侧放行为显式回包——平台语义是 hook 空回复即自动拒绝）；</li>
+            <li><strong>ask-user 时刻</strong>：claude = <code>PermissionRequest</code> 事件（平台准备请求授权时；<code>bypassPermissions</code> 会跳过该确认事件，因此 claude 运行采用默认权限模式、由 hook 回包实现放权）；codex = <code>pre_tool_use</code> 审批钩子（<code>danger-full-access</code> 沙箱不影响其触发）；pi = 扩展对执行/写类工具（bash/edit/write）的 <code>tool_call</code> 拦截；</li>
             <li><strong>两段式闭环</strong>：requestId 把 Console 的卡片和挂起的 hook 一一对应，人工决定经现有 <code>respond_tool_approval</code> 通道回放——没有 requestId 转发就到不了 hook；</li>
-            <li><strong>插件作用域</strong>：hooks 随插件进入受管项目目录，只对受管会话生效——用户在项目外裸用平台完全无感；</li>
+            <li><strong>插件作用域</strong>：hooks 随插件进入受管项目目录，只对受管会话生效——单独使用平台 CLI 的会话按该平台配置运行；</li>
             <li><strong>三平台入口</strong>：claude = 插件 <code>hooks/hooks.json</code>（${CLAUDE_PLUGIN_ROOT}）；codex = 插件 manifest 的 hooks 组件（headless 路径自动托管信任）；pi = 包内 <code>pi.extensions</code> 扩展；</li>
             <li><strong>不再有用户级安装</strong>：hooks 不是全局开关，跟插件走。</li>
           </ul>
+          </details>
         </section>
 
         <section id="system-plugin" class="doc-section">
           <h2>内置 agentkit-system 插件</h2>
           <p>
-            daemon 启动时自动物化（无需登记、Hub 推送不删、inventory 恒可见），内容：
+            Client 启动时自动准备系统插件，用于帮助 Agent 操作 Client 和参与工作流程，主要内容：
           </p>
           <ul>
             <li><strong>client-control 技能</strong>：从 CLI 手册生成，教 agent 操作宿主——
               装插件/skill、查 daemon 状态与日志、项目注册、数据目录布局；</li>
+            <li><strong>Issues 技能</strong>：帮助 Agent 读取 Issue 背景、回复处理结论与更新状态；</li>
             <li><strong>三平台 tool ask-user hooks</strong>：上一节的上报载体，随本插件的分发自动进入受管项目；</li>
-            <li><strong>幂等升级</strong>：内容随包版本变化重写，不变则 HEAD 纹丝不动（同步永远 on-target）。</li>
+            <li><strong>幂等升级</strong>：内容随 Client 包版本更新，重复启动时保持一致。</li>
           </ul>
         </section>
 
@@ -192,7 +217,7 @@
           <h2>控制台管理</h2>
           <p>Console 插件面板提供全生命周期操作：</p>
           <ul>
-            <li><strong>查看</strong>：每插件状态（运行中 / 失败+错误原文 / 已停用）、当前 commit、每平台分发徽章；</li>
+            <li><strong>查看</strong>：每插件的启用、失败或待处理本地修改状态、当前 commit、每平台分发徽章；</li>
             <li><strong>登记</strong>：表单添加（id + Git 地址 + 可选分支），下发到选中 client；</li>
             <li><strong>裁决</strong>：diverged 插件两按钮（强制覆盖 / 保留本地）；</li>
             <li><strong>移除 / 重推</strong>：删条目或把整份期望清单重新下发（client 离线时用）。</li>
@@ -205,7 +230,7 @@ allinai-agentkit plugins --action install \
   --git-url https://github.com/me/skills.git --id my-skills  # 本地登记（机器自有）
 allinai-agentkit plugins --action remove --id my-skills      # 卸载本地登记
 allinai-agentkit plugins --action check                     # 对比上游（不动本地）
-allinai-agentkit plugins --action update                    # 拉取更新（离线可用）
+allinai-agentkit plugins --action update                    # 拉取更新（无需 Hub 在线，仍需访问 Git 仓库）
 allinai-agentkit plugins --action force --id my-skills \
   --commit &lt;sha&gt;                                             # 钉死/回滚到任意 commit</code></pre>
           <p>

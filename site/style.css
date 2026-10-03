@@ -69,6 +69,24 @@ body {
 }
 .nav-links a:hover { color: var(--text); }
 
+@media (max-width: 700px) {
+  .nav {
+    height: auto;
+    min-height: 60px;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding: 0.6rem 1rem;
+  }
+  .brand { white-space: nowrap; }
+  .nav-links {
+    width: 100%;
+    gap: 0.8rem;
+    overflow-x: auto;
+    padding-bottom: 0.2rem;
+  }
+  .nav-links a { flex: 0 0 auto; white-space: nowrap; }
+}
+
 main {
   max-width: 1080px;
   margin: 0 auto;
@@ -578,6 +596,31 @@ main {
 
 /* ---------- scenarios（首页紧凑卡片） ---------- */
 
+.section-lead { color: var(--text-dim); margin: -0.5rem 0 1.5rem; }
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.1rem;
+}
+.feature-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  padding: 1.3rem 1.4rem;
+}
+.feature-card:last-child:nth-child(odd) { grid-column: 1 / -1; }
+.feature-card h3 { margin: 0 0 1rem; font-size: 1.02rem; }
+.feature-card h3 .step-no { font-size: 1rem; margin-right: 0.65rem; }
+.feature-card p { color: var(--text-dim); font-size: 0.9rem; line-height: 1.85; margin: 0.75rem 0; }
+.feature-card strong { color: var(--text); font-weight: 600; }
+.feature-link { color: var(--accent); font-size: 0.85rem; display: inline-block; margin-top: 0.5rem; }
+.terminal-note { margin: 0; padding: 0 1.25rem 1rem; color: var(--text-dim); font-size: 0.78rem; }
+.terminal-note a { color: var(--accent); }
+.section[id], .doc-section[id], .doc-section h3[id], .anchor-alias { scroll-margin-top: 5rem; }
+@media (max-width: 700px) {
+  .section[id], .doc-section[id], .doc-section h3[id], .anchor-alias { scroll-margin-top: 7rem; }
+}
+
 .scenario-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -599,6 +642,8 @@ main {
   background: var(--bg-tint);
 }
 .scenario-card h3 { margin: 0 0 0.3rem; font-size: 0.98rem; }
+.scenario-card > div { min-width: 0; }
+.scenario-card code { overflow-wrap: anywhere; font-size: 0.82rem; }
 .scenario-card p {
   margin: 0;
   color: var(--text-dim);
@@ -705,6 +750,16 @@ main {
   color: var(--text-dim);
   line-height: 1.7;
 }
+.doc-details {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.85rem 1rem;
+  margin: 1.25rem 0 2rem;
+  min-width: 0;
+}
+.doc-details summary { color: var(--accent); cursor: pointer; font-size: 0.88rem; }
+.doc-details summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.doc-details[open] summary { margin-bottom: 0.9rem; }
 .doc-table {
   width: 100%;
   border-collapse: collapse;
@@ -735,6 +790,7 @@ main {
 .doc-table td code { font-size: 0.84rem; }
 
 @media (max-width: 880px) {
+  .feature-grid { grid-template-columns: minmax(0, 1fr); }
   .docs-wrap { grid-template-columns: 1fr; gap: 1.4rem; }
   .docs-toc {
     position: static;

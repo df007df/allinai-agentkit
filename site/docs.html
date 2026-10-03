@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
     <meta name="agentkit-version" content="0.6.0" />
-    <title>文档 · allinai-agentkit</title>
+    <meta name="description" content="allinai-agentkit 的使用场景、主要功能、安装与操作指南，以及 Hub SDK、Client、插件和 Issues 的集成参考。" />
+    <title>功能与使用文档 · allinai-agentkit</title>
     <link rel="stylesheet" href="style.css" />
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-34YL8806XL"></script>
     <script>
@@ -16,7 +17,7 @@
     </script>
   </head>
   <body>
-    <script src="docs-ide.js?v=2"></script>
+    <script src="docs-ide.js?v=3"></script>
     <nav class="nav">
       <a class="brand" href="index.html">allinai-agentkit</a>
       <div class="nav-links">
@@ -29,24 +30,25 @@
 
     <div class="docs-wrap">
       <aside class="docs-toc">
-        <p class="docs-toc-title">文档</p>
-        <a href="#overview">概览</a>
+        <p class="docs-toc-title">功能与使用文档</p>
+        <a href="#overview">项目做什么</a>
+        <a href="#features">主要功能</a>
+        <a href="#features-runtime" class="sub">连接执行机器，统一派发多平台任务</a>
+        <a href="#features-daemon" class="sub">常驻运行与连接恢复</a>
+        <a href="#features-observation" class="sub">集中观察执行过程，保留排查依据</a>
+        <a href="#features-projects" class="sub">按项目选择工作目录</a>
+        <a href="#features-plugins" class="sub">统一管理插件与技能</a>
+        <a href="#features-security" class="sub">接入授权、本地策略与人工审批</a>
+        <a href="#features-issues" class="sub">用 Issues 组织人与 Agent 的协作</a>
         <a href="#install">安装</a>
         <a href="#install-npx" class="sub">npx 免安装</a>
         <a href="#install-global" class="sub">npm 全局安装</a>
         <a href="#install-source" class="sub">源码构建</a>
         <a href="#install-migrate" class="sub">从旧包迁移</a>
         <a href="#quickstart">快速开始</a>
-        <a href="#quickstart-auth" class="sub">授权模型</a>
-        <a href="#quickstart-issues" class="sub">Issues 协作</a>
+        <a href="#quickstart-auth" class="sub">接入授权与数据保存</a>
+        <a href="#quickstart-issues" class="sub">Issues 持续协作</a>
         <a href="#cli">CLI 参考</a>
-        <a href="#features">功能介绍</a>
-        <a href="#features-daemon" class="sub">常驻执行模型</a>
-        <a href="#features-projects" class="sub">项目目录</a>
-        <a href="#features-runtime" class="sub">运行时适配</a>
-        <a href="#features-plugins" class="sub">插件体系</a>
-        <a href="#features-security" class="sub">凭据与安全</a>
-        <a href="#features-service" class="sub">服务化运维</a>
         <a href="#integration">系统集成</a>
         <a href="#integration-hub" class="sub">挂载 Hub</a>
         <a href="#integration-testkit" class="sub">测试内存 Hub</a>
@@ -64,28 +66,150 @@
       <main class="docs-content">
         <h1>allinai-agentkit 文档</h1>
         <p class="docs-lead">
-          v0.6.0：Hub SDK 与控制台、持久 Agent Client 分别安装和部署。
-          从安装到系统集成，本页是完整参考；快速印象可直接看<a href="index.html">官网首页</a>。
+          连接业务系统与本地 AI Agent，统一派发任务并观察执行过程。
+          先了解功能与使用场景，再按快速开始运行；CLI、应用集成和架构细节可按需查阅。当前版本：v0.6.0。
         </p>
 
         <section id="overview" class="doc-section">
-          <h2>1 概览</h2>
-          <p>
-            agentkit 由两侧组成：<strong>Hub</strong> 是宿主服务里的协议中枢，
-            负责鉴权、持久化与命令派发；<strong>client（daemon）</strong> 跑在你自己的机器上，
-            凭授权 token 长连 Hub，接收 <code>agent.run</code> 等命令，在本地执行并持续上报事件。
-            两侧之间只走一条版本化的 v2 wire 协议（WebSocket）。
-          </p>
+          <h2>1 项目做什么</h2>
+          <p>allinai-agentkit 用来连接业务系统与本地 AI Agent，让你从一个入口派发任务，在指定机器上调用 Codex、Claude、Pi 或 zcode 执行，并集中查看运行状态、执行过程和结果。</p>
+          <p>它适合把 AI Agent 接入现有产品、内部工具或日常开发流程：从管理台让开发机检查代码项目，通过 Issue 安排 Agent 排查问题，或向多台执行机器分发统一的技能插件。</p>
           <ul>
-            <li><strong>clientId</strong>：每个 client 的唯一标识，首次 init/login 时生成，落在本机 config。</li>
-            <li><strong>token</strong>：浏览器授权后签发的凭据，daemon 用它向 Hub 注册；存本机 0600 文件。</li>
-            <li><strong>HubStore</strong>：宿主实现的六个持久化方法（注册、心跳、待投递、入队、事件落库、插件确认）。</li>
-            <li><strong>runtime</strong>：实际执行 agent 的适配器（codex / claude / pi / zcode），可选安装。</li>
+            <li><strong>Hub</strong> 是任务派发和管理入口，可以启动自带的 Web 控制台，也可以作为 SDK 嵌入应用。</li>
+            <li><strong>Client</strong> 常驻在执行机器上，连接 Hub，调用本机已安装的平台 Agent，并回传执行信息。</li>
           </ul>
+          <p>先使用官方控制台跑通任务，再根据业务需要接入自己的应用。平台 Agent 需在执行机器上单独安装并完成账号授权。</p>
+        </section>
+
+        <section id="features" class="doc-section">
+          <h2>2 主要功能</h2>
+          <p>按七组功能了解使用场景、解决的问题与提供的方案。每组的操作与实现参考可按需展开。</p>
+
+          <h3 id="features-runtime">2.1 连接执行机器，统一派发多平台任务</h3>
+          <p><strong>使用场景：</strong> 你的内部平台、桌面应用或管理台需要发起代码修改、问题排查、文档整理等任务，并指定由哪台机器、哪种 Agent 执行。</p>
+          <p><strong>解决问题：</strong> 不同 Agent 有不同的启动方式；业务系统还需要处理执行机器接入、任务传递和状态回传。每接入一个平台，都重复建设这些流程会增加维护成本。</p>
+          <p><strong>提供方案：</strong> 由 Hub 管理接入的 Client，通过同一个任务入口选择执行机器和平台，Client 负责调用对应的本机 Agent。</p>
+          <ul>
+            <li>支持 Codex、Claude、Pi 和 zcode，沿用各平台在执行机器上的安装与账号配置。</li>
+            <li>Client 上报可用平台和已注册项目，控制台据此提供执行选项。</li>
+            <li>可以直接使用自带的 Web 控制台派发任务，也可以通过 Hub SDK 接入自己的业务流程。</li>
+          </ul>
+          <p>例如，管理台提交“检查 web 项目的登录逻辑”，选择开发机、Codex 和 <code>web</code> 项目后，由该机器上的 Codex 处理。</p>
+          <details class="doc-details"><summary>执行平台与事件适配参考</summary>
+            <p>Client 调用本机 CLI 的非交互执行模式，例如 <code>codex exec --json</code>、<code>claude -p --output-format stream-json</code> 和 <code>pi -p --mode json</code>。<code>doctor</code> 探测本机命令是否存在；平台安装、账号与模型配置由各平台管理。</p>
+            <p>平台输出由适配器整理成统一事件后上报，详见<a href="#architecture-events">事件模型</a>。平台的工具确认接入与默认权限模式见<a href="plugins.html#hooks">人工确认参考</a>。</p>
+          </details>
+          <span id="features-service" class="anchor-alias"></span>
+
+          <h3 id="features-daemon">2.2 常驻运行与连接恢复</h3>
+          <p><strong>使用场景：</strong> 执行机器需要持续接收任务，网络偶尔中断，或者你希望登录电脑后 Client 自动启动。</p>
+          <p><strong>解决问题：</strong> 手工启动命令难以维持长期连接；连接断开后，中心容易丢失执行进度，重复投递也可能导致同一条任务被再次启动。</p>
+          <p><strong>提供方案：</strong> Client 以常驻进程运行，维护连接和本地执行状态，连接恢复后补报尚未确认的事件。</p>
+          <ul>
+            <li>自动注册、发送心跳、断线重连，让 Hub 持续了解机器的在线状态。</li>
+            <li>本地保存执行状态与待上报事件，对重复命令进行去重。</li>
+            <li>可限制同时执行的任务数量，默认一次执行一个任务。</li>
+            <li>支持注册为 macOS 或 Linux 用户级服务，在登录后自动启动；提供状态查询、重启、日志和自检命令。</li>
+          </ul>
+          <p>连接恢复负责恢复通信和事件上报；正在执行的 Agent 会话如何恢复，取决于对应平台的能力。</p>
+          <details class="doc-details"><summary>常驻进程、状态保存与服务管理参考</summary>
+            <p>Client 通过 WebSocket 维护连接，执行状态保存在 <code>ClientStateStore</code>，尚未确认的事件保存在本地后重投递。Hub 确认事件连续水位，Client 据此清理已确认记录。</p>
+            <p><code>maxConcurrentRuns</code> 默认值为 1。可用 <code>proxy</code> 设置执行平台的 HTTP/HTTPS 代理。进程重启后的事件补报与平台会话恢复是分别处理的两件事。</p>
+            <p><code>install</code> 注册 macOS launchd 或 Linux systemd 用户级服务，使 Client 随登录启动。日常使用 <code>status</code>、<code>logs -f</code>、<code>doctor</code> 和 <code>restart</code> 查询状态、排查环境和重启服务。</p>
+          </details>
+
+          <h3 id="features-observation">2.3 集中观察执行过程，保留排查依据</h3>
+          <p><strong>使用场景：</strong> 任务已经发出，你需要判断它是否开始、当前在做什么、是否等待人工确认，以及最终成功还是失败。</p>
+          <p><strong>解决问题：</strong> 只看到“任务已提交”不足以判断执行情况；去每台机器翻终端输出，也难以把任务、平台会话和本地日志对应起来。</p>
+          <p><strong>提供方案：</strong> Web 控制台集中展示 Client 状态和执行事件，Client 为每次执行保留独立的会话记录。</p>
+          <ul>
+            <li>实时查看 Client 的在线状态、可用平台、项目和插件信息。</li>
+            <li>在执行列表与详情中查看状态变化、事件时间线，以及平台提供的会话标识。</li>
+            <li>在同一个控制台处理待审批事项，并继续观察后续执行状态。</li>
+            <li>本地保存会话事件、终态摘要和运行日志，方便按同一次执行排查问题。</li>
+          </ul>
+          <p>官方控制台持久保存授权凭据与 Issues；执行事件的长期保存方式可在嵌入 Hub 时通过存储接口自行实现。</p>
+          <details class="doc-details"><summary>会话记录、日志与存储参考</summary>
+            <p>每次执行保存 <code>events.jsonl</code> 状态时间线和 <code>session.json</code> 终态摘要。Client 的滚动运行日志位于 <code>~/.allinai/agent/logs/agent.log</code>，使用 <code>allinai-agentkit logs -f</code> 跟随查看；日志按原文写入。</p>
+            <p>官方 Web 控制台将授权与 Issues 分别保存到 <code>tokens.db</code> 和 <code>issues.db</code>，默认 Hub 执行事件保存在内存中。需要跨 Hub 重启查询执行历史时，接入自己的 <code>HubStore</code> 与查询接口，见<a href="#integration-nextjs">存储集成示例</a>。</p>
+          </details>
+
+          <h3 id="features-projects">2.4 按项目选择工作目录</h3>
+          <p><strong>使用场景：</strong> 一台机器上有多个代码仓库，希望任务进入正确的项目目录；临时任务则需要独立的工作空间。</p>
+          <p><strong>解决问题：</strong> 仅传一段提示词，Agent 未必知道应操作哪个项目。把工作目录和会话记录混在一起，也会让项目文件与运行记录难以管理。</p>
+          <p><strong>提供方案：</strong> 在 Client 本地登记项目名称与目录，派发任务时按名称选择项目。</p>
+          <ul>
+            <li>已登记项目在其真实目录中执行，适合检查代码、修改文件、运行项目命令。</li>
+            <li>未选择已登记项目时，使用按执行划分的临时目录，适合一次性任务。</li>
+            <li>会话记录保存在 Client 的数据目录中，与项目文件分开管理。</li>
+            <li>项目清单同步到控制台；本地新增或修改项目后，下一次任务即可读取新配置。</li>
+          </ul>
+          <p>例如，在执行机器上登记 <code>web</code> 和 <code>api</code> 两个项目，控制台发起任务时即可选择对应项目。Hub 按项目名称选择本地登记的目录。</p>
+          <details class="doc-details"><summary>项目注册、目录与配置刷新参考</summary>
+            <pre class="code-block"><code>allinai-agentkit project --name web --path /absolute/path/to/your-project
+allinai-agentkit projects
+allinai-agentkit project --name web --remove</code></pre>
+            <p>注册路径必须是绝对路径。任务通过 <code>payload.project</code> 选择本地项目名称，Client 在下一次任务时读取最新注册；控制台的项目下拉来自 Client 上报的清单。首次使用应先登记再启动 Client；运行中新增项目后，重新连接 Hub 可更新清单。用户服务可用 <code>restart</code> 重连，前台运行时重新启动 <code>daemon</code>。</p>
+            <ul>
+              <li>未选择已登记项目：工作目录为 <code>~/.allinai/agent/projects/default/runtime/&lt;平台&gt;/&lt;executionId&gt;/</code>，会话记录在 <code>~/.allinai/agent/projects/default/sessions/&lt;executionId&gt;/</code>。</li>
+              <li>选择已登记项目：在登记目录中执行，会话记录在 <code>~/.allinai/agent/projects/&lt;名称&gt;-&lt;dir&gt;/sessions/&lt;executionId&gt;/</code>。</li>
+            </ul>
+          </details>
+
+          <h3 id="features-plugins">2.5 统一管理插件与技能</h3>
+          <p><strong>使用场景：</strong> 一组技能需要分发给多台机器，或同时提供给 Codex、Claude、Pi 使用；部分机器还需要保留自己的插件。</p>
+          <p><strong>解决问题：</strong> 手工复制技能容易造成版本不一致；更新时还可能覆盖本地修改，或者无法判断插件是否已成功安装到目标平台。</p>
+          <p><strong>提供方案：</strong> 以 Git 仓库承载插件与技能，由 Hub 或 Client 登记，Client 同步后按插件声明和本机平台进行分发。</p>
+          <ul>
+            <li>Hub 管理统一的插件清单，Client 也可以登记机器自有插件，两类登记分别维护。</li>
+            <li>一个插件可以包含多个技能与平台入口，支持向已安装的 Codex、Claude、Pi 分发。</li>
+            <li>控制台展示插件同步与平台分发状态，便于发现安装失败或版本差异。</li>
+            <li>支持检查更新、指定版本与回退；遇到受版本控制的本地修改或领先提交时，暂停自动更新，由人选择覆盖或保留。</li>
+            <li>内置系统插件提供 Client 操作说明、Issues 操作指引，以及支持平台的工具确认接入。</li>
+          </ul>
+          <p>插件结构、各平台分发方式和冲突处理见<a href="plugins.html">插件专页</a>。</p>
+          <details class="doc-details"><summary>插件登记与分发参考</summary>
+            <p>中心在控制台登记 Git 地址与分支，通过 <code>plugin.sync</code> 下发期望清单；本地通过 <code>plugins --action install --git-url URL --id ID</code> 登记机器自有插件。Client 拉取仓库、检查变更，并向插件声明且本机已安装的平台分发。</p>
+            <p>仓库布局、更新冲突、平台安装方式、移除与回退见<a href="plugins.html">插件与技能专页</a>。</p>
+          </details>
+
+          <h3 id="features-security">2.6 接入授权、本地策略与人工审批</h3>
+          <p><strong>使用场景：</strong> 新执行机器接入 Hub 时需要确认身份；部分任务希望先审批，再启动；Agent 执行中提出确认请求时，需要人参与决定。</p>
+          <p><strong>解决问题：</strong> 机器接入、任务启动审批和运行中的工具确认属于不同环节，需要分别管理，并让人的决定能够回到执行端。</p>
+          <p><strong>提供方案：</strong> Client 通过浏览器授权接入，运行前应用本地策略，支持的平台工具确认请求通过审批桥交给控制台处理。</p>
+          <ul>
+            <li>每个 Client 使用自己的身份与授权凭据，登录时在浏览器确认接入。</li>
+            <li>本地可配置任务启动审批与插件来源规则，按执行机器分别维护。</li>
+            <li>可开启任务启动前审批，控制台允许后才开始执行；默认配置为自动启动任务。</li>
+            <li>对接入审批桥的 Codex、Claude、Pi 工具确认请求，可在控制台选择允许或拒绝，决定回传给等待中的请求。</li>
+          </ul>
+          <details class="doc-details"><summary>授权、策略与审批配置参考</summary>
+            <p>浏览器授权后签发与 <code>clientId</code> 对应的凭据，保存在本机 0600 文件中。嵌入 Hub 时由宿主提供 <code>authorize</code> 鉴权接口。</p>
+            <p><code>policy.requireRunApproval</code> 默认是 <code>false</code>；设为 <code>true</code> 后，任务先进入 <code>awaiting_approval</code>，等待控制台允许或拒绝。插件同步可设置来源规则，能力调用使用对应的工作目录与权限策略。</p>
+            <p>运行中的工具确认由支持平台的 hooks 或扩展接入本地审批桥，决定经 Hub 回传给等待中的请求。接入范围、默认行为与回退规则见<a href="plugins.html#hooks">人工确认参考</a>。</p>
+          </details>
+
+          <h3 id="features-issues">2.7 用 Issues 组织人与 Agent 的协作</h3>
+          <p><strong>使用场景：</strong> 一个问题需要先描述背景，再分配、讨论、执行和跟踪，例如让 Agent 排查缺陷，再由人确认结论与下一步。</p>
+          <p><strong>解决问题：</strong> 单次提示词缺少持续的工作记录，讨论内容、执行过程和处理状态容易散落在不同位置，后续很难知道谁在处理、做到哪一步。</p>
+          <p><strong>提供方案：</strong> 内置 Issues，把问题描述、评论、状态与关联执行放在一起，并支持在评论中通过 <code>@Agent</code> 发起处理。</p>
+          <ul>
+            <li>创建 Issue，维护标题、背景、优先级、负责人和处理状态。</li>
+            <li>通过评论与回复补充事实、讨论方案，收件箱汇集分配、提及和状态变化等通知。</li>
+            <li>在评论中提及已接入的 Agent，系统结合 Issue 内容和近期评论派发任务。</li>
+            <li>为 Agent 提供读取 Issue、回复评论、更新状态的 CLI，让它能按任务要求把结论写回工作记录。</li>
+            <li>同一 Issue 中同一 Agent 的执行尚未结束时，新的提及先合并等待；若 Issue 仍在处理中，本次执行成功结束后再处理后续内容。</li>
+          </ul>
+          <p>例如，创建“登录后页面空白”，补充复现步骤并 <code>@开发机</code> 请求排查；Agent 收到带背景的任务，可读取完整讨论、回复发现并更新状态，人再据此继续确认。使用步骤见 <a href="docs.html#quickstart-issues">Issues 协作</a>。</p>
+          <details class="doc-details"><summary>Issue 提及、执行与回写参考</summary>
+            <p>评论中提及已接入的 Agent 后，任务携带 Issue 描述、状态、优先级、近期讨论和触发评论，并附带读取完整 Issue、回复与更新状态的 CLI 指引。Agent 按指引回写结论，关联执行可在 Issue 中查询。</p>
+            <p>执行成功结束且 Issue 仍需处理时，再派发等待中的新提及。执行失败会留下失败记录，等待中的提及由后续人工跟进。已完成或已取消的 Issue 不再由新提及触发执行。</p>
+            <p>操作流程与命令见<a href="#quickstart-issues">Issues 协作</a>。Issue 提及任务使用 Client 的默认工作目录；需要在登记项目目录执行时，可从控制台的普通任务入口选择项目，再把结论回复到 Issue。</p>
+          </details>
         </section>
 
         <section id="install" class="doc-section">
-          <h2>2 安装</h2>
+          <h2>3 安装</h2>
           <p>环境要求：<strong>Node.js ≥ 22.18</strong>；插件同步需要本机 <code>git</code>。三种方式按需选择。</p>
           <table class="doc-table">
             <thead><tr><th>包</th><th>部署位置与用途</th><th>命令</th></tr></thead>
@@ -96,12 +220,12 @@
           </table>
           <p>两个包没有相互的生产依赖。只接入现有 Hub 的机器安装 Client 即可；业务服务嵌入 Hub 使用 <code>npm install @allin-ai/agentkit-hub</code>。</p>
 
-          <h3 id="install-npx">2.1 npx 免安装</h3>
+          <h3 id="install-npx">3.1 npx 免安装</h3>
           <p>分别使用 npx 启动 Hub 控制台或 Client：</p>
           <pre class="code-block"><code>npx @allin-ai/agentkit-client --help
 npx @allin-ai/agentkit-hub web</code></pre>
 
-          <h3 id="install-global">2.2 npm 全局安装</h3>
+          <h3 id="install-global">3.2 npm 全局安装</h3>
           <pre class="code-block"><code><span class="c"># Hub 机器</span>
 npm install -g @allin-ai/agentkit-hub
 allinai-agentkit-hub --help
@@ -114,14 +238,14 @@ allinai-agentkit --help</code></pre>
 sh scripts/install.sh 0.6.0           # 指定 Client 版本
 sh scripts/install.sh --from-source   # 本仓库构建 + npm link Client（开发）</code></pre>
 
-          <h3 id="install-source">2.3 源码构建</h3>
+          <h3 id="install-source">3.3 源码构建</h3>
           <pre class="code-block"><code>git clone https://github.com/df007df/allinai-agentkit.git
 cd allinai-agentkit
 pnpm install && pnpm build
 
 node bin/allinai-agentkit --help</code></pre>
 
-          <h3 id="install-migrate">2.4 从旧包迁移</h3>
+          <h3 id="install-migrate">3.4 从旧包迁移</h3>
           <pre class="code-block"><code>npm uninstall -g @allin-ai/agentkit @allin-ai/agentkit-web
 npm install -g @allin-ai/agentkit-client @allin-ai/agentkit-hub</code></pre>
           <p>将 Hub、Console、Issues 导入改为 <code>@allin-ai/agentkit-hub/...</code>，Client 导入改为 <code>@allin-ai/agentkit-client/...</code>。<code>allinai-agentkit web</code> 改为 <code>allinai-agentkit-hub web</code>；其他 Client 命令、v2 wire 协议与默认数据目录保持兼容。原 Web 包已并入 Hub 包。</p>
@@ -133,55 +257,47 @@ npm install -g @allin-ai/agentkit-client @allin-ai/agentkit-hub</code></pre>
         </section>
 
         <section id="quickstart" class="doc-section">
-          <h2>3 快速开始</h2>
-          <p>安装后三步跑通完整链路。npx 启动 Hub 用 <code>npx @allin-ai/agentkit-hub web</code>，Client 用 <code>npx @allin-ai/agentkit-client</code> 加子命令：</p>
+          <h2>4 快速开始</h2>
+          <p>先完成安装，并在执行机器上安装、登录至少一个支持的平台 Agent。以下步骤使用全局安装的命令；npx 用户换成对应包名，源码用户换成 <code>node bin/...</code>。</p>
 
-          <h3>步骤一：启动 Console（终端 A）</h3>
-          <pre class="code-block"><code>allinai-agentkit-hub web
-<span class="c"># 输出 consoleUrl（默认 http://127.0.0.1:4317）与 hubWsUrl，浏览器打开 consoleUrl</span></code></pre>
-          <p>
-            <code>web</code> 把 Hub 与 Console UI 跑在同一进程，默认监听回环地址。
-            它属于 <code>@allin-ai/agentkit-hub</code>，npm 包内包含预构建的官方控制台。
-            下列示例使用全局安装的命令；npx 用户换成对应包名，源码用户换成 <code>node bin/...</code>。
-          </p>
+          <h3>步骤一：启动 Hub 控制台（终端 A）</h3>
+          <pre class="code-block"><code>allinai-agentkit-hub web</code></pre>
+          <p>打开 <a href="http://127.0.0.1:4317">http://127.0.0.1:4317</a>。Hub 控制台默认监听本机地址；跨机器接入时，使用 Client 可访问的 Hub 地址，并按部署方式设置监听地址或接入现有服务。</p>
 
-          <h3>步骤二：浏览器授权（终端 B）</h3>
-          <pre class="code-block"><code>allinai-agentkit login --hub http://127.0.0.1:4317
-<span class="c"># 输出 authorizeUrl 并自动打开浏览器；在授权页点“允许”即完成配对</span></code></pre>
+          <h3>步骤二：安装后的 Client 授权（终端 B）</h3>
+          <pre class="code-block"><code>allinai-agentkit login --hub http://127.0.0.1:4317</code></pre>
+          <p>命令打开浏览器授权页面，确认后保存该 Client 的凭据。可用 <code>--name 开发机</code> 设置控制台里的显示名。</p>
 
-          <h3>步骤三：常驻接入（终端 B）</h3>
-          <pre class="code-block"><code>allinai-agentkit daemon</code></pre>
-          <p>
-            回到控制台页面：Client 注册、心跳与项目清单实时更新，无需刷新。
-            在「发起执行」面板选择 client、runtime 与项目、填写 prompt，即可下发一次
-            <code>agent.run</code>，执行事件经 <code>events.ingested</code> 增量推送
-            实时回传（历史会话以手风琴展开单次执行的完整时间线）。
-          </p>
+          <h3>步骤三：登记项目、启动 Client 并发起任务（终端 B）</h3>
+          <p>需要处理已有仓库时，先登记项目，将示例路径换成真实的绝对路径；一次性任务可跳过项目登记。</p>
+          <pre class="code-block"><code>allinai-agentkit project --name web --path /absolute/path/to/your-project
+allinai-agentkit projects
+allinai-agentkit daemon</code></pre>
+          <p>保持终端运行。控制台随后显示在线 Client、可用平台和项目。选择机器、平台与 <code>web</code> 项目，输入任务，例如“检查登录流程，说明可能的问题和修改建议”，提交后观察状态、执行事件和结果。</p>
+          <p>需要人工确认时，在控制台允许或拒绝相关请求。每次执行的会话记录保存在 Client 数据目录中；持续跟进一个问题可使用下方的 Issues 流程。</p>
 
-          <h3>步骤四（可选）：注册项目目录并派发到指定目录</h3>
-          <pre class="code-block"><code>allinai-agentkit project --name web --path /work/web
-<span class="c"># 之后 agent.run 可携带 payload.project= "web"，daemon 在 /work/web 中执行</span></code></pre>
-
-          <h3 id="quickstart-auth">3.1 授权模型</h3>
-          <p>
-            Console 启动不发放任何全局 token。client 凭自己 config 里的唯一 clientId 发起
-            <code>login</code>，浏览器授权页确认后，Console 保存 <code>token → clientId</code> 并以此放行后续连接。官方控制台使用本地 SQLite 保存 token，重启后无需重新 login。
-            生产环境的鉴权由宿主在 <code>createAgentHub({ authorize })</code> 里自己实现。
-          </p>
+          <h3 id="quickstart-auth">4.1 接入授权与数据保存</h3>
+          <p>每个 Client 使用自己的身份和凭据。浏览器确认接入后，官方控制台保存授权，重启后可以继续使用。嵌入 Hub 时，由应用提供自己的鉴权接口。</p>
           <p>官方控制台默认在 <code>~/.allinai/agent</code> 保存 <code>tokens.db</code> 和 <code>issues.db</code>；授权、Issue 状态与评论在重启后保留。可用绝对路径为 Hub 指定独立数据目录：</p>
           <pre class="code-block"><code>allinai-agentkit-hub web --config-dir /absolute/path/agentkit-hub</code></pre>
 
-          <h3 id="quickstart-issues">3.2 Issues 协作</h3>
-          <p>在控制台创建 Issue、评论并修改状态。完成 login 的 Client 可使用同一份授权，通过 Hub REST API 读取与更新 Issue：</p>
+          <h3 id="quickstart-issues">4.2 用 Issues 持续协作</h3>
+          <ol>
+            <li>在控制台创建 Issue，写清问题背景、复现步骤和希望获得的结论。</li>
+            <li>在评论中提及已接入的 Agent，请求它处理问题；系统将 Issue 内容和近期讨论随任务派发。</li>
+            <li>观察关联执行，Agent 可通过 CLI 读取完整讨论、回复发现，并按要求更新处理状态。</li>
+            <li>人查看结论，继续补充事实或确认完成。执行期间的新提及在成功结束后合并处理，失败时根据记录继续跟进。</li>
+          </ol>
+          <p>完成授权的 Client 使用已保存的凭据读写 Issues：</p>
           <pre class="code-block"><code>allinai-agentkit issue list
 allinai-agentkit issue show ISSUE-12 --json
-allinai-agentkit issue comment ISSUE-12 --body "已完成核验"
-allinai-agentkit issue update ISSUE-12 --status in_progress --priority P1
+allinai-agentkit issue comment ISSUE-12 --body "已完成核验，发现与验证结果如下……"
+allinai-agentkit issue update ISSUE-12 --status in_review --priority P1
 allinai-agentkit issue inbox</code></pre>
         </section>
 
         <section id="cli" class="doc-section">
-          <h2>4 CLI 参考</h2>
+          <h2>5 CLI 参考</h2>
           <p>
             Client 全部子命令：<code>allinai-agentkit &lt;init|login|daemon|install|status|logs|sync|restart|uninstall|doctor|projects|project|plugins|issue|docs&gt;</code>。Hub 使用独立的 <code>allinai-agentkit-hub web</code>。
           </p>
@@ -212,7 +328,7 @@ allinai-agentkit issue inbox</code></pre>
               </tr>
               <tr>
                 <td><code>install</code></td>
-                <td>注册用户级系统服务（macOS launchd / Linux systemd），开机自启</td>
+                <td>注册用户级系统服务（macOS launchd / Linux systemd），登录后自动启动</td>
                 <td>—</td>
               </tr>
               <tr>
@@ -279,104 +395,12 @@ allinai-agentkit issue inbox</code></pre>
           </p>
         </section>
 
-        <section id="features" class="doc-section">
-          <h2>5 功能介绍</h2>
-
-          <h3 id="features-daemon">5.1 常驻执行模型</h3>
-          <p>
-            daemon 是持久执行器：WebSocket 注册后凭心跳保活，断线自动重连；
-            收到 <code>agent.run</code> 先做本地策略判定，再交给 runner 执行；
-            执行状态先落 sqlite（<code>ClientStateStore</code>）再推进，事件按
-            <code>(executionId, eventSeq)</code> 去重批量上行，Hub 只确认已持久化的连续水位——
-            重启后先补投递未确认事件，再继续收新任务。
-          </p>
-          <p>
-            本地策略默认<strong>自动执行</strong>（<code>policy.requireRunApproval: false</code>）；
-            设为 <code>true</code> 后每次执行先进入 <code>awaiting_approval</code>，
-            Console 弹出执行审批卡片，点「允许」原位恢复执行。运行中的工具调用也可被
-            client 侧拦截，Console 以工具审批卡片放行或拒绝——两类审批都经 Hub 下发，
-            审批流向在事件流中可见。agent 运行还可配置
-            <code>proxy</code>（http/https 代理 URL），由 daemon 转发给 runtime 子进程。
-          </p>
-
-          <h3 id="features-projects">5.2 项目目录</h3>
-          <p>
-            项目在本地 config 的 <code>projects</code> 中注册（<code>project --name --path</code> 即写入，
-            路径必须是绝对路径）。Hub 下发的 <code>agent.run</code> 可携带 <code>payload.project</code>：
-          </p>
-          <ul>
-            <li>不带 <code>project</code>（或名字未注册）：使用各 runtime 的默认工作目录；</li>
-            <li>带 <code>project</code> 且已注册：在该目录中执行，同时把 <code>resolvedProjectPath</code> 附进执行上下文。</li>
-          </ul>
-          <p>Hub 无法自选任意路径——只能从本地注册的目录里按名字挑选。运行中的 daemon 在下一条 agent.run 时读取最新配置，也可 <code>restart</code> 立即生效。</p>
-
-          <h3 id="features-runtime">5.3 运行时适配</h3>
-          <p>
-            <code>/runtime</code> 提供 codex / claude / pi / zcode 四个适配器，
-            全部通过各平台官方 CLI 的 headless 模式执行（零 SDK 依赖）：
-            <code>codex exec --json</code>、<code>claude -p --output-format stream-json</code>、
-            <code>pi -p --mode json</code>。探针以命令存在性（<code>which</code>）为准，
-            <code>doctor</code> 逐个探测并报告。实际效果等同于<strong>完全授权执行</strong>
-            （codex <code>-s danger-full-access</code>——实测不影响 hooks 触发；
-            claude 跑默认权限模式——实测 bypassPermissions 会压掉
-            <code>PermissionRequest</code> 钩子，由钩子对每次询问显式回 allow 实现放权），
-            tool ask-user 经插件分发的 hooks 以<strong>两段式</strong>对接本地 daemon 审批桥：
-            先注册换取 requestId，再挂等人工决定；Console 的决定经 Hub 原路下发，
-            人工拒绝才真正拦截（见
-            <a href="#features-plugins">插件体系</a>）。各平台事件在适配器内归一为
-            统一的事件模型后上报（详见<a href="#architecture-events">事件模型</a>）。
-          </p>
-
-          <h3 id="features-plugins">5.4 插件体系</h3>
-          <p>
-            插件是技能（skills）的唯一载体，<strong>登记制</strong>管理：
-            中心侧由 Console 登记期望清单（id + Git 地址 + 可选分支）经
-            <code>plugin.sync</code> 下发；本地侧用
-            <code>plugins --action install --git-url URL --id ID</code> 登记机器自有插件。
-            两者互不覆盖——Hub 全量推送不会移除本地登记的插件。
-          </p>
-          <p>
-            同步为<strong>单仓 checkout 模型</strong>：<code>plugins/&lt;id&gt;/repo/</code>
-            唯一常驻 clone，更新 = fetch + checkout（untracked 临时文件天然存活）；
-            三分支对比（tracked 改动或本地领先 commit → <code>diverged</code> 拒绝自动更新，
-            Console 出两按钮人工裁决：强制覆盖 / 保留本地）。同步成功后按
-            「插件期望平台 ∩ 本机已装平台」自动分发：codex 走 marketplace 安装、
-            pi 走 <code>pi install</code>、claude 运行时 <code>--plugin-dir</code> 直连，
-            各平台分发状态（installed/skipped/failed）随 inventory 上报、Console 可见。
-          </p>
-          <p>
-            内置 <code>agentkit-system</code> 插件随 daemon 自动物化（无需登记）：
-            提供 client-control 技能（教 agent 操作宿主 CLI 与文件布局），
-            并携带三平台的 tool ask-user hooks——在平台需要人工确认工具执行时上报本地审批桥、
-            Hub 人工确认后回放决定（人工未拒绝即放行）；hooks 为插件作用域（随插件进入受管项目），
-            不做用户级全局安装。详见
-            <a href="plugins.html">插件机制专页</a>。
-          </p>
-
-          <h3 id="features-security">5.5 凭据与安全</h3>
-          <ul>
-            <li>token 存本机 Agent home 下的 0600 文件（每 clientId 一个，全平台一致）；</li>
-            <li>config.json 以 0600 权限写入，含本地策略（requireRunApproval、allowedGitOrigins、deniedPluginIds 等）；</li>
-            <li>日志为滚动 JSONL，原文写盘不脱敏，<code>logs</code> 输出亦为原样；</li>
-            <li>每条命令先过本地策略门控，Hub 不能绕过本地权限执行任意路径或任意来源插件。</li>
-          </ul>
-
-          <h3 id="features-service">5.6 服务化运维</h3>
-          <p>
-            <code>install</code> 注册用户级服务（macOS launchd，标签
-            <code>ai.allin.allinai-agentkit</code>；Linux systemd，单元
-            <code>allinai-agentkit.service</code>），daemon 随登录自启。
-            日常运维环：<code>status</code> 查健康 → <code>logs -f</code> 看执行 →
-            <code>doctor</code> 自检 → 改配置后 <code>restart</code>。
-          </p>
-        </section>
-
         <section id="integration" class="doc-section">
           <h2>6 系统集成</h2>
-          <p>面向宿主开发者：把 Hub、client、控制面组合进你自己的系统。</p>
+          <p>面向应用开发者：将任务派发、结果观察和执行机器管理接入现有产品。下面提供 Hub SDK、Client、桌面应用与 Next.js 的集成参考。</p>
 
-          <h3 id="integration-hub">6.1 宿主服务：挂一个 Hub</h3>
-          <p>把协议 Hub 挂进现有 HTTP 服务，鉴权与持久化全部由你实现，包只负责协议编排。</p>
+          <h3 id="integration-hub">6.1 将任务派发接入现有应用</h3>
+          <p>当应用需要把任务交给本地执行机器时，将 Hub 挂入现有 HTTP 服务，使用应用自己的鉴权和持久化，实现任务派发与事件接收。</p>
           <pre class="code-block"><code><span class="c">// 宿主侧：node:http + 你自己的 HubStore</span>
 import { createAgentHub } from "@allin-ai/agentkit-hub/hub";
 
@@ -603,7 +627,7 @@ await site.close();</code></pre>
               <span class="arch-chip">/credentials<small> token（0600 文件）</small></span>
               <span class="arch-chip">/paths<small> 数据目录</small></span>
               <span class="arch-chip">/logger<small> 滚动日志</small></span>
-              <span class="arch-chip">/service/*<small> 开机自启</small></span>
+              <span class="arch-chip">/service/*<small> 登录后自动启动</small></span>
             </div>
 
             <div class="arch-row arch-dev">
@@ -941,7 +965,7 @@ await site.close();</code></pre>
                 </div>
                 <p>
                   用户级服务注册（install / uninstall / restart），daemon
-                  开机自启；install 命令即调它们。
+                  登录后自动启动；install 命令即调它们。
                 </p>
               </div>
             </div>

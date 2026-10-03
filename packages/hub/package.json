@@ -10,7 +10,7 @@
     "node": ">=22.18.0"
   },
   "name": "@allin-ai/agentkit-hub",
-  "description": "Embedded Hub SDK and standalone web console.",
+  "description": "Connect applications to local AI agents: dispatch tasks, observe execution, and manage Issues and plugins through a Hub SDK or web console.",
   "private": false,
   "main": "./src/index.ts",
   "files": [
