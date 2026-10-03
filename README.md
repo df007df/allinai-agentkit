@@ -1,8 +1,8 @@
 # allinai-agentkit
 
-同仓库维护两个独立 npm 包：`@allin-ai/agentkit-hub` 为业务系统提供 Hub SDK 和可单独启动的 Next.js 控制台；`@allin-ai/agentkit-client` 在执行机器上运行持久 Client，连接 Hub、执行本地平台 Agent 和受策略门控的能力，再回报状态。
+allinai-agentkit 是一套让业务系统连接和调度本地 AI Agent 的工具。你的应用通过 Hub 派发任务，执行机器上的常驻 Client 调用 Codex、Claude、Pi 或 zcode 等已安装的平台 Agent 执行，并把运行状态、执行事件和结果回传给 Hub。
 
-两个包没有相互的生产依赖。协议、路由、路径和公共配置类型使用同一份内部源码，构建时分别编入两个包；不发布第三个共享包。
+你可以将 Hub SDK 嵌入现有应用或服务，也可以直接启动自带的 Web 控制台，完成 Client 授权接入、任务派发、执行过程观察、Issues 协作和插件管理。Client 提供断线重连、执行状态持久化、项目目录管理和本地策略控制，便于持续运行与排查任务。
 
 当前版本：**0.6.0**，变更与迁移说明见 [CHANGELOG](CHANGELOG.md)。
 
@@ -85,6 +85,8 @@ flowchart TB
 支撑模块（daemon 内部使用）：`/config` 工作目录与本地策略、`/credentials` token 存取（0600 文件，全平台一致）、`/paths` 数据目录、`/logger` 滚动日志、`/service/*` 开机自启。开发与联调：`/hub/testkit` 内存 Hub；`/console` Console 服务端胶水（路由 / SSE 观察 / 授权桥），`/console-ui` React 组件。
 
 ## 包和源码结构
+
+Hub 和 Client 分别提供独立 npm 包，可按部署角色分别安装。两个包没有相互的生产依赖；协议、路由、路径和公共配置类型使用同一份内部源码，构建时分别编入两个包，不发布第三个共享包。
 
 | 包 | 内容 | 命令 |
 |---|---|---|
