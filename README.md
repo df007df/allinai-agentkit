@@ -4,20 +4,21 @@
 
 两个包没有相互的生产依赖。协议、路由、路径和公共配置类型使用同一份内部源码，构建时分别编入两个包；不发布第三个共享包。
 
-官网（介绍与使用场景）：https://df007df.github.io/allinai-agentkit/ ，由 `site/` 目录经 GitHub Actions 自动发布。完整文档（安装 → CLI 参考 → 功能 → 系统集成 → 架构）：https://df007df.github.io/allinai-agentkit/docs.html
+当前版本：**0.6.0**，变更与迁移说明见 [CHANGELOG](CHANGELOG.md)。
+
+[官网](https://df007df.github.io/allinai-agentkit/)由 `site/` 目录经 GitHub Actions 自动发布；[完整文档](https://df007df.github.io/allinai-agentkit/docs.html)覆盖安装、CLI、功能、系统集成与架构。
 
 ## 快速开始（npm）
 
-要求 Node.js ≥ 22.18。以下为双包发布后的安装方式（源码开发见下一节）：
+要求 Node.js ≥ 22.18。Hub 和 Client 可部署在不同机器上，分别安装（源码开发见下一节）：
 
 ```bash
-# 在 Hub 机器上安装控制台；在执行机器上安装 Client，可分别安装
-npm i -g @allin-ai/agentkit-client @allin-ai/agentkit-hub
-
 # 终端 A：启动 Console（Hub + web UI 同进程；默认 http://127.0.0.1:4317）
+npm i -g @allin-ai/agentkit-hub
 allinai-agentkit-hub web
 
 # 终端 B：浏览器授权接入，然后常驻接入
+npm i -g @allin-ai/agentkit-client
 allinai-agentkit login --hub http://127.0.0.1:4317
 allinai-agentkit daemon
 ```
@@ -44,12 +45,12 @@ node bin/allinai-agentkit daemon
 ## 安装（一键 sh 脚本）
 
 ```bash
-sh scripts/install.sh                 # npm 全局安装最新版
-sh scripts/install.sh 0.5.0           # 指定版本
-sh scripts/install.sh --from-source   # 本仓库构建 + npm link（开发）
+sh scripts/install.sh                 # npm 全局安装最新版 Client
+sh scripts/install.sh 0.6.0           # 指定 Client 版本
+sh scripts/install.sh --from-source   # 本仓库构建 + npm link Client（开发）
 ```
 
-脚本会检查 Node.js ≥ 22.18，安装后验证 `allinai-agentkit --help`。
+脚本安装 Client，会检查 Node.js ≥ 22.18，安装后验证 `allinai-agentkit --help`。Hub 控制台另用 `npm i -g @allin-ai/agentkit-hub` 安装。
 
 ## 架构与包结构
 
@@ -118,6 +119,10 @@ Hub 主入口仅导出 SDK 与协议，不加载 Console、Next.js 或 React。�
 
 业务系统嵌入 Hub：
 
+```bash
+npm install @allin-ai/agentkit-hub
+```
+
 ```ts
 import { createAgentHub } from "@allin-ai/agentkit-hub";
 const hub = createAgentHub({ authorize, store });
@@ -135,13 +140,30 @@ npm install -g @allin-ai/agentkit-client @allin-ai/agentkit-hub
 
 ## CLI
 
+Hub 控制台：
+
+```bash
+allinai-agentkit-hub web --port 4317 --host 127.0.0.1
+# 将 Hub 的 token 和 Issues 保存到独立目录（必须为绝对路径）
+allinai-agentkit-hub web --config-dir /absolute/path/agentkit-hub
 ```
-allinai-agentkit <init|login|daemon|install|status|logs|sync|restart|uninstall|doctor|projects|project|plugins|docs>
+
+默认数据目录为 `~/.allinai/agent`，其中 `tokens.db` 保存授权、`issues.db` 保存 Issues 与评论；Client 使用同一默认目录中的其他文件。`--port 0` 可分配临时端口；`--dev` 用于源码开发，npm 包默认运行预构建的生产控制台。
+
+Client：
+
+```
+allinai-agentkit <init|login|daemon|install|status|logs|sync|restart|uninstall|doctor|projects|project|plugins|issue|docs>
 allinai-agentkit project --name web --path /work/web    # 注册项目工作目录
 allinai-agentkit project --name web --remove            # 移除
 allinai-agentkit projects                               # 列出已注册项目
 allinai-agentkit plugins [--refresh]                    # 查看已装插件；--refresh 重新上报 Hub
 allinai-agentkit plugins --action install --git-url URL --id ID   # 本地登记插件
+allinai-agentkit issue list                             # 查询 Hub Issues
+allinai-agentkit issue show ISSUE-12 --json              # 读取 Issue、评论与关联执行
+allinai-agentkit issue comment ISSUE-12 --body "已完成核验"
+allinai-agentkit issue update ISSUE-12 --status in_progress
+allinai-agentkit issue inbox                            # 查询当前 Client 的待处理消息
 allinai-agentkit docs [--json]                          # 输出完整 CLI 使用手册（Markdown；--json 为结构化输出，适合 AI agent 读取）
 ```
 
@@ -182,8 +204,20 @@ pnpm verify:artifact:offline
 
 ## 发布
 
-两个包使用同一版本号。同步更新根 `package.json`、`packages/hub/package.json`、`packages/client/package.json` 的 version，再推送相同版本的 `v*` 标签。Release workflow 运行测试、类型检查、双包产物验证和 Web host 测试后，分别发布 `.publish-stage/hub` 与 `.publish-stage/client`，附 npm provenance。
+两个包使用同一版本号。同步更新根 `package.json`、`packages/hub/package.json`、`packages/client/package.json` 的 version、CHANGELOG 与网站文档，再推送相同版本的 `v*` 标签。Release workflow 运行测试、类型检查、双包产物验证和 Web host 测试后，通过 npm trusted publishing 发布两个包，附 npm provenance。
 
-两个新包均需在 npm 配置此仓库 `.github/workflows/release.yml` 的 trusted publisher。本地验证不会发布到 npm。
+新包必须先存在于 npm，才能配置 trusted publisher。首次发布需在已登录的维护者机器上提交代码，验证产物后执行：
+
+```bash
+pnpm verify:artifact
+pnpm test:web
+node scripts/publish-stage.mjs publish-staged
+npm trust github @allin-ai/agentkit-hub --repo df007df/allinai-agentkit --file release.yml --allow-publish --yes
+npm trust github @allin-ai/agentkit-client --repo df007df/allinai-agentkit --file release.yml --allow-publish --yes
+```
+
+配置 trusted publisher 需要维护者账号的双因素认证。首次本地发布没有 CI provenance；后续由 GitHub Actions 发布。重试时，发布脚本只跳过 `gitHead` 与当前提交一致的已发布版本；其他提交占用版本或 registry 查询失败都会终止。`pnpm verify:artifact` 和 `pnpm test:web` 本身不会发布。
+
+Pages 是静态介绍与文档站，Hub 控制台通过 Hub 包在运行机器上启动。`site/` 变更合入 `main` 后自动部署；也可手动运行 `pages.yml`。
 
 MIT License.

@@ -3,7 +3,7 @@
 #
 # 用法：
 #   sh install.sh                 # 安装最新已发布版本到全局
-#   sh install.sh 0.5.0           # 安装指定版本
+#   sh install.sh 0.6.0           # 安装指定 Client 版本
 #   sh install.sh --from-source   # 从当前仓库源码构建并全局链接（开发用）
 #
 # 脚本只做三件事：确认 Node.js >= 22.18、用 npm 全局安装（或源码构建）、

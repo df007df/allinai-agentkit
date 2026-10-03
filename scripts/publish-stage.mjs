@@ -69,8 +69,8 @@ function stage() {
     const destination = path.join(stageDir, side);
     const manifest = JSON.parse(readFileSync(path.join(sourceRoot, "package.json"), "utf8"));
     mkdirSync(destination, { recursive: true });
-    for (const entry of ["dist", "bin", "README.md", "LICENSE"]) {
-      const source = path.join(["README.md", "LICENSE"].includes(entry) ? packageRoot : sourceRoot, entry);
+    for (const entry of ["dist", "bin", "README.md", "CHANGELOG.md", "LICENSE"]) {
+      const source = path.join(["README.md", "CHANGELOG.md", "LICENSE"].includes(entry) ? packageRoot : sourceRoot, entry);
       if (!existsSync(source)) throw new Error(`Missing publish input: ${source}`);
       cpSync(source, path.join(destination, entry), { recursive: true });
     }
@@ -81,9 +81,52 @@ function stage() {
 
 function publish(extraArgs) {
   stage();
+  publishStaged(extraArgs);
+}
+
+export function publicationAction(result, gitHead) {
+  if (result.error) throw result.error;
+  let manifest;
+  try { manifest = JSON.parse(result.stdout); }
+  catch { throw new Error("Registry lookup failed: invalid npm response"); }
+  if (result.status === 0) {
+    if (manifest.gitHead === gitHead) return "skip";
+    throw new Error("This version already exists from a different or unknown commit; choose a new version.");
+  }
+  if (manifest.error?.code === "E404") return "publish";
+  throw new Error(`Registry lookup failed: ${manifest.error?.code ?? result.status}`);
+}
+
+function publishStaged(extraArgs) {
+  const git = (args) => {
+    const result = spawnSync("git", args, { cwd: packageRoot, encoding: "utf8" });
+    if (result.error || result.status !== 0) throw new Error(`git ${args.join(" ")} failed`);
+    return result.stdout.trim();
+  };
+  if (git(["status", "--porcelain", "--untracked-files=no"])) {
+    throw new Error("Commit tracked changes before publishing.");
+  }
+  const gitHead = git(["rev-parse", "HEAD"]);
+  const version = JSON.parse(readFileSync(path.join(packageRoot, "package.json"), "utf8")).version;
+  if (process.env.GITHUB_REF_TYPE === "tag" && process.env.GITHUB_REF_NAME !== `v${version}`) {
+    throw new Error(`Release tag must be v${version}`);
+  }
   const npm = process.platform === "win32" ? "npm.cmd" : "npm";
   for (const side of ["hub", "client"]) {
-    const result = spawnSync(npm, ["publish", path.join(stageDir, side), ...extraArgs], { stdio: "inherit" });
+    const directory = path.join(stageDir, side);
+    const manifestPath = path.join(directory, "package.json");
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+    if (manifest.name !== `@allin-ai/agentkit-${side}` || manifest.version !== version) {
+      throw new Error(`Staged ${side} does not match the release; stage and verify again.`);
+    }
+    const spec = `${manifest.name}@${manifest.version}`;
+    const lookup = spawnSync(npm, ["view", spec, "--json"], { cwd: packageRoot, encoding: "utf8" });
+    if (publicationAction(lookup, gitHead) === "skip") {
+      console.log(`Already published ${spec} from ${gitHead}; skipping.`);
+      continue;
+    }
+    writeFileSync(manifestPath, `${JSON.stringify({ ...manifest, gitHead }, null, 2)}\n`);
+    const result = spawnSync(npm, ["publish", directory, ...extraArgs], { cwd: packageRoot, stdio: "inherit" });
     if (result.status !== 0) process.exit(result.status ?? 1);
   }
 }
@@ -98,9 +141,11 @@ if (invokedDirectly) {
     stage();
   } else if (command === "publish") {
     publish(extraArgs);
+  } else if (command === "publish-staged") {
+    publishStaged(extraArgs);
   } else {
     console.error(
-      "Usage: node scripts/publish-stage.mjs <stage|publish> [npm publish flags]",
+      "Usage: node scripts/publish-stage.mjs <stage|publish|publish-staged> [npm publish flags]",
     );
     process.exit(1);
   }

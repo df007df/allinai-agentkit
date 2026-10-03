@@ -59,6 +59,8 @@ export function cliManual(): CliManual {
       "covers every allinai-agentkit subcommand so an agent can configure, " +
       "run and diagnose the client without reading the source.",
     quickstart: [
+      "npm install -g @allin-ai/agentkit-hub    # Hub machine: SDK and Console; Client is installed separately",
+      "npm install -g @allin-ai/agentkit-client # execution machine: persistent Client and CLI",
       "allinai-agentkit-hub web    # terminal A: local Console (Hub + web UI) on http://127.0.0.1:4317; provided by @allin-ai/agentkit-hub",
       "allinai-agentkit login --hub http://127.0.0.1:4317   # terminal B: browser pairing; requires the Console running",
       "allinai-agentkit daemon  # terminal B: run the persistent client in the foreground",
@@ -234,6 +236,15 @@ export function cliManual(): CliManual {
       { path: "~/.allinai/agent/control.sock", description: "Local control-plane Unix socket (also the single-instance lock)" },
     ],
     recipes: [
+      {
+        title: "Migrate from the former combined package",
+        description: "The Hub and Client are independent packages. Keep existing client config and credentials; move Hub/Console/Issues imports to @allin-ai/agentkit-hub and Client imports to @allin-ai/agentkit-client.",
+        steps: [
+          "npm uninstall -g @allin-ai/agentkit @allin-ai/agentkit-web",
+          "npm install -g @allin-ai/agentkit-client @allin-ai/agentkit-hub",
+          "allinai-agentkit-hub web   # replaces allinai-agentkit web",
+        ],
+      },
       {
         title: "First-time setup with the local Console",
         description: "Bring up a local Hub and pair a client against it.",

@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
+    <meta name="agentkit-version" content="0.6.0" />
     <title>文档 · allinai-agentkit</title>
     <link rel="stylesheet" href="style.css" />
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-34YL8806XL"></script>
@@ -20,7 +21,8 @@
       <a class="brand" href="index.html">allinai-agentkit</a>
       <div class="nav-links">
         <a href="index.html">官网</a>
-        <a href="https://www.npmjs.com/package/@allin-ai/agentkit-client" target="_blank" rel="noreferrer">npm</a>
+        <a href="https://www.npmjs.com/package/@allin-ai/agentkit-hub" target="_blank" rel="noreferrer">Hub npm</a>
+        <a href="https://www.npmjs.com/package/@allin-ai/agentkit-client" target="_blank" rel="noreferrer">Client npm</a>
         <a href="https://github.com/df007df/allinai-agentkit" target="_blank" rel="noreferrer">GitHub</a>
       </div>
     </nav>
@@ -33,8 +35,10 @@
         <a href="#install-npx" class="sub">npx 免安装</a>
         <a href="#install-global" class="sub">npm 全局安装</a>
         <a href="#install-source" class="sub">源码构建</a>
+        <a href="#install-migrate" class="sub">从旧包迁移</a>
         <a href="#quickstart">快速开始</a>
         <a href="#quickstart-auth" class="sub">授权模型</a>
+        <a href="#quickstart-issues" class="sub">Issues 协作</a>
         <a href="#cli">CLI 参考</a>
         <a href="#features">功能介绍</a>
         <a href="#features-daemon" class="sub">常驻执行模型</a>
@@ -60,7 +64,7 @@
       <main class="docs-content">
         <h1>allinai-agentkit 文档</h1>
         <p class="docs-lead">
-          独立持久 Agent Client：连接 Hub，可靠执行本地 Agent 与受控能力，向上游回报状态。
+          v0.6.0：Hub SDK 与控制台、持久 Agent Client 分别安装和部署。
           从安装到系统集成，本页是完整参考；快速印象可直接看<a href="index.html">官网首页</a>。
         </p>
 
@@ -83,6 +87,14 @@
         <section id="install" class="doc-section">
           <h2>2 安装</h2>
           <p>环境要求：<strong>Node.js ≥ 22.18</strong>；插件同步需要本机 <code>git</code>。三种方式按需选择。</p>
+          <table class="doc-table">
+            <thead><tr><th>包</th><th>部署位置与用途</th><th>命令</th></tr></thead>
+            <tbody>
+              <tr><td><code>@allin-ai/agentkit-hub</code></td><td>Hub 机器：SDK、Console、Issues 与预构建 Next.js 控制台</td><td><code>allinai-agentkit-hub web</code></td></tr>
+              <tr><td><code>@allin-ai/agentkit-client</code></td><td>执行机器：持久 Client、平台执行器、插件与本地控制面</td><td><code>allinai-agentkit daemon</code></td></tr>
+            </tbody>
+          </table>
+          <p>两个包没有相互的生产依赖。只接入现有 Hub 的机器安装 Client 即可；业务服务嵌入 Hub 使用 <code>npm install @allin-ai/agentkit-hub</code>。</p>
 
           <h3 id="install-npx">2.1 npx 免安装</h3>
           <p>分别使用 npx 启动 Hub 控制台或 Client：</p>
@@ -90,12 +102,17 @@
 npx @allin-ai/agentkit-hub web</code></pre>
 
           <h3 id="install-global">2.2 npm 全局安装</h3>
-          <pre class="code-block"><code>npm install -g @allin-ai/agentkit-client
+          <pre class="code-block"><code><span class="c"># Hub 机器</span>
+npm install -g @allin-ai/agentkit-hub
+allinai-agentkit-hub --help
+
+<span class="c"># 执行机器</span>
+npm install -g @allin-ai/agentkit-client
 allinai-agentkit --help</code></pre>
-          <p>或使用仓库提供的一键脚本（自动检查 Node 版本并验证安装）：</p>
-          <pre class="code-block"><code>sh scripts/install.sh                 # 安装最新版
-sh scripts/install.sh 0.5.0           # 指定版本
-sh scripts/install.sh --from-source   # 本仓库构建 + npm link（开发）</code></pre>
+          <p>Client 也可使用仓库提供的一键脚本（自动检查 Node 版本并验证安装）：</p>
+          <pre class="code-block"><code>sh scripts/install.sh                 # 安装最新版 Client
+sh scripts/install.sh 0.6.0           # 指定 Client 版本
+sh scripts/install.sh --from-source   # 本仓库构建 + npm link Client（开发）</code></pre>
 
           <h3 id="install-source">2.3 源码构建</h3>
           <pre class="code-block"><code>git clone https://github.com/df007df/allinai-agentkit.git
@@ -103,6 +120,11 @@ cd allinai-agentkit
 pnpm install && pnpm build
 
 node bin/allinai-agentkit --help</code></pre>
+
+          <h3 id="install-migrate">2.4 从旧包迁移</h3>
+          <pre class="code-block"><code>npm uninstall -g @allin-ai/agentkit @allin-ai/agentkit-web
+npm install -g @allin-ai/agentkit-client @allin-ai/agentkit-hub</code></pre>
+          <p>将 Hub、Console、Issues 导入改为 <code>@allin-ai/agentkit-hub/...</code>，Client 导入改为 <code>@allin-ai/agentkit-client/...</code>。<code>allinai-agentkit web</code> 改为 <code>allinai-agentkit-hub web</code>；其他 Client 命令、v2 wire 协议与默认数据目录保持兼容。原 Web 包已并入 Hub 包。</p>
 
           <p class="doc-note">
             数据目录：<code>~/.allinai/agent</code>（config.json、sqlite 状态库、日志、插件目录、
@@ -115,30 +137,29 @@ node bin/allinai-agentkit --help</code></pre>
           <p>安装后三步跑通完整链路。npx 启动 Hub 用 <code>npx @allin-ai/agentkit-hub web</code>，Client 用 <code>npx @allin-ai/agentkit-client</code> 加子命令：</p>
 
           <h3>步骤一：启动 Console（终端 A）</h3>
-          <pre class="code-block"><code>node bin/allinai-agentkit-hub web
+          <pre class="code-block"><code>allinai-agentkit-hub web
 <span class="c"># 输出 consoleUrl（默认 http://127.0.0.1:4317）与 hubWsUrl，浏览器打开 consoleUrl</span></code></pre>
           <p>
-            <code>web</code> 把 Hub 与 Console UI 跑在同一进程，仅监听回环地址。
-            它属于 <code>@allin-ai/agentkit-hub</code>，包内包含官方 Next.js 控制台：
-            npm 全局安装 <code>npm i -g @allin-ai/agentkit-client @allin-ai/agentkit-hub</code>；
-            Hub 和 Client 可以分别安装；源码开发时两个包由 pnpm workspace 链接。
+            <code>web</code> 把 Hub 与 Console UI 跑在同一进程，默认监听回环地址。
+            它属于 <code>@allin-ai/agentkit-hub</code>，npm 包内包含预构建的官方控制台。
+            下列示例使用全局安装的命令；npx 用户换成对应包名，源码用户换成 <code>node bin/...</code>。
           </p>
 
           <h3>步骤二：浏览器授权（终端 B）</h3>
-          <pre class="code-block"><code>node bin/allinai-agentkit login --hub http://127.0.0.1:4317
+          <pre class="code-block"><code>allinai-agentkit login --hub http://127.0.0.1:4317
 <span class="c"># 输出 authorizeUrl 并自动打开浏览器；在授权页点“允许”即完成配对</span></code></pre>
 
           <h3>步骤三：常驻接入（终端 B）</h3>
-          <pre class="code-block"><code>node bin/allinai-agentkit daemon</code></pre>
+          <pre class="code-block"><code>allinai-agentkit daemon</code></pre>
           <p>
-            回到控制台页面：client 列表出现你的 clientId，时间线实时显示注册与心跳。
+            回到控制台页面：Client 注册、心跳与项目清单实时更新，无需刷新。
             在「发起执行」面板选择 client、runtime 与项目、填写 prompt，即可下发一次
             <code>agent.run</code>，执行事件经 <code>events.ingested</code> 增量推送
             实时回传（历史会话以手风琴展开单次执行的完整时间线）。
           </p>
 
           <h3>步骤四（可选）：注册项目目录并派发到指定目录</h3>
-          <pre class="code-block"><code>node bin/allinai-agentkit project --name web --path /work/web
+          <pre class="code-block"><code>allinai-agentkit project --name web --path /work/web
 <span class="c"># 之后 agent.run 可携带 payload.project= "web"，daemon 在 /work/web 中执行</span></code></pre>
 
           <h3 id="quickstart-auth">3.1 授权模型</h3>
@@ -147,12 +168,22 @@ node bin/allinai-agentkit --help</code></pre>
             <code>login</code>，浏览器授权页确认后，Console 保存 <code>token → clientId</code> 并以此放行后续连接。官方控制台使用本地 SQLite 保存 token，重启后无需重新 login。
             生产环境的鉴权由宿主在 <code>createAgentHub({ authorize })</code> 里自己实现。
           </p>
+          <p>官方控制台默认在 <code>~/.allinai/agent</code> 保存 <code>tokens.db</code> 和 <code>issues.db</code>；授权、Issue 状态与评论在重启后保留。可用绝对路径为 Hub 指定独立数据目录：</p>
+          <pre class="code-block"><code>allinai-agentkit-hub web --config-dir /absolute/path/agentkit-hub</code></pre>
+
+          <h3 id="quickstart-issues">3.2 Issues 协作</h3>
+          <p>在控制台创建 Issue、评论并修改状态。完成 login 的 Client 可使用同一份授权，通过 Hub REST API 读取与更新 Issue：</p>
+          <pre class="code-block"><code>allinai-agentkit issue list
+allinai-agentkit issue show ISSUE-12 --json
+allinai-agentkit issue comment ISSUE-12 --body "已完成核验"
+allinai-agentkit issue update ISSUE-12 --status in_progress --priority P1
+allinai-agentkit issue inbox</code></pre>
         </section>
 
         <section id="cli" class="doc-section">
           <h2>4 CLI 参考</h2>
           <p>
-            全部子命令：<code>allinai-agentkit &lt;init|login|daemon|web|install|status|logs|sync|restart|uninstall|doctor|projects|project|plugins|docs&gt;</code>
+            Client 全部子命令：<code>allinai-agentkit &lt;init|login|daemon|install|status|logs|sync|restart|uninstall|doctor|projects|project|plugins|issue|docs&gt;</code>。Hub 使用独立的 <code>allinai-agentkit-hub web</code>。
           </p>
           <table class="doc-table">
             <thead>
@@ -177,7 +208,7 @@ node bin/allinai-agentkit --help</code></pre>
               <tr>
                 <td><code>allinai-agentkit-hub web</code></td>
                 <td>启动本地 Console：Hub 与 web UI 同进程（Hub 包的独立命令）</td>
-                <td><code>--port N</code> · <code>--host H</code></td>
+                <td><code>--port N</code>（默认 4317，0 分配临时端口） · <code>--host H</code>（默认 127.0.0.1） · <code>--config-dir PATH</code>（绝对路径） · <code>--dev</code>（源码开发）</td>
               </tr>
               <tr>
                 <td><code>install</code></td>
@@ -233,6 +264,11 @@ node bin/allinai-agentkit --help</code></pre>
                 <td><code>docs</code></td>
                 <td>输出完整 CLI 使用手册索引：默认 Markdown（人与 AI 均可读），<code>--json</code> 为同一份内容的结构化输出，AI agent 读完即可自行配置与执行</td>
                 <td><code>--json</code></td>
+              </tr>
+              <tr>
+                <td><code>issue show|list|comment|update|inbox</code></td>
+                <td>读取 Issues、评论、修改状态与优先级、读取当前 Client inbox；使用已保存的 Hub token</td>
+                <td><code>--status</code> · <code>--priority</code> · <code>--body</code> · <code>--json</code>（show）</td>
               </tr>
             </tbody>
           </table>
@@ -918,8 +954,8 @@ await site.close();</code></pre>
                   <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { runCli } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit-client/cli"</span><span class="pn">;</span></code></pre>
                 </div>
                 <p>
-                  runCli：init / login / daemon / web / install / status / logs /
-                  sync / restart / uninstall / doctor / projects / plugins
+                  runCli：init / login / daemon / install / status / logs /
+                  sync / restart / uninstall / doctor / projects / project / plugins / issue / docs
                   全部子命令的实现，bin/allinai-agentkit 就是它的薄封装。
                 </p>
               </div>
@@ -957,7 +993,7 @@ await site.close();</code></pre>
             <li><strong>daemon 没起来</strong>：<code>status</code> 看健康与状态；前台跑一次 <code>daemon</code> 直接观察日志输出。</li>
             <li><strong>执行没反应</strong>：<code>logs -f</code> 跟随执行日志（JSONL），确认命令是否到达、策略是否放行、runner 是否可用。</li>
             <li><strong>提示未配对</strong>：检查 token 是否有效；使用易失内存 token 存储的嵌入式 Hub 在重启后需重新 <code>login --hub ...</code>。官方控制台默认持久化 token；生产环境检查宿主 authorize 实现。</li>
-            <li><strong>runtime 缺失</strong>：doctor 报告里看各 runtime 的 installed/reason，安装对应 agent SDK 后重启 daemon。</li>
+            <li><strong>runtime 缺失</strong>：doctor 报告里看各 runtime 的 installed/reason，安装对应平台 CLI 后重启 daemon。</li>
             <li><strong>服务不生效</strong>：改配置后 <code>restart</code>；确认 <code>install</code> 输出的平台与 configDir 符合预期。</li>
           </ul>
         </section>
@@ -965,12 +1001,12 @@ await site.close();</code></pre>
     </div>
 
     <footer class="footer">
-      <span>MIT License · Node.js ≥ 22.18</span>
+      <span>v0.6.0 · MIT License · Node.js ≥ 22.18</span>
       <span class="footer-links">
         <a href="index.html">官网</a>
-        <a href="https://www.npmjs.com/package/@allin-ai/agentkit-client" target="_blank" rel="noreferrer">npm</a>
+        <a href="https://www.npmjs.com/package/@allin-ai/agentkit-hub" target="_blank" rel="noreferrer">Hub npm</a>
+        <a href="https://www.npmjs.com/package/@allin-ai/agentkit-client" target="_blank" rel="noreferrer">Client npm</a>
         <a href="https://github.com/df007df/allinai-agentkit" target="_blank" rel="noreferrer">GitHub</a>
-        <span>@allin-ai/agentkit-client</span>
       </span>
     </footer>
   </body>

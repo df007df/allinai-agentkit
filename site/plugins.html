@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
+    <meta name="agentkit-version" content="0.6.0" />
     <title>插件机制 · allinai-agentkit</title>
     <link rel="stylesheet" href="style.css" />
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-34YL8806XL"></script>
@@ -20,7 +21,8 @@
       <div class="nav-links">
         <a href="index.html">官网</a>
         <a href="docs.html">文档</a>
-        <a href="https://www.npmjs.com/package/@allin-ai/agentkit-client" target="_blank" rel="noreferrer">npm</a>
+        <a href="https://www.npmjs.com/package/@allin-ai/agentkit-hub" target="_blank" rel="noreferrer">Hub npm</a>
+        <a href="https://www.npmjs.com/package/@allin-ai/agentkit-client" target="_blank" rel="noreferrer">Client npm</a>
         <a href="https://github.com/df007df/allinai-agentkit" target="_blank" rel="noreferrer">GitHub</a>
       </div>
     </nav>
@@ -47,6 +49,7 @@
         <section id="overview" class="doc-section">
           <h1>插件机制</h1>
           <p>
+            v0.6.0 中，插件执行与管理属于 <code>@allin-ai/agentkit-client</code>，中心控制台属于 <code>@allin-ai/agentkit-hub</code>。
             allinai-agentkit 以<strong>插件（plugin）为技能（skills）的唯一载体</strong>：
             一个插件 = 一个 Git 仓库 = 一组技能 + 平台入口清单。中心（Hub/Console）与
             client 对插件的全部操作都是<strong>登记</strong>——登记 Git 地址与分支，
@@ -206,7 +209,7 @@ allinai-agentkit plugins --action update                    # 拉取更新（离
 allinai-agentkit plugins --action force --id my-skills \
   --commit &lt;sha&gt;                                             # 钉死/回滚到任意 commit</code></pre>
           <p>
-            编程接入：<code>@allinai-ai/agentkit/plugins</code> 的
+            编程接入：<code>@allin-ai/agentkit-client/plugins</code> 的
             <code>PluginManager</code>（<code>sync / check / forceTo / remove</code>），
             中心侧 <code>hub.syncPlugins()</code> 与 Console HTTP 端点
             <code>GET/POST /_agentkit/console/plugins</code>。完整 API 见
@@ -217,12 +220,12 @@ allinai-agentkit plugins --action force --id my-skills \
     </div>
 
     <footer class="footer">
-      <span>MIT License · Node.js ≥ 22.18</span>
+      <span>v0.6.0 · MIT License · Node.js ≥ 22.18</span>
       <span class="footer-links">
         <a href="index.html">官网</a>
-        <a href="https://www.npmjs.com/package/@allin-ai/agentkit-client" target="_blank" rel="noreferrer">npm</a>
+        <a href="https://www.npmjs.com/package/@allin-ai/agentkit-hub" target="_blank" rel="noreferrer">Hub npm</a>
+        <a href="https://www.npmjs.com/package/@allin-ai/agentkit-client" target="_blank" rel="noreferrer">Client npm</a>
         <a href="https://github.com/df007df/allinai-agentkit" target="_blank" rel="noreferrer">GitHub</a>
-        <span>@allin-ai/agentkit-client</span>
       </span>
     </footer>
   </body>

@@ -41,8 +41,6 @@ jobs:
 
       # npm publish packs the manifest it loaded before lifecycle hooks, so we
       # publish the staging directory whose on-disk manifest is already public.
-      - name: Publish Hub
-        run: npm publish --provenance .publish-stage/hub
-
-      - name: Publish Client
-        run: npm publish --provenance .publish-stage/client
+      # Retry a partial release safely; existing versions must match this commit.
+      - name: Publish Hub and Client
+        run: node scripts/publish-stage.mjs publish-staged --provenance

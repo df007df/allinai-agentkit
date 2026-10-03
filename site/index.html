@@ -4,7 +4,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
-    <title>allinai-agentkit · 独立持久 Agent Client</title>
+    <meta name="agentkit-version" content="0.6.0" />
+    <meta name="description" content="Hub SDK 与持久 Agent Client 分别安装和部署；连接本地 Agent，在控制台派发任务并实时查看执行事件。" />
+    <title>allinai-agentkit · Hub 与 Client</title>
     <link rel="stylesheet" href="style.css" />
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-34YL8806XL"></script>
     <script>
@@ -29,9 +31,9 @@
     <main id="top">
       <section class="hero">
         <div class="hero-copy">
-          <h1>独立持久的<br />Agent Client</h1>
+          <h1>独立部署的<br />Hub 与 Client</h1>
           <p class="subtext">
-            连接 Hub，可靠执行本地 Agent 与受控能力，向上游回报状态。
+            v0.6.0：Hub 提供 SDK 与控制台，持久 Client 执行本地 Agent 与受控能力，向上游回报状态。
             Hub 和 Client 分别使用独立 npm 包；控制台由 Hub 包启动（<code>allinai-agentkit-hub web</code>）：授权你的 client 接入，实时看协议流动。
           </p>
           <div class="cta-row">
@@ -45,8 +47,7 @@
             <span class="term-title">quickstart.sh</span>
           </div>
           <pre class="term-body"><code><span class="c"># 终端 A：启动 Console（Hub + web UI 同进程；Node.js ≥ 22.18）</span>
-<span class="c"># 需要 @allin-ai/agentkit-hub：npm i -g @allin-ai/agentkit-client @allin-ai/agentkit-hub</span>
-allinai-agentkit-hub web
+npx @allin-ai/agentkit-hub web
 
 <span class="c"># 终端 B：浏览器授权（会打开授权页）</span>
 npx @allin-ai/agentkit-client login \
@@ -237,7 +238,7 @@ npx @allin-ai/agentkit-client daemon</code></pre>
           </div>
           <div class="export-cell">
             <code>/runtime</code>
-            <p>Codex / Claude / Pi / zcode，可选 peer</p>
+            <p>Codex / Claude / Pi / zcode，按需安装本机 CLI</p>
           </div>
           <div class="export-cell">
             <code>/plugins</code>
@@ -257,11 +258,11 @@ npx @allin-ai/agentkit-client daemon</code></pre>
     </main>
 
     <footer class="footer">
-      <span>MIT License · Node.js ≥ 22.18</span>
+      <span>v0.6.0 · MIT License · Node.js ≥ 22.18</span>
       <span class="footer-links">
-        <a href="https://www.npmjs.com/package/@allin-ai/agentkit-client" target="_blank" rel="noreferrer">npm</a>
+        <a href="https://www.npmjs.com/package/@allin-ai/agentkit-hub" target="_blank" rel="noreferrer">Hub npm</a>
+        <a href="https://www.npmjs.com/package/@allin-ai/agentkit-client" target="_blank" rel="noreferrer">Client npm</a>
         <a href="https://github.com/df007df/allinai-agentkit" target="_blank" rel="noreferrer">GitHub</a>
-        <span>@allin-ai/agentkit-client</span>
       </span>
     </footer>
   </body>
