@@ -32,11 +32,10 @@
           <h1>独立持久的<br />Agent Client</h1>
           <p class="subtext">
             连接 Hub，可靠执行本地 Agent 与受控能力，向上游回报状态。
-            npm 包 @allin-ai/agentkit 已发布，一条命令在本地启动你的
-            Console（<code>allinai-agentkit web</code>）：授权你的 client 接入，实时看协议流动。
+            Hub 和 Client 分别使用独立 npm 包；控制台由 Hub 包启动（<code>allinai-agentkit-hub web</code>）：授权你的 client 接入，实时看协议流动。
           </p>
           <div class="cta-row">
-            <a class="btn primary" href="docs.html#quickstart">启动你的 Console：allinai-agentkit web</a>
+            <a class="btn primary" href="docs.html#quickstart">启动你的 Console：allinai-agentkit-hub web</a>
             <a class="btn ghost" href="https://github.com/df007df/allinai-agentkit">GitHub 仓库</a>
           </div>
         </div>
@@ -46,15 +45,15 @@
             <span class="term-title">quickstart.sh</span>
           </div>
           <pre class="term-body"><code><span class="c"># 终端 A：启动 Console（Hub + web UI 同进程；Node.js ≥ 22.18）</span>
-<span class="c"># 需要 @allin-ai/agentkit-web：npm i -g @allin-ai/agentkit @allin-ai/agentkit-web</span>
-allinai-agentkit web
+<span class="c"># 需要 @allin-ai/agentkit-hub：npm i -g @allin-ai/agentkit-client @allin-ai/agentkit-hub</span>
+allinai-agentkit-hub web
 
 <span class="c"># 终端 B：浏览器授权（会打开授权页）</span>
-npx @allin-ai/agentkit login \
+npx @allin-ai/agentkit-client login \
   --hub http://127.0.0.1:4317
 
 <span class="c"># 终端 B：常驻接入，然后回到控制台页面</span>
-npx @allin-ai/agentkit daemon</code></pre>
+npx @allin-ai/agentkit-client daemon</code></pre>
         </div>
       </section>
 
@@ -67,7 +66,7 @@ npx @allin-ai/agentkit daemon</code></pre>
               <h3>浏览器授权</h3>
               <p>
                 client 持有唯一 clientId，执行 login 后在授权页确认。
-                web 只在内存登记 token 到 clientId 的映射，重启即清空，
+                Hub 将 token 到 clientId 的映射保存到本地 SQLite，重启后仍可使用，
                 不发放任何全局令牌。
               </p>
             </div>
@@ -123,7 +122,7 @@ npx @allin-ai/agentkit daemon</code></pre>
             <span class="step-no">D</span>
             <div>
               <h3>一键 Console</h3>
-              <p>本地调试利器：<code>allinai-agentkit web</code> 把 Hub 与控制台跑在同一进程，仅监听回环地址。</p>
+              <p>本地调试利器：<code>allinai-agentkit-hub web</code> 把 Hub 与控制台跑在同一进程，仅监听回环地址。</p>
             </div>
           </a>
           <a class="scenario-card" href="docs.html#integration-nextjs">
@@ -211,7 +210,7 @@ npx @allin-ai/agentkit daemon</code></pre>
 
           <div class="arch-row arch-dev">
             <span class="arch-chip">/hub/testkit — HubStore 内存实现，测试与本地联调</span>
-            <span class="arch-chip">/console + /console-ui — Console 服务端与 React 组件（@allin-ai/agentkit-web 采用）</span>
+            <span class="arch-chip">/console + /console-ui — Console 服务端与 React 组件（@allin-ai/agentkit-hub 采用）</span>
           </div>
         </div>
 
@@ -250,7 +249,7 @@ npx @allin-ai/agentkit daemon</code></pre>
           </div>
           <div class="export-cell">
             <code>/console-ui</code>
-            <p>Console React 组件，agentkit-web 基于它构建</p>
+            <p>Console React 组件与官方 Next.js 页面均在 Hub 包中</p>
           </div>
         </div>
         <p class="hint-center">全部入口的详细描述见<a href="docs.html#architecture-modules">文档 · 模块明细</a>。</p>
@@ -260,9 +259,9 @@ npx @allin-ai/agentkit daemon</code></pre>
     <footer class="footer">
       <span>MIT License · Node.js ≥ 22.18</span>
       <span class="footer-links">
-        <a href="https://www.npmjs.com/package/@allin-ai/agentkit" target="_blank" rel="noreferrer">npm</a>
+        <a href="https://www.npmjs.com/package/@allin-ai/agentkit-client" target="_blank" rel="noreferrer">npm</a>
         <a href="https://github.com/df007df/allinai-agentkit" target="_blank" rel="noreferrer">GitHub</a>
-        <span>@allin-ai/agentkit</span>
+        <span>@allin-ai/agentkit-client</span>
       </span>
     </footer>
   </body>

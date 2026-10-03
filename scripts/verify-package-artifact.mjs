@@ -1,221 +1,120 @@
+import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import {
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 
-const packageRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-);
-// npm publish ships the staging directory, so verification must pack the same
-// directory or it will inspect a different artifact than the registry receives.
-const stageDir = path.join(packageRoot, ".publish-stage");
+const workspaceRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const scratch = mkdtempSync(path.join(tmpdir(), "agentkit-artifacts-"));
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 const tar = process.platform === "win32" ? "tar.exe" : "tar";
-const sourceManifest = JSON.parse(
-  readFileSync(path.join(packageRoot, "package.json"), "utf8"),
-);
-let tarball;
-let packDir;
-let consumerDir;
+const consumers = {};
+const offline = process.argv.includes("--offline");
 
-function assert(condition, message) {
-  if (!condition) throw new Error(message);
+function runNode(code, cwd, flags = []) {
+  execFileSync(process.execPath, [...flags, "--input-type=module", "--eval", code], { cwd, stdio: "inherit", timeout: 30_000 });
 }
 
-function parseNpmPackOutput(output) {
-  const lines = output.trim().split("\n");
-  for (let start = 0; start < lines.length; start += 1) {
-    try {
-      const value = JSON.parse(lines.slice(start).join("\n"));
-      if (Array.isArray(value)) return value;
-    } catch {
-      // Lifecycle output may precede the final JSON line from npm pack.
+// Offline consumers resolve exactly the dependency versions already installed
+// from the workspace lockfile, rather than an uncached newer semver match.
+function cachedOverrides(side) {
+  const versions = {};
+  const seen = new Set();
+  function visit(manifestPath) {
+    if (seen.has(manifestPath)) return;
+    seen.add(manifestPath);
+    const parent = JSON.parse(readFileSync(manifestPath, "utf8"));
+    const require = createRequire(manifestPath);
+    for (const name of Object.keys(parent.dependencies ?? {})) {
+      // Some dependencies hide package.json behind their exports map. Resolve
+      // installed metadata through Node's search paths without loading code.
+      const childPath = (require.resolve.paths(name) ?? [])
+        .map((base) => path.join(base, name, "package.json"))
+        .find((candidate) => existsSync(candidate));
+      assert.ok(childPath, `Missing installed dependency ${name} required by ${parent.name}`);
+      const resolved = realpathSync(childPath);
+      const child = JSON.parse(readFileSync(resolved, "utf8"));
+      assert.ok(!versions[name] || versions[name] === child.version, `Offline dependency graph has multiple versions of ${name}`);
+      versions[name] = child.version;
+      visit(resolved);
     }
   }
-  throw new Error("npm pack did not produce a JSON artifact list");
-}
-
-function readArtifactManifest(filename) {
-  return JSON.parse(
-    execFileSync(tar, ["-xOf", filename, "package/package.json"], {
-      encoding: "utf8",
-    }),
-  );
-}
-
-function getProductionTargets(manifest) {
-  const exports = manifest.exports;
-  assert(
-    exports && typeof exports === "object",
-    "packed manifest must declare exports",
-  );
-  return Object.entries(exports).flatMap(([entrypoint, target]) => {
-    // Static asset exports (css and friends) have no import/types trio.
-    if (target && typeof target === "string") {
-      assert(
-        target.endsWith(".js") ||
-          /\.(?:css|svg|json)$/.test(target),
-        `${entrypoint} must target a packaged file type`,
-      );
-      return [target];
-    }
-    assert(
-      target && typeof target === "object",
-      `packed export ${entrypoint} must be an object`,
-    );
-    const { import: esm, default: fallback, types } = target;
-    assert(
-      typeof esm === "string" && esm.endsWith(".js"),
-      `${entrypoint} must target compiled ESM`,
-    );
-    assert(
-      typeof types === "string" && types.endsWith(".d.ts"),
-      `${entrypoint} must target declarations`,
-    );
-    assert(
-      fallback === esm,
-      `${entrypoint} must have one ESM import/default target`,
-    );
-    return [esm, types];
-  });
-}
-
-function assertTarballContents(filename, manifest) {
-  const entries = execFileSync(tar, ["-tzf", filename], { encoding: "utf8" })
-    .split("\n")
-    .filter(Boolean);
-  const listed = new Set(entries);
-  const requireEntry = (entry) =>
-    assert(listed.has(entry), `tarball missing ${entry}`);
-
-  requireEntry("package/package.json");
-  requireEntry("package/README.md");
-  for (const target of getProductionTargets(manifest)) {
-    requireEntry(`package/${target.slice(2)}`);
-  }
-  // Core no longer ships web assets: the Console UI lives in the separate
-  // @allin-ai/agentkit-web package. Any web/ content in the tarball means the
-  // stage step regressed (web/.next and dereferenced node_modules included).
-  for (const entry of entries) {
-    assert(
-      !entry.startsWith("package/web/"),
-      `tarball must not include web assets: ${entry}`,
-    );
-  }
-
-  for (const entry of entries) {
-    assert(
-      !entry.startsWith("package/src/"),
-      `tarball must not include source: ${entry}`,
-    );
-    assert(
-      !entry.includes(".codegraph/"),
-      `tarball must not include codegraph data: ${entry}`,
-    );
-    assert(
-      !entry.includes("pnpm-workspace"),
-      `tarball must not include workspace files: ${entry}`,
-    );
-    assert(
-      !/\.test\.[cm]?[jt]sx?$/.test(entry),
-      `tarball must not include tests: ${entry}`,
-    );
-  }
-}
-
-function assertHubOnlyConsumer(manifest) {
-  assert(
-    typeof manifest.name === "string" && manifest.name.length > 0,
-    "packed manifest must have a name",
-  );
-  consumerDir = mkdtempSync(
-    path.join(tmpdir(), "agent-client-artifact-consumer-"),
-  );
-  writeFileSync(
-    path.join(consumerDir, "package.json"),
-    `${JSON.stringify({ private: true, type: "module" }, null, 2)}\n`,
-    "utf8",
-  );
-  execFileSync(
-    npm,
-    ["install", "--omit=optional", "--ignore-scripts", tarball],
-    {
-      cwd: consumerDir,
-      stdio: "inherit",
-    },
-  );
-
-  for (const optionalPackage of Object.keys(
-    sourceManifest.peerDependenciesMeta ?? {},
-  )) {
-    assert(
-      !existsSync(
-        path.join(consumerDir, "node_modules", ...optionalPackage.split("/")),
-      ),
-      `Hub-only consumer unexpectedly installed optional SDK ${optionalPackage}`,
-    );
-  }
-
-  const moduleSpecifier = `${manifest.name}/hub`;
-  execFileSync(
-    process.execPath,
-    [
-      "--input-type=module",
-      "--eval",
-      `import { createAgentHub } from ${JSON.stringify(moduleSpecifier)};\nif (typeof createAgentHub !== \"function\") throw new Error(\"hub export missing createAgentHub\");`,
-    ],
-    { cwd: consumerDir, stdio: "inherit" },
-  );
-
-  const consoleSpecifier = `${manifest.name}/console`;
-  execFileSync(
-    process.execPath,
-    [
-      "--input-type=module",
-      "--eval",
-      `import { createConsoleRuntime } from ${JSON.stringify(consoleSpecifier)};\nif (typeof createConsoleRuntime !== \"function\") throw new Error(\"console export missing createConsoleRuntime\");`,
-    ],
-    { cwd: consumerDir, stdio: "inherit" },
-  );
+  visit(path.join(workspaceRoot, "packages", side, "package.json"));
+  return versions;
 }
 
 try {
-  assert(
-    existsSync(stageDir),
-    "missing .publish-stage; run `node scripts/publish-stage.mjs stage` first",
-  );
-  packDir = mkdtempSync(path.join(tmpdir(), "agent-client-artifact-pack-"));
-  const packed = parseNpmPackOutput(
-    execFileSync(npm, ["pack", "--json", "--pack-destination", packDir], {
-      cwd: stageDir,
-      encoding: "utf8",
-    }),
-  );
-  assert(
-    Array.isArray(packed) && packed.length === 1,
-    "npm pack must emit exactly one tarball",
-  );
-  assert(
-    typeof packed[0]?.filename === "string",
-    "npm pack did not return a tarball filename",
-  );
-  tarball = path.join(packDir, packed[0].filename);
-  assert(existsSync(tarball), `npm pack did not create ${tarball}`);
-
-  const artifactManifest = readArtifactManifest(tarball);
-  assertTarballContents(tarball, artifactManifest);
-  assertHubOnlyConsumer(artifactManifest);
-  console.log("Verified clean Hub-only install from packaged artifact.");
+  for (const side of ["client", "hub"]) {
+    const stage = path.join(workspaceRoot, ".publish-stage", side);
+    assert.ok(existsSync(stage), `Missing ${stage}; run publish-stage.mjs stage first`);
+    const packed = JSON.parse(execFileSync(npm, ["pack", "--json", "--pack-destination", scratch], { cwd: stage, encoding: "utf8" }));
+    assert.equal(packed.length, 1);
+    const tarball = path.join(scratch, packed[0].filename);
+    const manifest = JSON.parse(execFileSync(tar, ["-xOf", tarball, "package/package.json"], { encoding: "utf8" }));
+    const entries = new Set(execFileSync(tar, ["-tzf", tarball], { encoding: "utf8" }).trim().split("\n"));
+    assert.equal(manifest.name, `@allin-ai/agentkit-${side}`);
+    assert.equal(manifest.devDependencies, undefined);
+    assert.equal(manifest.private, false);
+    assert.equal(manifest.exports[side === "hub" ? "./client" : "./hub"], undefined);
+    for (const value of Object.values(manifest.exports)) {
+      for (const target of typeof value === "string" ? [value] : Object.values(value)) {
+        assert.match(target, /^\.\/dist\//);
+        assert.ok(entries.has(`package/${target.slice(2)}`), `Missing ${target}`);
+      }
+    }
+    for (const entry of entries) {
+      assert.ok(!entry.includes("node_modules/") && !entry.includes(".codegraph/") && !entry.includes(".next/cache/"), `Unexpected development data: ${entry}`);
+      assert.ok(!/\.test\.[cm]?[jt]sx?$/.test(entry), `Unexpected test: ${entry}`);
+      assert.ok(!/\.(?:ts|tsx)$/.test(entry) || entry.endsWith(".d.ts"), `Unexpected TypeScript source: ${entry}`);
+      assert.ok(!entry.startsWith(`package/dist/${side === "hub" ? "client" : "hub"}/`), `Other side leaked into ${side}: ${entry}`);
+    }
+    const manifestText = JSON.stringify(manifest);
+    assert.ok(!manifestText.includes("workspace:"), "Published manifest retained a workspace reference");
+    assert.equal(manifest.dependencies?.[`@allin-ai/agentkit-${side === "hub" ? "client" : "hub"}`], undefined);
+    const consumer = path.join(scratch, `${side}-consumer`);
+    consumers[side] = consumer;
+    writeFileSync(path.join(scratch, `${side}-manifest.json`), JSON.stringify(manifest));
+    mkdirSync(consumer, { recursive: true });
+    const fixture = { private: true, type: "module", dependencies: { [manifest.name]: `file:${tarball}` } };
+    writeFileSync(path.join(consumer, "package.json"), JSON.stringify(fixture));
+    if (offline) {
+      writeFileSync(path.join(consumer, "pnpm-workspace.yaml"), JSON.stringify({ packages: ["."], overrides: cachedOverrides(side) }));
+      // Use the same npm tarballs with cached registry dependencies when the
+      // registry is unavailable. The consumer remains outside the workspace.
+      const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+      execFileSync(pnpm, ["install", "--dir", consumer, "--offline", "--prod", "--no-optional", "--ignore-scripts", "--no-frozen-lockfile"],
+        { stdio: "inherit", timeout: 120_000, killSignal: "SIGKILL" });
+    } else {
+      execFileSync(npm, ["install", "--prefix", consumer, "--omit=optional", "--ignore-scripts", "--no-audit", "--no-fund",
+        "--prefer-offline", "--fetch-timeout=120000", "--fetch-retries=1"], { stdio: "inherit", timeout: 600_000, killSignal: "SIGKILL" });
+    }
+    const packageDir = path.join(consumer, "node_modules", ...manifest.name.split("/"));
+    for (const dependency of ["@allin-ai/agentkit-hub", "@allin-ai/agentkit-client", "@openai/codex-sdk", "@anthropic-ai/claude-agent-sdk", "@earendil-works/pi-coding-agent", ...(side === "client" ? ["react", "react-dom", "next", "@types/react"] : [])]) {
+      if (dependency === manifest.name) continue;
+      assert.ok(!existsSync(path.join(consumer, "node_modules", ...dependency.split("/"))), `Unexpected dependency: ${dependency}`);
+    }
+    runNode(`for (const entry of ${JSON.stringify(Object.keys(manifest.exports).filter((entry) => typeof manifest.exports[entry] !== "string"))}) {
+      await import(${JSON.stringify(manifest.name)} + (entry === "." ? "" : entry.slice(1)));
+    }`, consumer);
+    if (side === "hub") runNode('import { createAgentHub } from "@allin-ai/agentkit-hub"; if (typeof createAgentHub !== "function") throw new Error("Missing SDK");', consumer, ["--no-experimental-sqlite"]);
+    const bin = path.join(packageDir, Object.values(manifest.bin)[0]);
+    const help = execFileSync(process.execPath, [bin, "--help"], { encoding: "utf8", timeout: 10_000 });
+    assert.match(help, side === "hub" ? /allinai-agentkit-hub web/ : /allinai-agentkit <init\|login\|daemon/);
+    const typeImports = side === "hub"
+      ? 'import { createAgentHub, type HubStore } from "@allin-ai/agentkit-hub"; import type { ConsoleRuntime } from "@allin-ai/agentkit-hub/console"; import type { ConsoleApp } from "@allin-ai/agentkit-hub/console-ui"; import type { IssueStore } from "@allin-ai/agentkit-hub/issues"; import type { startWebHost } from "@allin-ai/agentkit-hub/web"; const factory: typeof createAgentHub = createAgentHub;'
+      : 'import { ClientSupervisor, type AgentConfig, createRunnerManager } from "@allin-ai/agentkit-client"; import type { ClientTransport } from "@allin-ai/agentkit-client/client"; const factory: typeof createRunnerManager = createRunnerManager;';
+    writeFileSync(path.join(consumer, "consumer.ts"), typeImports);
+    writeFileSync(path.join(consumer, "tsconfig.json"), JSON.stringify({ compilerOptions: { target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext", strict: true, noEmit: true, types: ["node"], typeRoots: [path.join(workspaceRoot, "node_modules/@types")] }, include: ["consumer.ts"] }));
+    execFileSync(process.execPath, [path.join(workspaceRoot, "node_modules/typescript/bin/tsc"), "-p", path.join(consumer, "tsconfig.json")], { stdio: "inherit", timeout: 30_000 });
+    console.log(`Verified isolated ${manifest.name} install, public imports, CLI and declarations (${packed[0].size} bytes packed).`);
+  }
+  const smoke = path.join(consumers.hub, "artifact-smoke.mjs");
+  cpSync(path.join(workspaceRoot, "scripts/artifact-smoke.mjs"), smoke);
+  execFileSync(process.execPath, [smoke, path.join(consumers.client, "node_modules/@allin-ai/agentkit-client"), path.join(workspaceRoot, "bin/allinai-agentkit-hub")], {
+    cwd: consumers.hub, stdio: "inherit", timeout: 60_000, env: { ...process.env, NEXT_TELEMETRY_DISABLED: "1" },
+  });
 } finally {
-  if (consumerDir) rmSync(consumerDir, { recursive: true, force: true });
-  if (tarball) rmSync(tarball, { force: true });
-  if (packDir) rmSync(packDir, { recursive: true, force: true });
+  rmSync(scratch, { recursive: true, force: true });
 }

@@ -1,0 +1,129 @@
+{
+  "version": "0.5.0",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/df007df/allinai-agentkit.git"
+  },
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "name": "@allin-ai/agentkit-client",
+  "description": "Standalone persistent Agent Client: connect to a Hub, durably execute local platform agents and policy-gated capabilities, and report state upstream.",
+  "private": false,
+  "main": "./src/index.ts",
+  "files": [
+    "bin",
+    "dist"
+  ],
+  "exports": {
+    ".": "./src/index.ts",
+    "./protocol": "./src/protocol/index.ts",
+    "./routes": "./src/routes.ts",
+    "./wire": "./src/wire.ts",
+    "./client": "./src/client/index.ts",
+    "./logger": "./src/logger.ts",
+    "./paths": "./src/paths.ts",
+    "./config": "./src/config.ts",
+    "./credentials": "./src/credentials.ts",
+    "./control": "./src/control.ts",
+    "./runtime": "./src/runtime/index.ts",
+    "./plugins": "./src/plugins/manager.ts",
+    "./cli": "./src/cli/commands.ts",
+    "./service/launchd": "./src/service/launchd.ts",
+    "./service/systemd": "./src/service/systemd.ts"
+  },
+  "publishConfig": {
+    "main": "./dist/client/src/index.js",
+    "types": "./dist/client/src/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/client/src/index.d.ts",
+        "import": "./dist/client/src/index.js",
+        "default": "./dist/client/src/index.js"
+      },
+      "./protocol": {
+        "types": "./dist/client/src/protocol/index.d.ts",
+        "import": "./dist/client/src/protocol/index.js",
+        "default": "./dist/client/src/protocol/index.js"
+      },
+      "./routes": {
+        "types": "./dist/client/src/routes.d.ts",
+        "import": "./dist/client/src/routes.js",
+        "default": "./dist/client/src/routes.js"
+      },
+      "./wire": {
+        "types": "./dist/client/src/wire.d.ts",
+        "import": "./dist/client/src/wire.js",
+        "default": "./dist/client/src/wire.js"
+      },
+      "./client": {
+        "types": "./dist/client/src/client/index.d.ts",
+        "import": "./dist/client/src/client/index.js",
+        "default": "./dist/client/src/client/index.js"
+      },
+      "./logger": {
+        "types": "./dist/client/src/logger.d.ts",
+        "import": "./dist/client/src/logger.js",
+        "default": "./dist/client/src/logger.js"
+      },
+      "./paths": {
+        "types": "./dist/client/src/paths.d.ts",
+        "import": "./dist/client/src/paths.js",
+        "default": "./dist/client/src/paths.js"
+      },
+      "./config": {
+        "types": "./dist/client/src/config.d.ts",
+        "import": "./dist/client/src/config.js",
+        "default": "./dist/client/src/config.js"
+      },
+      "./credentials": {
+        "types": "./dist/client/src/credentials.d.ts",
+        "import": "./dist/client/src/credentials.js",
+        "default": "./dist/client/src/credentials.js"
+      },
+      "./control": {
+        "types": "./dist/client/src/control.d.ts",
+        "import": "./dist/client/src/control.js",
+        "default": "./dist/client/src/control.js"
+      },
+      "./runtime": {
+        "types": "./dist/client/src/runtime/index.d.ts",
+        "import": "./dist/client/src/runtime/index.js",
+        "default": "./dist/client/src/runtime/index.js"
+      },
+      "./plugins": {
+        "types": "./dist/client/src/plugins/manager.d.ts",
+        "import": "./dist/client/src/plugins/manager.js",
+        "default": "./dist/client/src/plugins/manager.js"
+      },
+      "./cli": {
+        "types": "./dist/client/src/cli/commands.d.ts",
+        "import": "./dist/client/src/cli/commands.js",
+        "default": "./dist/client/src/cli/commands.js"
+      },
+      "./service/launchd": {
+        "types": "./dist/client/src/service/launchd.d.ts",
+        "import": "./dist/client/src/service/launchd.js",
+        "default": "./dist/client/src/service/launchd.js"
+      },
+      "./service/systemd": {
+        "types": "./dist/client/src/service/systemd.d.ts",
+        "import": "./dist/client/src/service/systemd.js",
+        "default": "./dist/client/src/service/systemd.js"
+      }
+    },
+    "access": "public"
+  },
+  "bin": {
+    "allinai-agentkit": "./bin/allinai-agentkit"
+  },
+  "scripts": {
+    "build": "node ../../scripts/build.mjs client",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

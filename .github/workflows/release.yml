@@ -36,7 +36,13 @@ jobs:
       - name: Verify staged artifact
         run: pnpm verify:artifact
 
+      - name: Test production Web host
+        run: pnpm test:web
+
       # npm publish packs the manifest it loaded before lifecycle hooks, so we
       # publish the staging directory whose on-disk manifest is already public.
-      - name: Publish
-        run: npm publish --provenance .publish-stage
+      - name: Publish Hub
+        run: npm publish --provenance .publish-stage/hub
+
+      - name: Publish Client
+        run: npm publish --provenance .publish-stage/client

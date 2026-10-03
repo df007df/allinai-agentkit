@@ -5,16 +5,8 @@ settings:
   excludeLinksFromLockfile: false
 
 importers:
-
   .:
-    dependencies:
-      ws:
-        specifier: ^8.18.0
-        version: 8.21.3
     devDependencies:
-      '@allin-ai/agentkit-web':
-        specifier: workspace:*
-        version: link:web
       '@anthropic-ai/claude-agent-sdk':
         specifier: ^0.3.168
         version: 0.3.274(@anthropic-ai/sdk@0.123.0(zod@4.6.5))(@modelcontextprotocol/sdk@1.30.0(zod@4.6.5))(zod@4.6.5)
@@ -42,14 +34,27 @@ importers:
       typescript:
         specifier: ^5.8.3
         version: 5.9.3
-
-  web:
-    dependencies:
-      '@allin-ai/agentkit':
+      '@types/react-dom':
+        specifier: ^19.0.0
+        version: 19.3.0(@types/react@19.3.0)
+      '@allin-ai/agentkit-hub':
         specifier: workspace:*
-        version: link:..
+        version: link:packages/hub
+      '@allin-ai/agentkit-client':
+        specifier: workspace:*
+        version: link:packages/client
+      ws:
+        specifier: ^8.18.0
+        version: 8.21.3
+  packages/client:
+    dependencies:
+      ws:
+        specifier: ^8.18.0
+        version: 8.21.3
+  packages/hub:
+    dependencies:
       next:
-        specifier: ^15.5.4
+        specifier: 15.5.25
         version: 15.5.25(@types/node@22.20.3)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       react:
         specifier: ^19.0.0
@@ -57,19 +62,12 @@ importers:
       react-dom:
         specifier: ^19.0.0
         version: 19.3.0(react@19.3.0)
-    devDependencies:
-      '@types/node':
-        specifier: ^22
-        version: 22.20.3
+      ws:
+        specifier: ^8.18.0
+        version: 8.21.3
       '@types/react':
         specifier: ^19.0.0
         version: 19.3.0
-      '@types/react-dom':
-        specifier: ^19.0.0
-        version: 19.3.0(@types/react@19.3.0)
-      tsx:
-        specifier: ^4
-        version: 4.23.13
 
 packages:
 

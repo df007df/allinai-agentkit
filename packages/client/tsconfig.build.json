@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "sourceMap": true,
+    "outDir": "dist",
+    "rootDir": ".."
+  },
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "../shared/src/**/*.ts"
+  ],
+  "exclude": [
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "../shared/src/**/*.test.ts",
+    "../shared/src/**/*.test.tsx"
+  ]
+}

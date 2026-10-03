@@ -1,178 +1,24 @@
 {
-  "name": "@allin-ai/agentkit",
+  "name": "@allin-ai/agentkit-workspace",
   "version": "0.5.0",
-  "description": "Standalone persistent Agent Client: connect to a Hub, durably execute local platform agents and policy-gated capabilities, and report state upstream.",
+  "private": true,
   "type": "module",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/df007df/allinai-agentkit.git"
+  "engines": {
+    "node": ">=22.18.0"
   },
-  "private": false,
-  "keywords": [
-    "agent",
-    "sdk",
-    "websocket",
-    "hub",
-    "daemon",
-    "agent-client",
-    "cli"
-  ],
-  "main": "./src/index.ts",
-  "exports": {
-    ".": "./src/index.ts",
-    "./protocol": "./src/protocol/index.ts",
-    "./routes": "./src/routes.ts",
-    "./agent-api": "./src/agent-api.ts",
-    "./wire": "./src/wire.ts",
-    "./hub": "./src/hub/index.ts",
-    "./hub/testkit": "./src/hub/testkit/index.ts",
-    "./client": "./src/client/index.ts",
-    "./logger": "./src/logger.ts",
-    "./paths": "./src/paths.ts",
-    "./config": "./src/config.ts",
-    "./credentials": "./src/credentials.ts",
-    "./control": "./src/control.ts",
-    "./runtime": "./src/runtime/index.ts",
-    "./plugins": "./src/plugins/manager.ts",
-    "./cli": "./src/cli/commands.ts",
-    "./service/launchd": "./src/service/launchd.ts",
-    "./service/systemd": "./src/service/systemd.ts",
-    "./console": "./src/console/index.ts",
-    "./console-ui": "./src/console-ui/index.ts",
-    "./console-ui/styles.css": "./src/console-ui/styles.css"
-  },
-  "publishConfig": {
-    "exports": {
-      ".": {
-        "types": "./dist/index.d.ts",
-        "import": "./dist/index.js",
-        "default": "./dist/index.js"
-      },
-      "./protocol": {
-        "types": "./dist/protocol/index.d.ts",
-        "import": "./dist/protocol/index.js",
-        "default": "./dist/protocol/index.js"
-      },
-      "./routes": {
-        "types": "./dist/routes.d.ts",
-        "import": "./dist/routes.js",
-        "default": "./dist/routes.js"
-      },
-      "./agent-api": {
-        "types": "./dist/agent-api.d.ts",
-        "import": "./dist/agent-api.js",
-        "default": "./dist/agent-api.js"
-      },
-      "./wire": {
-        "types": "./dist/wire.d.ts",
-        "import": "./dist/wire.js",
-        "default": "./dist/wire.js"
-      },
-      "./hub": {
-        "types": "./dist/hub/index.d.ts",
-        "import": "./dist/hub/index.js",
-        "default": "./dist/hub/index.js"
-      },
-      "./hub/testkit": {
-        "types": "./dist/hub/testkit/index.d.ts",
-        "import": "./dist/hub/testkit/index.js",
-        "default": "./dist/hub/testkit/index.js"
-      },
-      "./client": {
-        "types": "./dist/client/index.d.ts",
-        "import": "./dist/client/index.js",
-        "default": "./dist/client/index.js"
-      },
-      "./logger": {
-        "types": "./dist/logger.d.ts",
-        "import": "./dist/logger.js",
-        "default": "./dist/logger.js"
-      },
-      "./paths": {
-        "types": "./dist/paths.d.ts",
-        "import": "./dist/paths.js",
-        "default": "./dist/paths.js"
-      },
-      "./config": {
-        "types": "./dist/config.d.ts",
-        "import": "./dist/config.js",
-        "default": "./dist/config.js"
-      },
-      "./credentials": {
-        "types": "./dist/credentials.d.ts",
-        "import": "./dist/credentials.js",
-        "default": "./dist/credentials.js"
-      },
-      "./control": {
-        "types": "./dist/control.d.ts",
-        "import": "./dist/control.js",
-        "default": "./dist/control.js"
-      },
-      "./runtime": {
-        "types": "./dist/runtime/index.d.ts",
-        "import": "./dist/runtime/index.js",
-        "default": "./dist/runtime/index.js"
-      },
-      "./plugins": {
-        "types": "./dist/plugins/manager.d.ts",
-        "import": "./dist/plugins/manager.js",
-        "default": "./dist/plugins/manager.js"
-      },
-      "./cli": {
-        "types": "./dist/cli/commands.d.ts",
-        "import": "./dist/cli/commands.js",
-        "default": "./dist/cli/commands.js"
-      },
-      "./service/launchd": {
-        "types": "./dist/service/launchd.d.ts",
-        "import": "./dist/service/launchd.js",
-        "default": "./dist/service/launchd.js"
-      },
-      "./service/systemd": {
-        "types": "./dist/service/systemd.d.ts",
-        "import": "./dist/service/systemd.js",
-        "default": "./dist/service/systemd.js"
-      },
-      "./console": {
-        "types": "./dist/console/index.d.ts",
-        "import": "./dist/console/index.js",
-        "default": "./dist/console/index.js"
-      },
-      "./console-ui": {
-        "types": "./dist/console-ui/index.d.ts",
-        "import": "./dist/console-ui/index.js",
-        "default": "./dist/console-ui/index.js"
-      },
-      "./console-ui/styles.css": "./dist/console-ui/styles.css"
-    },
-    "main": "./dist/index.js",
-    "types": "./dist/index.d.ts",
-    "access": "public"
-  },
-  "bin": {
-    "allinai-agentkit": "./bin/allinai-agentkit"
-  },
-  "files": [
-    "bin",
-    "dist"
-  ],
   "scripts": {
-    "web": "node bin/allinai-agentkit web",
+    "hub": "tsx packages/hub/src/cli/main.ts web",
+    "hub:dev": "tsx packages/hub/src/cli/main.ts web --dev",
+    "client": "tsx packages/client/src/cli/main.ts",
     "build": "node scripts/build.mjs",
-    "test": "tsx --tsconfig ./tsconfig.json --test 'src/**/*.test.ts'",
-    "typecheck": "tsc --noEmit",
+    "test": "tsx --tsconfig ./tsconfig.json --test 'packages/*/src/**/*.test.ts' 'tests/**/*.test.ts'",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p packages/hub/web/tsconfig.json",
     "publish:stage": "node scripts/publish-stage.mjs publish",
-    "verify:artifact": "node scripts/publish-stage.mjs stage && node scripts/verify-package-artifact.mjs"
-  },
-  "dependencies": {
-    "ws": "^8.18.0"
-  },
-  "peerDependencies": {
-    "react": ">=19"
+    "verify:artifact": "node scripts/publish-stage.mjs stage && node scripts/verify-package-artifact.mjs",
+    "test:web": "tsx --tsconfig packages/hub/web/tsconfig.json --test packages/hub/web/server.test.ts",
+    "verify:artifact:offline": "node scripts/publish-stage.mjs stage && node scripts/verify-package-artifact.mjs --offline"
   },
   "devDependencies": {
-    "@allin-ai/agentkit-web": "workspace:*",
     "@anthropic-ai/claude-agent-sdk": "^0.3.168",
     "@earendil-works/pi-coding-agent": "0.85.1",
     "@openai/codex-sdk": "^0.156.1",
@@ -182,9 +28,9 @@
     "react": "^19.0.0",
     "tsx": "^4.20.3",
     "typescript": "^5.8.3",
-    "ws": "^8.18.0"
-  },
-  "engines": {
-    "node": ">=22.18.0"
+    "ws": "^8.18.0",
+    "@allin-ai/agentkit-hub": "workspace:*",
+    "@allin-ai/agentkit-client": "workspace:*",
+    "@types/react-dom": "^19.0.0"
   }
 }

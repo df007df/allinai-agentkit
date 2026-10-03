@@ -1,0 +1,131 @@
+{
+  "version": "0.5.0",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/df007df/allinai-agentkit.git"
+  },
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "name": "@allin-ai/agentkit-hub",
+  "description": "Embedded Hub SDK and standalone web console.",
+  "private": false,
+  "main": "./src/index.ts",
+  "files": [
+    "bin",
+    "dist"
+  ],
+  "exports": {
+    ".": "./src/index.ts",
+    "./protocol": "./src/protocol/index.ts",
+    "./routes": "./src/routes.ts",
+    "./agent-api": "./src/agent-api.ts",
+    "./wire": "./src/wire.ts",
+    "./hub": "./src/hub/index.ts",
+    "./hub/testkit": "./src/hub/testkit/index.ts",
+    "./logger": "./src/logger.ts",
+    "./paths": "./src/paths.ts",
+    "./console": "./src/console/index.ts",
+    "./console-ui": "./src/console-ui/index.ts",
+    "./console-ui/styles.css": "./src/console-ui/styles.css",
+    "./issues": "./src/issues/index.ts",
+    "./web": "./web/server.ts",
+    "./cli": "./src/cli/commands.ts"
+  },
+  "publishConfig": {
+    "main": "./dist/hub/src/index.js",
+    "types": "./dist/hub/src/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/hub/src/index.d.ts",
+        "import": "./dist/hub/src/index.js",
+        "default": "./dist/hub/src/index.js"
+      },
+      "./protocol": {
+        "types": "./dist/hub/src/protocol/index.d.ts",
+        "import": "./dist/hub/src/protocol/index.js",
+        "default": "./dist/hub/src/protocol/index.js"
+      },
+      "./routes": {
+        "types": "./dist/hub/src/routes.d.ts",
+        "import": "./dist/hub/src/routes.js",
+        "default": "./dist/hub/src/routes.js"
+      },
+      "./agent-api": {
+        "types": "./dist/hub/src/agent-api.d.ts",
+        "import": "./dist/hub/src/agent-api.js",
+        "default": "./dist/hub/src/agent-api.js"
+      },
+      "./wire": {
+        "types": "./dist/hub/src/wire.d.ts",
+        "import": "./dist/hub/src/wire.js",
+        "default": "./dist/hub/src/wire.js"
+      },
+      "./hub": {
+        "types": "./dist/hub/src/hub/index.d.ts",
+        "import": "./dist/hub/src/hub/index.js",
+        "default": "./dist/hub/src/hub/index.js"
+      },
+      "./hub/testkit": {
+        "types": "./dist/hub/src/hub/testkit/index.d.ts",
+        "import": "./dist/hub/src/hub/testkit/index.js",
+        "default": "./dist/hub/src/hub/testkit/index.js"
+      },
+      "./logger": {
+        "types": "./dist/hub/src/logger.d.ts",
+        "import": "./dist/hub/src/logger.js",
+        "default": "./dist/hub/src/logger.js"
+      },
+      "./paths": {
+        "types": "./dist/hub/src/paths.d.ts",
+        "import": "./dist/hub/src/paths.js",
+        "default": "./dist/hub/src/paths.js"
+      },
+      "./console": {
+        "types": "./dist/hub/src/console/index.d.ts",
+        "import": "./dist/hub/src/console/index.js",
+        "default": "./dist/hub/src/console/index.js"
+      },
+      "./console-ui": {
+        "types": "./dist/hub/src/console-ui/index.d.ts",
+        "import": "./dist/hub/src/console-ui/index.js",
+        "default": "./dist/hub/src/console-ui/index.js"
+      },
+      "./console-ui/styles.css": "./dist/hub/src/console-ui/styles.css",
+      "./issues": {
+        "types": "./dist/hub/src/issues/index.d.ts",
+        "import": "./dist/hub/src/issues/index.js",
+        "default": "./dist/hub/src/issues/index.js"
+      },
+      "./web": {
+        "types": "./dist/hub/web/server.d.ts",
+        "import": "./dist/hub/web/server.js",
+        "default": "./dist/hub/web/server.js"
+      },
+      "./cli": {
+        "types": "./dist/hub/src/cli/commands.d.ts",
+        "import": "./dist/hub/src/cli/commands.js",
+        "default": "./dist/hub/src/cli/commands.js"
+      }
+    },
+    "access": "public"
+  },
+  "bin": {
+    "allinai-agentkit-hub": "./bin/allinai-agentkit-hub"
+  },
+  "scripts": {
+    "build": "node ../../scripts/build.mjs hub",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "web": "tsx src/cli/main.ts web",
+    "web:dev": "tsx src/cli/main.ts web --dev"
+  },
+  "dependencies": {
+    "ws": "^8.18.0",
+    "next": "15.5.25",
+    "@types/react": "^19.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  }
+}

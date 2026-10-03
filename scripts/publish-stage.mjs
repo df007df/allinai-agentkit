@@ -39,6 +39,7 @@ export function transformManifest(manifest) {
   };
   delete staged.scripts;
   delete staged.files;
+  delete staged.devDependencies;
   if (publishConfig.access) {
     staged.publishConfig = { access: publishConfig.access };
   } else {
@@ -48,18 +49,11 @@ export function transformManifest(manifest) {
 }
 
 function runBuild() {
-  // build.mjs spawns tsc bare, so it needs node_modules/.bin on PATH when run
-  // outside an npm/pnpm lifecycle.
-  const binDir = path.join(packageRoot, "node_modules", ".bin");
   const result = spawnSync(
     process.execPath,
     [path.join(packageRoot, "scripts", "build.mjs")],
     {
       stdio: "inherit",
-      env: {
-        ...process.env,
-        PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ""}`,
-      },
     },
   );
   if (result.error || result.status !== 0) {
@@ -68,42 +62,30 @@ function runBuild() {
 }
 
 function stage() {
-  const manifest = JSON.parse(
-    readFileSync(path.join(packageRoot, "package.json"), "utf8"),
-  );
   runBuild();
   rmSync(stageDir, { recursive: true, force: true });
-  mkdirSync(stageDir, { recursive: true });
-
-  // Core no longer ships web assets: `files` is [bin, dist], no publishConfig
-  // export references web/, and the Console UI is published separately as
-  // @allin-ai/agentkit-web. Staging web/ wholesale would drag web/.next and
-  // dereferenced node_modules into the core tarball.
-  for (const entry of ["dist", "bin", "README.md", "LICENSE"]) {
-    const source = path.join(packageRoot, entry);
-    if (!existsSync(source)) {
-      throw new Error(`Missing publish input: ${entry}`);
+  for (const side of ["hub", "client"]) {
+    const sourceRoot = path.join(packageRoot, "packages", side);
+    const destination = path.join(stageDir, side);
+    const manifest = JSON.parse(readFileSync(path.join(sourceRoot, "package.json"), "utf8"));
+    mkdirSync(destination, { recursive: true });
+    for (const entry of ["dist", "bin", "README.md", "LICENSE"]) {
+      const source = path.join(["README.md", "LICENSE"].includes(entry) ? packageRoot : sourceRoot, entry);
+      if (!existsSync(source)) throw new Error(`Missing publish input: ${source}`);
+      cpSync(source, path.join(destination, entry), { recursive: true });
     }
-    cpSync(source, path.join(stageDir, entry), {
-      recursive: true,
-      dereference: true,
-    });
+    writeFileSync(path.join(destination, "package.json"), `${JSON.stringify(transformManifest(manifest), null, 2)}\n`, "utf8");
+    console.log(`Staged ${manifest.name}@${manifest.version} at ${destination}`);
   }
-  writeFileSync(
-    path.join(stageDir, "package.json"),
-    `${JSON.stringify(transformManifest(manifest), null, 2)}\n`,
-    "utf8",
-  );
-  console.log(`Staged ${manifest.name}@${manifest.version} at ${stageDir}`);
 }
 
 function publish(extraArgs) {
   stage();
   const npm = process.platform === "win32" ? "npm.cmd" : "npm";
-  const result = spawnSync(npm, ["publish", stageDir, ...extraArgs], {
-    stdio: "inherit",
-  });
-  process.exit(result.status ?? 1);
+  for (const side of ["hub", "client"]) {
+    const result = spawnSync(npm, ["publish", path.join(stageDir, side), ...extraArgs], { stdio: "inherit" });
+    if (result.status !== 0) process.exit(result.status ?? 1);
+  }
 }
 
 const invokedDirectly =

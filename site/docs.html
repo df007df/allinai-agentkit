@@ -20,7 +20,7 @@
       <a class="brand" href="index.html">allinai-agentkit</a>
       <div class="nav-links">
         <a href="index.html">官网</a>
-        <a href="https://www.npmjs.com/package/@allin-ai/agentkit" target="_blank" rel="noreferrer">npm</a>
+        <a href="https://www.npmjs.com/package/@allin-ai/agentkit-client" target="_blank" rel="noreferrer">npm</a>
         <a href="https://github.com/df007df/allinai-agentkit" target="_blank" rel="noreferrer">GitHub</a>
       </div>
     </nav>
@@ -85,15 +85,16 @@
           <p>环境要求：<strong>Node.js ≥ 22.18</strong>；插件同步需要本机 <code>git</code>。三种方式按需选择。</p>
 
           <h3 id="install-npx">2.1 npx 免安装</h3>
-          <p>临时体验或本地联调，无需任何安装动作（Console 另需 <code>@allin-ai/agentkit-web</code>）：</p>
-          <pre class="code-block"><code>npx @allin-ai/agentkit --help</code></pre>
+          <p>分别使用 npx 启动 Hub 控制台或 Client：</p>
+          <pre class="code-block"><code>npx @allin-ai/agentkit-client --help
+npx @allin-ai/agentkit-hub web</code></pre>
 
           <h3 id="install-global">2.2 npm 全局安装</h3>
-          <pre class="code-block"><code>npm install -g @allin-ai/agentkit
+          <pre class="code-block"><code>npm install -g @allin-ai/agentkit-client
 allinai-agentkit --help</code></pre>
           <p>或使用仓库提供的一键脚本（自动检查 Node 版本并验证安装）：</p>
           <pre class="code-block"><code>sh scripts/install.sh                 # 安装最新版
-sh scripts/install.sh 0.3.2           # 指定版本
+sh scripts/install.sh 0.5.0           # 指定版本
 sh scripts/install.sh --from-source   # 本仓库构建 + npm link（开发）</code></pre>
 
           <h3 id="install-source">2.3 源码构建</h3>
@@ -111,16 +112,16 @@ node bin/allinai-agentkit --help</code></pre>
 
         <section id="quickstart" class="doc-section">
           <h2>3 快速开始</h2>
-          <p>安装后三步跑通完整链路（npx 用户把命令前的 <code>node bin/</code> 换成 <code>npx @allin-ai/agentkit</code>）：</p>
+          <p>安装后三步跑通完整链路。npx 启动 Hub 用 <code>npx @allin-ai/agentkit-hub web</code>，Client 用 <code>npx @allin-ai/agentkit-client</code> 加子命令：</p>
 
           <h3>步骤一：启动 Console（终端 A）</h3>
-          <pre class="code-block"><code>node bin/allinai-agentkit web
+          <pre class="code-block"><code>node bin/allinai-agentkit-hub web
 <span class="c"># 输出 consoleUrl（默认 http://127.0.0.1:4317）与 hubWsUrl，浏览器打开 consoleUrl</span></code></pre>
           <p>
             <code>web</code> 把 Hub 与 Console UI 跑在同一进程，仅监听回环地址。
-            它需要 <code>@allin-ai/agentkit-web</code>（官方 Next.js 控制台）：
-            npm 全局安装 <code>npm i -g @allin-ai/agentkit @allin-ai/agentkit-web</code>；
-            源码开发时它是 workspace devDep，<code>pnpm install</code> 已链接。
+            它属于 <code>@allin-ai/agentkit-hub</code>，包内包含官方 Next.js 控制台：
+            npm 全局安装 <code>npm i -g @allin-ai/agentkit-client @allin-ai/agentkit-hub</code>；
+            Hub 和 Client 可以分别安装；源码开发时两个包由 pnpm workspace 链接。
           </p>
 
           <h3>步骤二：浏览器授权（终端 B）</h3>
@@ -143,8 +144,7 @@ node bin/allinai-agentkit --help</code></pre>
           <h3 id="quickstart-auth">3.1 授权模型</h3>
           <p>
             Console 启动不发放任何全局 token。client 凭自己 config 里的唯一 clientId 发起
-            <code>login</code>，浏览器授权页确认后，Console 内存中登记 <code>token → clientId</code>
-            并以此放行后续连接。内存态，重启即清空，需要重新 login。
+            <code>login</code>，浏览器授权页确认后，Console 保存 <code>token → clientId</code> 并以此放行后续连接。官方控制台使用本地 SQLite 保存 token，重启后无需重新 login。
             生产环境的鉴权由宿主在 <code>createAgentHub({ authorize })</code> 里自己实现。
           </p>
         </section>
@@ -175,8 +175,8 @@ node bin/allinai-agentkit --help</code></pre>
                 <td>—</td>
               </tr>
               <tr>
-                <td><code>web</code></td>
-                <td>启动本地 Console：Hub 与 web UI 同进程（需 <code>@allin-ai/agentkit-web</code>）</td>
+                <td><code>allinai-agentkit-hub web</code></td>
+                <td>启动本地 Console：Hub 与 web UI 同进程（Hub 包的独立命令）</td>
                 <td><code>--port N</code> · <code>--host H</code></td>
               </tr>
               <tr>
@@ -342,7 +342,7 @@ node bin/allinai-agentkit --help</code></pre>
           <h3 id="integration-hub">6.1 宿主服务：挂一个 Hub</h3>
           <p>把协议 Hub 挂进现有 HTTP 服务，鉴权与持久化全部由你实现，包只负责协议编排。</p>
           <pre class="code-block"><code><span class="c">// 宿主侧：node:http + 你自己的 HubStore</span>
-import { createAgentHub } from "@allin-ai/agentkit/hub";
+import { createAgentHub } from "@allin-ai/agentkit-hub/hub";
 
 const hub = createAgentHub&lt;MyUser&gt;({
   authorize: (token) =&gt; loadUserByToken(token), <span class="c">// 你的鉴权</span>
@@ -368,7 +368,7 @@ await hub.offer({
           <h3 id="integration-testkit">6.2 测试与本地联调：内存 Hub</h3>
           <p>单测里不需要数据库：内存 Hub 一行起步，协议行为与真实 Hub 完全一致（易失，勿用于生产）。</p>
           <pre class="code-block"><code><span class="c">// 测试侧：易失内存实现，重启即清空</span>
-import { createMemoryHub } from "@allin-ai/agentkit/hub/testkit";
+import { createMemoryHub } from "@allin-ai/agentkit-hub/hub/testkit";
 
 const hub = createMemoryHub({ token: "test-token" });
 const server = http.createServer();
@@ -383,8 +383,8 @@ assert.equal(hub.listClients().length, 0);</code></pre>
           <pre class="code-block"><code><span class="c">// client 侧：持久执行器</span>
 import {
   ClientStateStore, ClientSupervisor, WsClientTransport,
-} from "@allin-ai/agentkit/client";
-import { createRunnerManager } from "@allin-ai/agentkit/runtime";
+} from "@allin-ai/agentkit-client/client";
+import { createRunnerManager } from "@allin-ai/agentkit-client/runtime";
 
 const supervisor = new ClientSupervisor({
   store: new ClientStateStore(stateDbPath),
@@ -405,7 +405,7 @@ await supervisor.start();              <span class="c">// 连接、注册、收�
             页面用 Server Component 直接读 Store，列出 client 与在线状态。
           </p>
           <pre class="code-block"><code><span class="c">// 1) src/server/hub.ts —— 单例；dev 热更新下也保持同一实例</span>
-import { createMemoryHub } from "@allin-ai/agentkit/hub/testkit";
+import { createMemoryHub } from "@allin-ai/agentkit-hub/hub/testkit";
 
 const g = globalThis as unknown as {
   hub?: ReturnType&lt;typeof createMemoryHub&gt;;
@@ -448,7 +448,7 @@ export default function AgentsPage() {
           <pre class="code-block"><code><span class="c">// src/server/store.ts —— HubStore 的数据库实现（六个方法）</span>
 import {
   createAgentHub, type HubStore, type StoredOffer,
-} from "@allin-ai/agentkit/hub";
+} from "@allin-ai/agentkit-hub/hub";
 
 export class MyDbHubStore implements HubStore&lt;MyUser&gt; {
   async registerClient(input) {
@@ -485,8 +485,8 @@ export const hub = createAgentHub({
             直连监管，不需要走 Hub 权限。
           </p>
           <pre class="code-block"><code><span class="c">// 宿主进程侧：本地监管 daemon</span>
-import { createAgentControlClient } from "@allin-ai/agentkit/control";
-import { resolveAgentControlEndpoint } from "@allin-ai/agentkit/paths";
+import { createAgentControlClient } from "@allin-ai/agentkit-client/control";
+import { resolveAgentControlEndpoint } from "@allin-ai/agentkit-client/paths";
 
 const control = createAgentControlClient(
   resolveAgentControlEndpoint(/* AgentPaths */),
@@ -498,14 +498,14 @@ await control.approve(executionId);    <span class="c">// 放行待批准执行<
 
           <h3 id="integration-console">6.6 Console 编程接入</h3>
           <p>
-            Console（<code>allinai-agentkit web</code> 的底层）也能程序化启动：
+            Console（<code>allinai-agentkit-hub web</code> 的底层）也能程序化启动：
             <code>/console</code> 提供服务端胶水，<code>/console-ui</code> 提供 React 组件，
-            官方 Next.js 控制台 <code>@allin-ai/agentkit-web</code> 正是基于两者构建的自托管参考实现。
+            官方 Next.js 控制台 <code>@allin-ai/agentkit-hub</code> 正是基于两者构建的自托管参考实现。
           </p>
-          <pre class="code-block"><code><span class="c">// 程序化启动 Console（Hub + web UI 同进程，等价于 allinai-agentkit web）</span>
-import { startConsoleServer } from "@allin-ai/agentkit/console";
+          <pre class="code-block"><code><span class="c">// 程序化启动官方 Next.js 控制台</span>
+import { startWebHost } from "@allin-ai/agentkit-hub/web";
 
-const site = await startConsoleServer({ port: 4317 });
+const site = await startWebHost({ port: 4317 });
 console.log(site.url, site.hubUrl);
 
 await site.close();</code></pre>
@@ -513,6 +513,7 @@ await site.close();</code></pre>
 
         <section id="architecture" class="doc-section">
           <h2>7 架构与模块</h2>
+          <p><code>@allin-ai/agentkit-hub</code> 包含 Hub SDK、Console 与 Web；<code>@allin-ai/agentkit-client</code> 包含本地 Client、执行器与 CLI。两包各自携带同一份协议源码的编译产物，无相互的生产依赖。</p>
 
           <div class="arch" aria-label="模块关系架构图">
             <div class="arch-card">
@@ -571,7 +572,7 @@ await site.close();</code></pre>
 
             <div class="arch-row arch-dev">
               <span class="arch-chip">/hub/testkit — HubStore 内存实现，测试与本地联调</span>
-              <span class="arch-chip">/console + /console-ui — Console 服务端与 React 组件（@allin-ai/agentkit-web 采用）</span>
+              <span class="arch-chip">/console + /console-ui — Console 服务端与 React 组件（@allin-ai/agentkit-hub 采用）</span>
             </div>
           </div>
 
@@ -758,18 +759,16 @@ await site.close();</code></pre>
               <div class="export-row">
                 <div class="ide">
                   <div class="ide-titlebar"><span class="ide-dot r"></span><span class="ide-dot y"></span><span class="ide-dot g"></span><span class="ide-file">entry.ts</span></div>
-                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> agentkit <span class="kw">from</span> <span class="str">"@allin-ai/agentkit"</span><span class="pn">;</span></code></pre>
+                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> * as agentkit <span class="kw">from</span> <span class="str">"@allin-ai/agentkit-client"</span><span class="pn">;</span></code></pre>
                 </div>
                 <p>
-                  根入口，公共 API 汇总：/protocol、/hub、/client 核心类，以及
-                  /config、/credentials、/control、/logger、/paths。刻意不含
-                  /runtime（可选 peer）、/hub/testkit 与 /console。
+                  Client 根入口汇总本地执行 API、协议、runtime、plugins、配置与凭据。Hub 根入口位于 <code>@allin-ai/agentkit-hub</code>，提供 Hub SDK 与协议；Console、Web 和 testkit 使用各自的子入口。
                 </p>
               </div>
               <div class="export-row">
                 <div class="ide">
                   <div class="ide-titlebar"><span class="ide-dot r"></span><span class="ide-dot y"></span><span class="ide-dot g"></span><span class="ide-file">protocol.ts</span></div>
-                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { parseClientHello } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit/protocol"</span><span class="pn">;</span></code></pre>
+                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { parseClientHello } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit-client/protocol"</span><span class="pn">;</span></code></pre>
                 </div>
                 <p>
                   v2 wire 协议：AGENT_CLIENT_PROTOCOL_VERSION 常量与全部
@@ -785,7 +784,7 @@ await site.close();</code></pre>
               <div class="export-row">
                 <div class="ide">
                   <div class="ide-titlebar"><span class="ide-dot r"></span><span class="ide-dot y"></span><span class="ide-dot g"></span><span class="ide-file">hub.ts</span></div>
-                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { createAgentHub } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit/hub"</span><span class="pn">;</span></code></pre>
+                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { createAgentHub } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit-hub/hub"</span><span class="pn">;</span></code></pre>
                 </div>
                 <p>
                   createAgentHub({ authorize, store })：Node HTTP/WebSocket Hub。
@@ -797,7 +796,7 @@ await site.close();</code></pre>
               <div class="export-row">
                 <div class="ide">
                   <div class="ide-titlebar"><span class="ide-dot r"></span><span class="ide-dot y"></span><span class="ide-dot g"></span><span class="ide-file">memory-hub.ts</span></div>
-                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { createMemoryHub } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit/hub/testkit"</span><span class="pn">;</span></code></pre>
+                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { createMemoryHub } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit-hub/hub/testkit"</span><span class="pn">;</span></code></pre>
                 </div>
                 <p>
                   MemoryHubStore 与 createMemoryHub()：六方法的易失内存实现，
@@ -812,7 +811,7 @@ await site.close();</code></pre>
               <div class="export-row">
                 <div class="ide">
                   <div class="ide-titlebar"><span class="ide-dot r"></span><span class="ide-dot y"></span><span class="ide-dot g"></span><span class="ide-file">supervisor.ts</span></div>
-                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { ClientSupervisor } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit/client"</span><span class="pn">;</span></code></pre>
+                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { ClientSupervisor } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit-client/client"</span><span class="pn">;</span></code></pre>
                 </div>
                 <p>
                   ClientSupervisor 是 daemon 的调度核心：收命令、本地策略判定、
@@ -824,7 +823,7 @@ await site.close();</code></pre>
               <div class="export-row">
                 <div class="ide">
                   <div class="ide-titlebar"><span class="ide-dot r"></span><span class="ide-dot y"></span><span class="ide-dot g"></span><span class="ide-file">runtime.ts</span></div>
-                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { createRunnerManager } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit/runtime"</span><span class="pn">;</span></code></pre>
+                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { createRunnerManager } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit-client/runtime"</span><span class="pn">;</span></code></pre>
                 </div>
                 <p>
                   createRunnerManager() 与 codex / claude / pi / zcode 四个适配器。
@@ -836,7 +835,7 @@ await site.close();</code></pre>
               <div class="export-row">
                 <div class="ide">
                   <div class="ide-titlebar"><span class="ide-dot r"></span><span class="ide-dot y"></span><span class="ide-dot g"></span><span class="ide-file">manager.ts</span></div>
-                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { PluginManager } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit/plugins"</span><span class="pn">;</span></code></pre>
+                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { PluginManager } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit-client/plugins"</span><span class="pn">;</span></code></pre>
                 </div>
                 <p>
                   PluginManager：接收 hub 下发的 plugin.sync 期望状态，git
@@ -847,7 +846,7 @@ await site.close();</code></pre>
               <div class="export-row">
                 <div class="ide">
                   <div class="ide-titlebar"><span class="ide-dot r"></span><span class="ide-dot y"></span><span class="ide-dot g"></span><span class="ide-file">control.ts</span></div>
-                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { createAgentControlClient } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit/control"</span><span class="pn">;</span></code></pre>
+                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { createAgentControlClient } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit-client/control"</span><span class="pn">;</span></code></pre>
                 </div>
                 <p>
                   daemon 在本机 unix socket 上暴露的控制面：health、status、
@@ -863,7 +862,7 @@ await site.close();</code></pre>
               <div class="export-row">
                 <div class="ide">
                   <div class="ide-titlebar"><span class="ide-dot r"></span><span class="ide-dot y"></span><span class="ide-dot g"></span><span class="ide-file">config.ts</span></div>
-                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { loadAgentConfig } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit/config"</span><span class="pn">;</span></code></pre>
+                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { loadAgentConfig } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit-client/config"</span><span class="pn">;</span></code></pre>
                 </div>
                 <p>
                   loadAgentConfig / saveAgentConfig：~/.allinai/agent/config.json，
@@ -873,7 +872,7 @@ await site.close();</code></pre>
               <div class="export-row">
                 <div class="ide">
                   <div class="ide-titlebar"><span class="ide-dot r"></span><span class="ide-dot y"></span><span class="ide-dot g"></span><span class="ide-file">credentials.ts</span></div>
-                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { createCredentialStore } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit/credentials"</span><span class="pn">;</span></code></pre>
+                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { createCredentialStore } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit-client/credentials"</span><span class="pn">;</span></code></pre>
                 </div>
                 <p>
                   createCredentialStore：login 授权后 token 的存取，
@@ -883,7 +882,7 @@ await site.close();</code></pre>
               <div class="export-row">
                 <div class="ide">
                   <div class="ide-titlebar"><span class="ide-dot r"></span><span class="ide-dot y"></span><span class="ide-dot g"></span><span class="ide-file">paths.ts</span></div>
-                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { resolveAgentPaths } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit/paths"</span><span class="pn">;</span></code></pre>
+                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { resolveAgentPaths } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit-client/paths"</span><span class="pn">;</span></code></pre>
                 </div>
                 <p>
                   resolveAgentPaths：~/.allinai/agent 数据目录、日志、socket
@@ -893,7 +892,7 @@ await site.close();</code></pre>
               <div class="export-row">
                 <div class="ide">
                   <div class="ide-titlebar"><span class="ide-dot r"></span><span class="ide-dot y"></span><span class="ide-dot g"></span><span class="ide-file">logger.ts</span></div>
-                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { createRotatingJsonlLogger } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit/logger"</span><span class="pn">;</span></code></pre>
+                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { createRotatingJsonlLogger } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit-client/logger"</span><span class="pn">;</span></code></pre>
                 </div>
                 <p>
                   createRotatingJsonlLogger：滚动 JSONL 日志，原文写盘不脱敏。
@@ -902,7 +901,7 @@ await site.close();</code></pre>
               <div class="export-row">
                 <div class="ide">
                   <div class="ide-titlebar"><span class="ide-dot r"></span><span class="ide-dot y"></span><span class="ide-dot g"></span><span class="ide-file">launchd.ts / systemd.ts</span></div>
-                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { installLaunchAgent } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit/service/launchd"</span><span class="pn">;</span></code></pre>
+                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { installLaunchAgent } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit-client/service/launchd"</span><span class="pn">;</span></code></pre>
                 </div>
                 <p>
                   用户级服务注册（install / uninstall / restart），daemon
@@ -916,7 +915,7 @@ await site.close();</code></pre>
               <div class="export-row">
                 <div class="ide">
                   <div class="ide-titlebar"><span class="ide-dot r"></span><span class="ide-dot y"></span><span class="ide-dot g"></span><span class="ide-file">commands.ts</span></div>
-                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { runCli } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit/cli"</span><span class="pn">;</span></code></pre>
+                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { runCli } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit-client/cli"</span><span class="pn">;</span></code></pre>
                 </div>
                 <p>
                   runCli：init / login / daemon / web / install / status / logs /
@@ -927,24 +926,24 @@ await site.close();</code></pre>
               <div class="export-row">
                 <div class="ide">
                   <div class="ide-titlebar"><span class="ide-dot r"></span><span class="ide-dot y"></span><span class="ide-dot g"></span><span class="ide-file">console.ts</span></div>
-                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { startConsoleServer } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit/console"</span><span class="pn">;</span></code></pre>
+                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { startConsoleServer } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit-hub/console"</span><span class="pn">;</span></code></pre>
                 </div>
                 <p>
                   Console 服务端胶水：startConsoleServer() 在一个进程里起 Hub 与
-                  web UI，含 TokenRegistry（内存 token → clientId）、SSE 观察流
-                  与静态资源处理，仅监听回环地址。<code>@allin-ai/agentkit-web</code>
+                  web UI，含 TokenRegistry（可选持久化 token → clientId）、SSE 观察流
+                  与静态资源处理，仅监听回环地址。<code>@allin-ai/agentkit-hub</code>
                   的 custom server 复用同一套路由。
                 </p>
               </div>
               <div class="export-row">
                 <div class="ide">
                   <div class="ide-titlebar"><span class="ide-dot r"></span><span class="ide-dot y"></span><span class="ide-dot g"></span><span class="ide-file">console-ui.tsx</span></div>
-                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { ConsoleApp } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit/console-ui"</span><span class="pn">;</span></code></pre>
+                  <pre class="ide-code"><code><span class="ln">1</span><span class="kw">import</span> { ConsoleApp } <span class="kw">from</span> <span class="str">"@allin-ai/agentkit-hub/console-ui"</span><span class="pn">;</span></code></pre>
                 </div>
                 <p>
                   Console 的 React 组件：ConsoleApp、ExecutionList、AuthorizeCard
                   等，配合 useAgentEvents() 经 SSE 接入协议事件时间线；
-                  <code>@allin-ai/agentkit-web</code> 基于它构建控制台页面。
+                  <code>@allin-ai/agentkit-hub</code> 基于它构建控制台页面。
                 </p>
               </div>
             </div>
@@ -957,7 +956,7 @@ await site.close();</code></pre>
             <li><strong>先跑 doctor</strong>：<code>allinai-agentkit doctor</code> 输出 git、config、配对状态与各 runtime 探测，多数环境问题一眼可见。</li>
             <li><strong>daemon 没起来</strong>：<code>status</code> 看健康与状态；前台跑一次 <code>daemon</code> 直接观察日志输出。</li>
             <li><strong>执行没反应</strong>：<code>logs -f</code> 跟随执行日志（JSONL），确认命令是否到达、策略是否放行、runner 是否可用。</li>
-            <li><strong>提示未配对</strong>：Hub 重启后内存 token 清空，重新 <code>login --hub ...</code>；生产环境检查宿主 authorize 实现。</li>
+            <li><strong>提示未配对</strong>：检查 token 是否有效；使用易失内存 token 存储的嵌入式 Hub 在重启后需重新 <code>login --hub ...</code>。官方控制台默认持久化 token；生产环境检查宿主 authorize 实现。</li>
             <li><strong>runtime 缺失</strong>：doctor 报告里看各 runtime 的 installed/reason，安装对应 agent SDK 后重启 daemon。</li>
             <li><strong>服务不生效</strong>：改配置后 <code>restart</code>；确认 <code>install</code> 输出的平台与 configDir 符合预期。</li>
           </ul>
@@ -969,9 +968,9 @@ await site.close();</code></pre>
       <span>MIT License · Node.js ≥ 22.18</span>
       <span class="footer-links">
         <a href="index.html">官网</a>
-        <a href="https://www.npmjs.com/package/@allin-ai/agentkit" target="_blank" rel="noreferrer">npm</a>
+        <a href="https://www.npmjs.com/package/@allin-ai/agentkit-client" target="_blank" rel="noreferrer">npm</a>
         <a href="https://github.com/df007df/allinai-agentkit" target="_blank" rel="noreferrer">GitHub</a>
-        <span>@allin-ai/agentkit</span>
+        <span>@allin-ai/agentkit-client</span>
       </span>
     </footer>
   </body>

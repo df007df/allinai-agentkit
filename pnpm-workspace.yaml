@@ -1,6 +1,6 @@
 packages:
-  - .
-  - web
+  - packages/hub
+  - packages/client
 
 allowBuilds:
   '@google/genai': false

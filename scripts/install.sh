@@ -3,7 +3,7 @@
 #
 # 用法：
 #   sh install.sh                 # 安装最新已发布版本到全局
-#   sh install.sh 0.3.0           # 安装指定版本
+#   sh install.sh 0.5.0           # 安装指定版本
 #   sh install.sh --from-source   # 从当前仓库源码构建并全局链接（开发用）
 #
 # 脚本只做三件事：确认 Node.js >= 22.18、用 npm 全局安装（或源码构建）、
@@ -14,7 +14,7 @@
 
 set -eu
 
-PACKAGE_NAME="@allin-ai/agentkit"
+PACKAGE_NAME="@allin-ai/agentkit-client"
 BIN_NAME="allinai-agentkit"
 REQUIRED_NODE_MAJOR=22
 REQUIRED_NODE_MINOR=18
@@ -47,15 +47,12 @@ fi
 case "${1:-}" in
   --from-source)
     SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-    cd "$SCRIPT_DIR"
+    cd "$SCRIPT_DIR/.."
     say "==> 从源码安装（$(pwd)）"
-    if [ -f pnpm-lock.yaml ] && command -v pnpm >/dev/null 2>&1; then
-      pnpm install
-      pnpm build
-    else
-      npm install
-      npm run build
-    fi
+    command -v pnpm >/dev/null 2>&1 || fail "源码工作区需要 pnpm。请先安装 pnpm。"
+    pnpm install --frozen-lockfile
+    node scripts/publish-stage.mjs stage
+    cd .publish-stage/client
     npm link
     ;;
   -h|--help)
@@ -90,7 +87,8 @@ say "==> ${BIN_NAME} 已就绪：$("$BIN_NAME" --help | head -1)"
 say ""
 say "下一步："
 say "  ${BIN_NAME} init --hub https://your-hub.example    # 或先跑本机 Console"
-say "  ${BIN_NAME} web                                     # 本机 Console：Hub + web UI"
+say "  npm i -g @allin-ai/agentkit-hub                     # 如需本机 Hub 控制台，单独安装"
+say "  allinai-agentkit-hub web                           # 启动 Hub + web UI"
 say "  ${BIN_NAME} login --hub http://127.0.0.1:4317      # 浏览器授权"
 say "  ${BIN_NAME} daemon                                  # 常驻接入"
 say "  ${BIN_NAME} install                                 # 注册用户级常驻服务"

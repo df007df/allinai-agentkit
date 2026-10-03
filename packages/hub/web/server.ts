@@ -1,0 +1,215 @@
+import http from "node:http";
+import { mkdirSync } from "node:fs";
+import { once } from "node:events";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import type { Duplex } from "node:stream";
+import next from "next";
+
+/**
+ * EMBEDDING CONTRACT (Task 2 review): `createConsoleRouter`'s static handler
+ * serves BARE, UNPREFIXED paths from its `staticRoot` (`/x` → `x.html`, and a
+ * bare visit redirects to `/_agentkit/`). An embedder that mounts
+ * `createConsoleRouter` on its own server therefore takes over every unmatched
+ * path once the static handler is configured. Embedders must mount the router
+ * under a reserved prefix, or strictly AFTER their own routes so their
+ * handlers see the request first.
+ *
+ * This package's custom server makes that deterministic: ONLY paths under
+ * `/_agentkit` (AGENTKIT_ROOT_PREFIX) are routed to the console router
+ * (hub WebSocket upgrade + observe/login endpoints + 404); every other path —
+ * including `/` — goes to Next.js. Embedders copying this wiring get the same
+ * isolation for free.
+ */
+
+import {
+  AGENTKIT_ROOT_PREFIX,
+  DEFAULT_HUB_WS_PATH,
+  LOGIN_PATH,
+} from "../src/routes.js";
+import { resolveAgentPaths, resolveAgentPathsAt } from "../src/paths.js";
+import {
+  createConsoleRuntime,
+  createConsoleRouter,
+  createIssueAgentApiHandler,
+  isLoopbackHost,
+} from "../src/console/index.js";
+
+type ConsoleRouter = (
+  request: IncomingMessage,
+  response: ServerResponse,
+) => Promise<boolean>;
+
+/**
+ * The hub's request fallback: console-owned `/_agentkit/*` traffic goes to
+ * the console router (unknown prefixed paths answer a JSON 404); everything
+ * else is handed to Next. Extracted as a factory so the wiring is testable
+ * without booting Next (web/server.test.ts).
+ */
+export function createAgentkitFallback(params: {
+  router: ConsoleRouter;
+  nextHandler: (request: IncomingMessage, response: ServerResponse) => void;
+}): (request: IncomingMessage, response: ServerResponse) => void {
+  return (
+    request: IncomingMessage,
+    response: ServerResponse,
+  ): void => {
+    void (async () => {
+      const pathname = new URL(
+        request.url ?? "/",
+        "http://web.invalid",
+      ).pathname;
+      // The CLI login flow opens GET ${hub}/_agentkit/login (LOGIN_PATH) in a
+      // browser; that page renders in Next (app/_agentkit/login). It must pass
+      // through to Next instead of the console router, which only owns the
+      // approve/deny POST endpoints under the same prefix.
+      if (pathname === LOGIN_PATH && request.method === "GET") {
+        params.nextHandler(request, response);
+        return;
+      }
+      if (
+        pathname === AGENTKIT_ROOT_PREFIX ||
+        pathname.startsWith(`${AGENTKIT_ROOT_PREFIX}/`)
+      ) {
+        const handled = await params.router(request, response);
+        if (!handled && !response.headersSent) {
+          response.writeHead(404, { "content-type": "application/json" });
+          response.end(JSON.stringify({ error: "not_found" }));
+        }
+        return;
+      }
+      params.nextHandler(request, response);
+    })().catch(() => {
+      // Aborted POST bodies throw in readJsonBody; without this catch the
+      // rejection is unhandled and kills the process.
+      if (!response.headersSent) {
+        try {
+          response.writeHead(400, { "content-type": "application/json" });
+        } catch {
+          // Headers already sent by a losing race; fall through to end().
+        }
+      }
+      try {
+        response.end(JSON.stringify({ error: "bad_request" }));
+      } catch {
+        // The client is gone; nothing left to answer.
+      }
+    });
+  };
+}
+
+/**
+ * Non-hub WebSocket upgrades (Next dev serves HMR on /_next/webpack-hmr)
+ * belong to the app; without this passthrough the Hub destroys them and the
+ * browser logs a failed HMR connection in dev.
+ */
+export function createAgentkitUpgradeHandler(params: {
+  nextUpgradeHandler: (
+    request: IncomingMessage,
+    socket: Duplex,
+    head: Buffer,
+  ) => Promise<void>;
+}): (request: IncomingMessage, socket: Duplex, head: Buffer) => void {
+  return (request, socket, head) => {
+    void params.nextUpgradeHandler(request, socket, head).catch(() => {
+      socket.destroy();
+    });
+  };
+}
+
+export async function startWebHost(options?: {
+  port?: number;
+  host?: string;
+  dev?: boolean;
+  configDir?: string;
+}): Promise<{
+  url: string;
+  hubUrl: string;
+  /** Console runtime handle; exposes stream.hostWarning for tests/embedders. */
+  runtime: ReturnType<typeof createConsoleRuntime>;
+  close(): Promise<void>;
+}> {
+  const host = options?.host ?? "127.0.0.1";
+  const dev = options?.dev ?? process.argv.includes("--dev");
+  // Conventional hub-side state, no flags: issues + tokens live next to the
+  // client's state.db under ~/.allinai/agent so a web-host restart keeps
+  // logins and issue data. Embedders wanting something else pass their own
+  // paths into createConsoleRuntime directly.
+  const paths = options?.configDir ? resolveAgentPathsAt(options.configDir) : resolveAgentPaths();
+  mkdirSync(paths.home, { recursive: true });
+  const runtime = createConsoleRuntime({
+    issuesDbPath: paths.issuesDb,
+    tokensDbPath: paths.tokensDb,
+  });
+  // Mirrors startConsoleServer: the console write endpoints are unauthenticated
+  // by design and rely on loopback-only deployment. Arm the warning (which the
+  // router turns into 403s) whenever the host is non-loopback, so this gate
+  // actually fires in the web package too.
+  runtime.stream.hostWarning = isLoopbackHost(host)
+    ? null
+    : `console 正监听非回环地址（--host ${host}），仅限受信任本机网络使用`;
+  // Issue REST API (/_agentkit/api/v1/issues*) authenticates registry
+  // tokens; it runs ahead of the console router's static fallback.
+  const router = createConsoleRouter(runtime, {
+    beforeStatic: createIssueAgentApiHandler(runtime),
+  });
+
+  const app = next({ dev, dir: import.meta.dirname });
+  try {
+    await app.prepare();
+  } catch (error) {
+    await runtime.close();
+    await app.close();
+    throw error;
+  }
+  const nextHandler = app.getRequestHandler();
+
+  const server = http.createServer();
+  // hub.attach registers the server's ONLY `request` listener; all non-hub
+  // traffic flows through the fallback below (never also server.on("request")).
+  runtime.hub.attach(server, {
+    fallback: createAgentkitFallback({ router, nextHandler }),
+    onUnknownUpgrade: createAgentkitUpgradeHandler({
+      nextUpgradeHandler: app.getUpgradeHandler(),
+    }),
+  });
+  server.listen(options?.port ?? 4317, host);
+  await once(server, "listening");
+  const address = server.address();
+  if (!address || typeof address !== "object") {
+    throw new Error("web server failed to listen");
+  }
+  const url = `http://${host}:${address.port}`;
+  // Task 11 review hard requirement: the CLI must never derive the hub
+  // endpoint from the URL alone — this path-carrying hubUrl is the live path.
+  const hubUrl = `${url.replace(/^http/, "ws")}${DEFAULT_HUB_WS_PATH}`;
+  return {
+    url,
+    hubUrl,
+    runtime,
+    async close() {
+      // SSE subscribers hold the server's sockets open; destroy them first or
+      // server.close() never settles (mirrors startConsoleServer.close).
+      for (const response of runtime.stream.subscribers) response.destroy();
+      runtime.stream.subscribers.clear();
+      await runtime.close();
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => error ? reject(error) : resolve());
+        server.closeAllConnections();
+      });
+      await app.close();
+    },
+  };
+}
+
+if (
+  process.argv[1] &&
+  import.meta.url === new URL(`file://${process.argv[1]}`).href
+) {
+  const portFlag = process.argv.indexOf("--port");
+  void startWebHost({
+    port: portFlag > -1 ? Number(process.argv[portFlag + 1]) : undefined,
+  }).then((w) => {
+    console.log(`agentkit console: ${w.url}`);
+    console.log(`agentkit hub ws:  ${w.hubUrl}`);
+  });
+}
