@@ -1,4 +1,24 @@
 import { CONSOLE_OBSERVE_PATH } from "../routes.js";
+import type { HubObservation } from "../console/observable-store.js";
+import type { ConsoleSnapshotFrame } from "./components.js";
+
+/** Keep the client choices current while the initial snapshot's SSE stays open. */
+export function mergeConsoleClientObservation(
+  clients: ConsoleSnapshotFrame["clients"],
+  observation: HubObservation,
+): ConsoleSnapshotFrame["clients"] {
+  if (observation.kind !== "client.registered" && observation.kind !== "client.heartbeat" && observation.kind !== "inventory.recorded") {
+    return clients;
+  }
+  const existing = clients.find((client) => client.clientId === observation.clientId);
+  const base = existing ?? { clientId: observation.clientId, lastSeen: observation.at, projects: [], plugins: [] };
+  const updated = observation.kind === "inventory.recorded"
+    ? { ...base, projects: observation.report.projects.map((project) => project.name), plugins: observation.report.plugins }
+    : { ...base, lastSeen: observation.at, ...(observation.name ? { name: observation.name } : {}) };
+  return existing
+    ? clients.map((client) => client.clientId === observation.clientId ? updated : client)
+    : [...clients, updated];
+}
 
 export type AgentEventStream = { close(): void };
 
@@ -62,8 +82,11 @@ export function connectAgentEvents(
       if (snapshot !== null) onSnapshot(snapshot);
     });
     next.addEventListener("observation", (event) => {
-      const observation = parseJson((event as MessageEvent).data);
-      if (observation !== null) onObservation(observation);
+      const frame = parseJson((event as MessageEvent).data);
+      if (frame && typeof frame === "object" && "observation" in frame) {
+        const observation = frame.observation;
+        if (observation !== null && observation !== undefined) onObservation(observation);
+      }
     });
   }
 

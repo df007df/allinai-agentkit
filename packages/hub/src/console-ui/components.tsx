@@ -13,11 +13,13 @@ import {
 } from "../routes.js";
 import {
   connectAgentEvents,
+  mergeConsoleClientObservation,
   type AgentEventStream,
 } from "./events.js";
 import { deriveExecutions, eventsForExecution, type ExecutionView } from "./executions.js";
 import { IssuesPanel } from "../issues/console-ui.js";
 import { CONSOLE_EVENT_BUFFER_LIMIT, type ConsoleSnapshot } from "../console/state.js";
+import type { HubObservation } from "../console/observable-store.js";
 
 const EMPTY_SNAPSHOT: ConsoleSnapshotFrame = {
   clients: [],
@@ -195,6 +197,17 @@ export function useAgentEvents(): {
         }
       },
       onObservation: (raw) => {
+        const clientObservation = raw as HubObservation;
+        if (clientObservation && (
+          clientObservation.kind === "client.registered" ||
+          clientObservation.kind === "client.heartbeat" ||
+          clientObservation.kind === "inventory.recorded"
+        )) {
+          setSnapshot((prev) => {
+            const base = prev ?? EMPTY_SNAPSHOT;
+            return { ...base, clients: mergeConsoleClientObservation(base.clients, clientObservation) };
+          });
+        }
         const observation = raw as ToolApprovalObservationFrame;
         if (
           observation &&
