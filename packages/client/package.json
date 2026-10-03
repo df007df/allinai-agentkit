@@ -117,7 +117,7 @@
     "access": "public"
   },
   "bin": {
-    "allinai-agentkit": "./bin/allinai-agentkit"
+    "allinai-agentkit": "bin/allinai-agentkit"
   },
   "scripts": {
     "build": "node ../../scripts/build.mjs client",

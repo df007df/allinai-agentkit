@@ -113,7 +113,7 @@
     "access": "public"
   },
   "bin": {
-    "allinai-agentkit-hub": "./bin/allinai-agentkit-hub"
+    "allinai-agentkit-hub": "bin/allinai-agentkit-hub"
   },
   "scripts": {
     "build": "node ../../scripts/build.mjs hub",

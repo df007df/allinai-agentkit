@@ -100,7 +100,11 @@ try {
     }`, consumer);
     if (side === "hub") runNode('import { createAgentHub } from "@allin-ai/agentkit-hub"; if (typeof createAgentHub !== "function") throw new Error("Missing SDK");', consumer, ["--no-experimental-sqlite"]);
     const bin = path.join(packageDir, Object.values(manifest.bin)[0]);
-    const help = execFileSync(process.execPath, [bin, "--help"], { encoding: "utf8", timeout: 10_000 });
+    const linkedBin = path.join(consumer, "node_modules", ".bin", Object.keys(manifest.bin)[0] + (process.platform === "win32" ? ".cmd" : ""));
+    assert.ok(existsSync(linkedBin), `Installer did not create the CLI command: ${linkedBin}`);
+    const help = process.platform === "win32"
+      ? execFileSync(process.execPath, [bin, "--help"], { encoding: "utf8", timeout: 10_000 })
+      : execFileSync(linkedBin, ["--help"], { encoding: "utf8", timeout: 10_000 });
     assert.match(help, side === "hub" ? /allinai-agentkit-hub web/ : /allinai-agentkit <init\|login\|daemon/);
     const typeImports = side === "hub"
       ? 'import { createAgentHub, type HubStore } from "@allin-ai/agentkit-hub"; import type { ConsoleRuntime } from "@allin-ai/agentkit-hub/console"; import type { ConsoleApp } from "@allin-ai/agentkit-hub/console-ui"; import type { IssueStore } from "@allin-ai/agentkit-hub/issues"; import type { startWebHost } from "@allin-ai/agentkit-hub/web"; const factory: typeof createAgentHub = createAgentHub;'
