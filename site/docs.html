@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
-    <meta name="agentkit-version" content="0.6.0" />
+    <meta name="agentkit-version" content="0.6.1" />
     <meta name="description" content="allinai-agentkit 的使用场景、主要功能、安装与操作指南，以及 Hub SDK、Client、插件和 Issues 的集成参考。" />
     <title>功能与使用文档 · allinai-agentkit</title>
     <link rel="stylesheet" href="style.css" />
@@ -67,7 +67,7 @@
         <h1>allinai-agentkit 文档</h1>
         <p class="docs-lead">
           连接业务系统与本地 AI Agent，统一派发任务并观察执行过程。
-          先了解功能与使用场景，再按快速开始运行；CLI、应用集成和架构细节可按需查阅。当前版本：v0.6.0。
+          先了解功能与使用场景，再按快速开始运行；CLI、应用集成和架构细节可按需查阅。当前版本：v0.6.1。
         </p>
 
         <section id="overview" class="doc-section">
@@ -235,7 +235,7 @@ npm install -g @allin-ai/agentkit-client
 allinai-agentkit --help</code></pre>
           <p>Client 也可使用仓库提供的一键脚本（自动检查 Node 版本并验证安装）：</p>
           <pre class="code-block"><code>sh scripts/install.sh                 # 安装最新版 Client
-sh scripts/install.sh 0.6.0           # 指定 Client 版本
+sh scripts/install.sh 0.6.1           # 指定 Client 版本
 sh scripts/install.sh --from-source   # 本仓库构建 + npm link Client（开发）</code></pre>
 
           <h3 id="install-source">3.3 源码构建</h3>
@@ -1025,7 +1025,7 @@ await site.close();</code></pre>
     </div>
 
     <footer class="footer">
-      <span>v0.6.0 · MIT License · Node.js ≥ 22.18</span>
+      <span>v0.6.1 · MIT License · Node.js ≥ 22.18</span>
       <span class="footer-links">
         <a href="index.html">官网</a>
         <a href="https://www.npmjs.com/package/@allin-ai/agentkit-hub" target="_blank" rel="noreferrer">Hub npm</a>

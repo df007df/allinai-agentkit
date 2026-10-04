@@ -6,7 +6,7 @@ allinai-agentkit 用来连接业务系统与本地 AI Agent，让你从一个入
 
 项目由两个角色组成：**Hub** 是任务派发和管理入口，可以直接启动 Web 控制台，也可以作为 SDK 嵌入你的应用；**Client** 常驻在执行机器上，连接 Hub，调用本机已安装的平台 Agent，并回传执行信息。
 
-当前版本：**0.6.0** · [官网](https://df007df.github.io/allinai-agentkit/) · [完整文档](https://df007df.github.io/allinai-agentkit/docs.html) · [变更记录](CHANGELOG.md)
+当前版本：**0.6.1** · [官网](https://df007df.github.io/allinai-agentkit/) · [完整文档](https://df007df.github.io/allinai-agentkit/docs.html) · [变更记录](CHANGELOG.md)
 
 ## 主要功能
 
@@ -232,7 +232,7 @@ node bin/allinai-agentkit login --hub http://127.0.0.1:4317
 node bin/allinai-agentkit daemon
 ```
 
-也可以使用仓库安装脚本：`sh scripts/install.sh` 安装最新版 Client，`sh scripts/install.sh 0.6.0` 安装指定版本，`sh scripts/install.sh --from-source` 构建并链接本地 Client。Hub 控制台另行安装。
+也可以使用仓库安装脚本：`sh scripts/install.sh` 安装最新版 Client，`sh scripts/install.sh 0.6.1` 安装指定版本，`sh scripts/install.sh --from-source` 构建并链接本地 Client。Hub 控制台另行安装。
 
 ### 源码结构
 

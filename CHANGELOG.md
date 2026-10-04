@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.1 — 2026-10-04
+
+- 重写项目首页介绍，按七组使用场景说明主要功能、解决的问题与提供的方案。
+- 统一官网、完整文档和插件文档的项目定位、功能分组与操作指引。
+- 补充 CLI 使用示例与配置说明，修正移动端文档导航布局。
+- 更新 Hub 与 Client npm 包说明及所有当前版本标记。
+
 ## 0.6.0 — 2026-10-04
 
 - 将原 `@allin-ai/agentkit` 拆分为两个独立公开包：`@allin-ai/agentkit-hub` 提供 Hub SDK、Console、Issues、React UI 与预构建 Next.js 控制台；`@allin-ai/agentkit-client` 提供本地 Client、执行器、插件与 CLI。

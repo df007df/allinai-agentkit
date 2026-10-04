@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
-    <meta name="agentkit-version" content="0.6.0" />
+    <meta name="agentkit-version" content="0.6.1" />
     <meta name="description" content="用 Git 插件统一维护并分发 Agent 技能：了解共享技能、机器自有插件、版本更新与回退，以及人工确认的使用场景和操作方案。" />
     <title>插件与技能 · allinai-agentkit</title>
     <link rel="stylesheet" href="style.css" />
@@ -54,7 +54,7 @@
         <section id="overview" class="doc-section">
           <h1>插件与技能</h1>
           <p class="docs-lead">把一组技能作为插件统一维护，分发到执行机器上的 Codex、Claude、Pi，查看安装状态，并处理版本更新与本地修改。</p>
-          <p>插件是一个 Git 仓库，包含技能与平台入口清单。Hub 管理需要分发的插件清单，Client 拉取仓库并向本机支持的平台分发；机器也可以登记自己的插件。当前版本：v0.6.0。</p>
+          <p>插件是一个 Git 仓库，包含技能与平台入口清单。Hub 管理需要分发的插件清单，Client 拉取仓库并向本机支持的平台分发；机器也可以登记自己的插件。当前版本：v0.6.1。</p>
           <p>插件管理与执行位于 <code>@allin-ai/agentkit-client</code>，中心控制台位于 <code>@allin-ai/agentkit-hub</code>。项目的其他能力见<a href="docs.html#features">七组主要功能</a>。</p>
         </section>
 
@@ -245,7 +245,7 @@ allinai-agentkit plugins --action force --id my-skills \
     </div>
 
     <footer class="footer">
-      <span>v0.6.0 · MIT License · Node.js ≥ 22.18</span>
+      <span>v0.6.1 · MIT License · Node.js ≥ 22.18</span>
       <span class="footer-links">
         <a href="index.html">官网</a>
         <a href="https://www.npmjs.com/package/@allin-ai/agentkit-hub" target="_blank" rel="noreferrer">Hub npm</a>
