@@ -13,6 +13,7 @@ export type ClaudeAdapterRunInput = {
   /** Platform-level session id from a previous run; maps onto --resume. */
   sessionId?: string;
   model?: string;
+  maxTurns?: number;
   pluginDirs?: string[];
 };
 
@@ -83,7 +84,7 @@ export function createClaudeAdapter(
           resumeSessionId: sessionId,
           prompt: input.prompt,
           model,
-          maxTurns: 1,
+          maxTurns: input.maxTurns ?? 30,
           pluginDirs: Array.isArray(input.pluginDirs)
             ? input.pluginDirs.filter(
                 (dir): dir is string => typeof dir === "string",

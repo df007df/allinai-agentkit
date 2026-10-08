@@ -62,6 +62,8 @@ export type ClientSupervisorOptions = {
   runner: RunnerManager;
   /** Maximum simultaneous local executions. Overflow is durably rejected. */
   maxConcurrentRuns?: number;
+  /** Maximum agent turns for each platform run. */
+  maxTurns?: number;
   policy?: LocalPolicy;
   plugins?: PluginManagerPort;
   /** Plugins root; used to derive per-plugin repo paths for --plugin-dir. */
@@ -251,6 +253,7 @@ function platformRunInput(
   command: AgentRunCommand,
   resolveProject?: ProjectResolver,
   pluginReposFor?: (runtime: string) => string[],
+  maxTurns = 30,
 ): PlatformRunInput {
   const prompt = command.payload.prompt;
   if (typeof prompt !== "string" || prompt.trim().length === 0) {
@@ -274,6 +277,7 @@ function platformRunInput(
       ? { sessionDir: path.join(resolved.recordDir, "sessions", command.executionId) }
       : {}),
     sessionId: optionalString(command.payload.sessionId),
+    maxTurns,
     ...(command.runtime === "claude"
       ? { pluginDirs: pluginReposFor?.(command.runtime) ?? [] }
       : {}),
@@ -326,6 +330,7 @@ export class ClientSupervisor {
   private readonly policy: LocalPolicy;
   private readonly capabilityContext: CapabilityContextResolver;
   private readonly maxConcurrentRuns: number;
+  private readonly maxTurns: number;
   private readonly pluginSyncInFlight = new Map<string, Promise<void>>();
   private lastInventoryReportAt = 0;
   private readonly capabilityAbortControllers = new Map<
@@ -345,11 +350,15 @@ export class ClientSupervisor {
     this.capabilityContext = options.capabilityContext ?? (() => ({}));
     this.maxConcurrentRuns =
       options.maxConcurrentRuns ?? Number.MAX_SAFE_INTEGER;
+    this.maxTurns = options.maxTurns ?? 30;
     if (
       !Number.isSafeInteger(this.maxConcurrentRuns) ||
       this.maxConcurrentRuns < 1
     ) {
       throw new RangeError("maxConcurrentRuns must be a positive safe integer");
+    }
+    if (!Number.isSafeInteger(this.maxTurns) || this.maxTurns < 1) {
+      throw new RangeError("maxTurns must be a positive safe integer");
     }
   }
 
@@ -1164,7 +1173,7 @@ export class ClientSupervisor {
         return plugins
           .snapshotActivePlugins()
           .map((plugin) => path.join(root, plugin.id, "repo"));
-      });
+      }, this.maxTurns);
       // An unbound run takes a managed scratch cwd when the host supplies a
       // default-workspace port; otherwise the adapter default applies.
       if (!runInput.cwd && this.options.defaultWorkspace) {

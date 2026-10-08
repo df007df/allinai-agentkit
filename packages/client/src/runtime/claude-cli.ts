@@ -34,7 +34,7 @@ export function buildClaudePrintArgs(input: ClaudeCliSpawn): string[] {
     "--permission-mode",
     "default",
     "--max-turns",
-    String(input.maxTurns ?? 1),
+    String(input.maxTurns ?? 30),
   ];
   if (input.model) args.push("--model", input.model);
   if (input.cwd) args.push("--add-dir", input.cwd);
@@ -99,7 +99,7 @@ export function claudeCliRunInput(
     resumeSessionId: input.sessionId,
     prompt: input.prompt,
     model: input.model,
-    maxTurns: 1,
+    maxTurns: input.maxTurns ?? 30,
   };
 }
 

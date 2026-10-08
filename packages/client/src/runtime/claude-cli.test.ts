@@ -19,7 +19,7 @@ describe("claude CLI executor", () => {
       "--permission-mode",
       "default",
       "--max-turns",
-      "1",
+      "30",
     ]);
   });
 
@@ -91,5 +91,16 @@ describe("claude CLI executor", () => {
       buildClaudePrintArgs(spawnInput).join(" "),
       /--resume sess-7/,
     );
+  });
+
+  it("uses the configured maxTurns when building the Claude command", () => {
+    const spawnInput = claudeCliRunInput({
+      platform: "claude",
+      prompt: "go",
+      maxTurns: 12,
+    });
+
+    assert.equal(spawnInput.maxTurns, 12);
+    assert.match(buildClaudePrintArgs(spawnInput).join(" "), /--max-turns 12/);
   });
 });

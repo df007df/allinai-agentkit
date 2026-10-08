@@ -16,6 +16,8 @@ export type PlatformRunInput = {
   sessionDir?: string;
   sessionId?: string;
   model?: string;
+  /** Maximum agent turns for this run; currently consumed by Claude CLI. */
+  maxTurns?: number;
   context?: Record<string, unknown>;
   /**
    * Active plugin repositories to deliver to the platform for this run

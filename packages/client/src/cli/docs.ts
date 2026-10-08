@@ -215,6 +215,7 @@ export function cliManual(): CliManual {
       { field: "name", description: "Optional display name shown on authorize pages and consoles" },
       { field: "proxy", description: "Optional http(s) proxy URL forwarded to agent runtimes (e.g. http://127.0.0.1:7900)" },
       { field: "maxConcurrentRuns", description: "Parallel agent.run executions, integer 1-32, default 1" },
+      { field: "maxTurns", description: "Maximum Claude agent turns per task, positive safe integer, default 30" },
       {
         field: "policy.requireRunApproval",
         description: "When true every agent run waits for local execution approval; default false (runs start immediately)",

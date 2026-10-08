@@ -39,6 +39,8 @@ export type AgentConfig = {
    */
   proxy?: string;
   maxConcurrentRuns: number;
+  /** Maximum agent turns allowed for each platform run. */
+  maxTurns: number;
   policy: AgentLocalPolicy;
   /** Locally owned project registry; Hub payloads select a project by name. */
   projects: AgentProject[];
@@ -78,10 +80,11 @@ function clonePolicy(policy = DEFAULT_POLICY): AgentLocalPolicy {
 /** Defaults apply only to bounded local settings; Hub identity remains explicit. */
 export function defaultAgentConfig(): Pick<
   AgentConfig,
-  "maxConcurrentRuns" | "policy" | "projects"
+  "maxConcurrentRuns" | "maxTurns" | "policy" | "projects"
 > {
   return {
     maxConcurrentRuns: 1,
+    maxTurns: 30,
     policy: clonePolicy(),
     projects: [],
   };
@@ -248,6 +251,7 @@ export function parseAgentConfig(value: unknown): AgentConfig {
     "name",
     "proxy",
     "maxConcurrentRuns",
+    "maxTurns",
     "policy",
     "projects",
   ]);
@@ -267,6 +271,10 @@ export function parseAgentConfig(value: unknown): AgentConfig {
       "maxConcurrentRuns must be an integer between 1 and 32",
     );
   }
+  const maxTurns = value.maxTurns ?? defaults.maxTurns;
+  if (!Number.isSafeInteger(maxTurns) || (maxTurns as number) < 1) {
+    throw new RangeError("maxTurns must be a positive safe integer");
+  }
   const name =
     value.name === undefined ? undefined : requireString(value.name, "name");
   const proxy =
@@ -277,6 +285,7 @@ export function parseAgentConfig(value: unknown): AgentConfig {
     ...(name ? { name } : {}),
     ...(proxy ? { proxy } : {}),
     maxConcurrentRuns: maxConcurrentRuns as number,
+    maxTurns: maxTurns as number,
     policy: parsePolicy(value.policy),
     projects: parseProjects(value.projects),
   };

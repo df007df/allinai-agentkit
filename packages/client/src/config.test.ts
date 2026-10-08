@@ -26,7 +26,31 @@ describe("agent config", () => {
 
     assert.equal(config.hubBaseUrl, "https://hub.example.test");
     assert.equal(config.maxConcurrentRuns, 1);
+    assert.equal(config.maxTurns, 30);
     assert.deepEqual(config.policy, defaultAgentConfig().policy);
+  });
+
+  it("accepts a positive safe maxTurns value and rejects invalid values", () => {
+    assert.equal(
+      parseAgentConfig({
+        hubBaseUrl: "https://hub.example.test",
+        clientId: "client-1",
+        maxTurns: 12,
+      }).maxTurns,
+      12,
+    );
+
+    for (const maxTurns of [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+      assert.throws(
+        () =>
+          parseAgentConfig({
+            hubBaseUrl: "https://hub.example.test",
+            clientId: "client-1",
+            maxTurns,
+          }),
+        /maxTurns must be a positive safe integer/,
+      );
+    }
   });
 
   it("accepts an optional proxy URL and rejects malformed ones", () => {
@@ -78,10 +102,12 @@ describe("agent config", () => {
         hubBaseUrl: "https://hub.example.test",
         clientId: "client-1",
         maxConcurrentRuns: 2,
+        maxTurns: 12,
       }),
     );
 
     assert.equal(loadAgentConfig(paths).maxConcurrentRuns, 2);
+    assert.equal(loadAgentConfig(paths).maxTurns, 12);
   });
 
   it("writes normalized pairing config into the client-owned home", async () => {
@@ -92,6 +118,7 @@ describe("agent config", () => {
       hubBaseUrl: "https://hub.example.test/",
       clientId: "client-1",
       maxConcurrentRuns: 2,
+      maxTurns: 12,
       projects: [],
       policy: {
         requireRunApproval: true,
@@ -106,6 +133,7 @@ describe("agent config", () => {
       hubBaseUrl: "https://hub.example.test",
       clientId: "client-1",
       maxConcurrentRuns: 2,
+      maxTurns: 12,
       policy: {
         requireRunApproval: true,
         autoPermissions: [],

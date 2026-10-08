@@ -357,6 +357,7 @@ describe("local Agent Client smoke", () => {
         hubBaseUrl,
         clientId: CLIENT_ID,
         maxConcurrentRuns: 2,
+        maxTurns: 7,
         policy: {
           requireRunApproval: false,
           autoPermissions: [],
@@ -419,6 +420,7 @@ describe("local Agent Client smoke", () => {
     // prepares the workspace BEFORE the running transition.
     assert.equal(runner.started.length, 1);
     assert.equal(runner.started[0]?.executionId, "agent-execution");
+    assert.equal(runner.started[0]?.input.maxTurns, 7);
     await createAgentControlClient(controlSocket).sync?.();
     await waitUntil(
       () => hubStore.listEvents("agent-execution").length === 2,

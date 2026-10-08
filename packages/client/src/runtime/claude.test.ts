@@ -75,6 +75,27 @@ describe("Claude adapter", () => {
     assert.match(recordedArgs, /--resume sess-9/);
   });
 
+  it("passes the configured maxTurns to the Claude CLI", async () => {
+    const adapter = createClaudeAdapter({
+      claudeCommand: stubClaude(
+        '{"type":"result","is_error":false,"result":"done"}',
+      ),
+    });
+
+    await collect(
+      adapter.start(
+        { ...runInput(), maxTurns: 9 },
+        new AbortController().signal,
+      ),
+    );
+
+    const recordedArgs = readFileSync(
+      path.join(stubScriptDir ?? "", "args.txt"),
+      "utf8",
+    );
+    assert.match(recordedArgs, /--max-turns 9/);
+  });
+
   it("surfaces a nonzero CLI exit with stderr as an error event", async () => {
     const adapter = createClaudeAdapter({
       claudeCommand: stubClaudeWithStderr("invalid api key", 1),
