@@ -10,6 +10,8 @@ export {
 } from "./events.js";
 export {
   ConsoleApp,
+  type ConsoleSection,
+  PluginPanel,
   ExecutionList,
   ExecutionDetail,
   AuthorizeCard,

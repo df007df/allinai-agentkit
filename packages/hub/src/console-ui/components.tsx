@@ -1001,7 +1001,13 @@ export function RunForm(props: {
   );
 }
 
-export function ConsoleApp(): ReactElement {
+export type ConsoleSection = "plugins" | "issues" | "runs";
+
+export function ConsoleApp({
+  section = "plugins",
+}: {
+  section?: ConsoleSection;
+}): ReactElement {
   const {
     snapshot,
     status,
@@ -1020,6 +1026,11 @@ export function ConsoleApp(): ReactElement {
     selectedExecutionId !== null
       ? eventsForExecution(events, selectedExecutionId)
       : null;
+  const sectionTitle: Record<ConsoleSection, string> = {
+    plugins: "插件 & Skills",
+    issues: "Issues",
+    runs: "发起执行 / 历史会话",
+  };
 
   return (
     <section className="console-app">
@@ -1029,6 +1040,22 @@ export function ConsoleApp(): ReactElement {
           {statusLabel(status)}
         </span>
       </div>
+      <nav className="console-nav" aria-label="控制台页面">
+        {([
+          ["plugins", "/plugins"],
+          ["issues", "/issues"],
+          ["runs", "/runs"],
+        ] as const).map(([item, href]) => (
+          <a
+            key={item}
+            href={href}
+            aria-current={section === item ? "page" : undefined}
+            className={section === item ? "is-active" : undefined}
+          >
+            {sectionTitle[item]}
+          </a>
+        ))}
+      </nav>
       {snapshot?.warning ? (
         <p className="console-warning">{snapshot.warning}</p>
       ) : null}
@@ -1037,23 +1064,27 @@ export function ConsoleApp(): ReactElement {
         approvals={executionApprovals}
         onRespond={respondExecutionApproval}
       />
-      <PluginPanel clients={snapshot?.clients ?? []} />
-      <IssuesPanel clients={snapshot?.clients ?? []} />
-      <div className="console-grid">
-        <section className="console-panel">
-          <h3 className="console-panel-title">发起执行</h3>
-          <RunForm clients={snapshot?.clients ?? []} />
-        </section>
-        <section className="console-panel console-panel-history">
-          <h3 className="console-panel-title">历史会话</h3>
-          <ExecutionList
-            executions={executions}
-            eventsFor={(id) => eventsForExecution(events, id)}
-            selectedId={selectedEvents !== null ? selectedExecutionId : null}
-            onSelect={setSelectedExecutionId}
-          />
-        </section>
-      </div>
+      {section === "plugins" ? (
+        <PluginPanel clients={snapshot?.clients ?? []} />
+      ) : section === "issues" ? (
+        <IssuesPanel clients={snapshot?.clients ?? []} />
+      ) : (
+        <div className="console-grid">
+          <section className="console-panel">
+            <h3 className="console-panel-title">发起执行</h3>
+            <RunForm clients={snapshot?.clients ?? []} />
+          </section>
+          <section className="console-panel console-panel-history">
+            <h3 className="console-panel-title">历史会话</h3>
+            <ExecutionList
+              executions={executions}
+              eventsFor={(id) => eventsForExecution(events, id)}
+              selectedId={selectedEvents !== null ? selectedExecutionId : null}
+              onSelect={setSelectedExecutionId}
+            />
+          </section>
+        </div>
+      )}
       <p className="console-clients">
         已接入 client：{snapshot?.clients.length ?? 0}
         {snapshot?.clients.length

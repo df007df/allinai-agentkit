@@ -75,6 +75,32 @@
 }
 .console-head h2 { margin: 0; }
 
+.console-nav {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin: 1rem 0 1.25rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--console-border);
+}
+.console-nav a {
+  color: var(--console-text-dim);
+  text-decoration: none;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 0.45rem 0.8rem;
+  line-height: 1.4;
+}
+.console-nav a:hover {
+  color: var(--console-text);
+  background: var(--console-bg-raised);
+}
+.console-nav a.is-active {
+  color: var(--console-accent);
+  border-color: var(--console-border-strong);
+  background: var(--console-bg-tint);
+}
+
 /* 状态点为真实语义（SSE 连接状态） */
 .console-status {
   font-family: var(--console-mono);

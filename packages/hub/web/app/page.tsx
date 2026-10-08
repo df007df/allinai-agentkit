@@ -1,6 +1,5 @@
-"use client";
-import { ConsoleApp } from "@allin-ai/agentkit-hub/console-ui";
+import { redirect } from "next/navigation";
 
-export default function Page() {
-  return <ConsoleApp />;
+export default function Page(): never {
+  redirect("/plugins");
 }

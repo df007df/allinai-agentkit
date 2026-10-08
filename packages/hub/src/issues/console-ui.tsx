@@ -188,9 +188,9 @@ function MentionBox(props: MentionBoxProps): ReactElement {
   const candidates =
     query === null
       ? []
-      : dir
-          .filter((actor) => actor.label.toLowerCase().includes(query.toLowerCase()))
-          .slice(0, 6);
+      : dir.filter((actor) =>
+          actor.label.toLowerCase().includes(query.toLowerCase()),
+        );
 
   function detect(next: string): void {
     const match = /(?:^|[\s\n])@([^@\s]{0,24})$/.exec(next);
