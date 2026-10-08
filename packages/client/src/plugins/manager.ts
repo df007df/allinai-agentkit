@@ -265,6 +265,31 @@ export class PluginManager {
     return results;
   }
 
+  /**
+   * Reconciles a subset of plugins without deactivating anything omitted.
+   * Used during daemon startup for built-in plugins before the Hub's full
+   * desired state is known; a full `sync` still owns pruning semantics.
+   */
+  async syncPartial(
+    desired: PluginConfig[],
+  ): Promise<InstalledPluginWithOutcome[]> {
+    const ids = new Set<string>();
+    for (const config of desired) {
+      if (ids.has(config.id)) {
+        throw new TypeError(
+          `Duplicate plugin id in desired state: ${config.id}`,
+        );
+      }
+      ids.add(config.id);
+    }
+
+    return Promise.all(
+      desired.map((config) =>
+        this.withPluginLock(config.id, () => this.syncOne(config)),
+      ),
+    );
+  }
+
   active(runtime: PlatformId): InstalledPlugin[] {
     return [...this.activePlugins.values()]
       .filter(
@@ -919,4 +944,3 @@ export class PluginManager {
     }
   }
 }
-

@@ -1350,6 +1350,20 @@ export async function createLocalAgentDaemon(
       version: "0.4.0",
     });
     const basePlugins: PluginConfig[] = [systemPluginConfig()];
+    // Activate local base plugins before the supervisor can accept a task.
+    // Relying on a later Hub plugin.sync leaves a fresh client window where
+    // its materialized skills and hooks are not in the platform context yet.
+    const basePluginResults = await plugins.syncPartial(basePlugins);
+    for (const basePlugin of basePlugins) {
+      const result = basePluginResults.find(
+        (plugin) => plugin.id === basePlugin.id,
+      );
+      if (result?.status !== "active") {
+        throw new Error(
+          `Built-in plugin ${basePlugin.id} failed to activate: ${result?.lastError ?? "no sync result"}`,
+        );
+      }
+    }
     runner = (options.createRunner ?? createRunnerManager)({
       // The manager runs adapters in-process now; the registry carries the
       // proxy-merged child env that the old runner-child spawn used to.
@@ -1473,6 +1487,7 @@ export async function createLocalAgentDaemon(
       transport,
       runner,
       maxConcurrentRuns: config.maxConcurrentRuns,
+      maxTurns: config.maxTurns,
       basePlugins,
       plugins,
       pluginsRoot: paths.pluginsRoot,

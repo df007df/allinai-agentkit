@@ -430,15 +430,26 @@ describe("local Agent Client smoke", () => {
       hubStore.listEvents("agent-execution").map((event) => event.type),
       ["received", "running"],
     );
-    assert.deepEqual(hubStore.listEvents("agent-execution")[0]?.payload, {
-      prompt: "perform the local smoke task",
-      runtime: "codex",
-      pluginSnapshot: [{ id: "smoke-plugin", resolvedCommit: fixture.commit }],
-    });
-    assert.deepEqual(hubStore.listEvents("agent-execution")[1]?.payload, {
-      runtime: "codex",
-      pluginSnapshot: [{ id: "smoke-plugin", resolvedCommit: fixture.commit }],
-    });
+    for (const event of hubStore.listEvents("agent-execution")) {
+      const payload = event.payload as {
+        prompt?: string;
+        runtime?: string;
+        pluginSnapshot?: Array<{ id: string; resolvedCommit: string }>;
+      };
+      if (event.type === "received") {
+        assert.equal(payload.prompt, "perform the local smoke task");
+      }
+      assert.equal(payload.runtime, "codex");
+      assert.deepEqual(
+        payload.pluginSnapshot?.map(({ id }) => id),
+        ["agentkit-system", "smoke-plugin"],
+      );
+      assert.equal(
+        payload.pluginSnapshot?.find(({ id }) => id === "smoke-plugin")
+          ?.resolvedCommit,
+        fixture.commit,
+      );
+    }
 
     await hub.offer({
       principal: HUB_TOKEN,
@@ -506,7 +517,9 @@ describe("local Agent Client smoke", () => {
       "capability terminal acknowledgement",
     );
 
-    const plugin = (await statusFor(controlSocket)).plugins[0];
+    const plugin = (await statusFor(controlSocket)).plugins.find(
+      (candidate) => candidate?.id === "smoke-plugin",
+    );
     assert.equal(plugin?.id, "smoke-plugin");
     assert.equal(plugin?.resolvedCommit, fixture.commit);
     assert.equal(plugin?.status, "active");

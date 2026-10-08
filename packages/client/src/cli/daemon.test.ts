@@ -155,6 +155,42 @@ describe("local agent daemon composition", () => {
     if (dir) rmSync(dir, { recursive: true, force: true });
   });
 
+  it("activates the built-in system plugin before Hub sync arrives", async () => {
+    if (process.platform === "win32") return;
+    dir = mkdtempSync(path.join(tmpdir(), "allinai-agentkit-daemon-system-plugin-"));
+    writeFileSync(
+      path.join(dir, "config.json"),
+      JSON.stringify({
+        hubBaseUrl: "https://hub.example.test",
+        clientId: "system-plugin-client",
+      }),
+    );
+    const credentials = {
+      load: async () => null,
+      save: async () => undefined,
+      clear: async () => undefined,
+    };
+
+    const daemon = await createLocalAgentDaemon({
+      configDir: dir,
+      credentials,
+      probeRuntimes: async () => [],
+    });
+    close = () => daemon.close();
+
+    const status = await daemon.status();
+    const plugins = status.plugins as Array<{
+      plugin: { id: string; status: string };
+      active: { status: string } | null;
+    }>;
+    const systemPluginState = plugins.find(
+      (pluginState) => pluginState.plugin.id === "agentkit-system",
+    );
+    assert.ok(systemPluginState, "the default plugin must be active at daemon startup");
+    assert.equal(systemPluginState.plugin.status, "active");
+    assert.equal(systemPluginState.active?.status, "active");
+  });
+
   it("acquires one local control socket and remains unpaired without a credential", async () => {
     if (process.platform === "win32") return;
     dir = mkdtempSync(path.join(tmpdir(), "allinai-agentkit-daemon-"));
